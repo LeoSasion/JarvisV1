@@ -9,7 +9,6 @@ namespace Jarvis.Host.Services;
 internal static class ShellIconReader
 {
     private const uint ShgfiIcon = 0x000000100;
-    private const uint ShgfiSmallIcon = 0x000000001;
     private const uint ShgfiPidl = 0x000000008;
 
     public static string? TryReadPath(string path)
@@ -20,7 +19,7 @@ internal static class ShellIconReader
                 0,
                 ref fileInfo,
                 (uint)Marshal.SizeOf<ShFileInfo>(),
-                ShgfiIcon | ShgfiSmallIcon) == IntPtr.Zero ||
+                ShgfiIcon) == IntPtr.Zero ||
             fileInfo.IconHandle == IntPtr.Zero)
         {
             return null;
@@ -50,7 +49,7 @@ internal static class ShellIconReader
                     0,
                     ref fileInfo,
                     (uint)Marshal.SizeOf<ShFileInfo>(),
-                    ShgfiPidl | ShgfiIcon | ShgfiSmallIcon) == IntPtr.Zero ||
+                    ShgfiPidl | ShgfiIcon) == IntPtr.Zero ||
                 fileInfo.IconHandle == IntPtr.Zero)
             {
                 return null;

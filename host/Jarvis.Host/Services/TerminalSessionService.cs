@@ -492,9 +492,8 @@ internal static class TerminalProfileCatalog
 {
     public static IReadOnlyList<TerminalProfile> GetProfiles()
     {
-        var windowsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         var systemDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        var powerShell7 = FindOnPath("pwsh.exe") ?? Path.Combine(
+        var powerShell7 = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             "PowerShell",
             "7",
@@ -505,7 +504,7 @@ internal static class TerminalProfileCatalog
             "v1.0",
             "powershell.exe");
         var preferredPowerShell = File.Exists(powerShell7) ? powerShell7 : windowsPowerShell;
-        var cmd = Environment.GetEnvironmentVariable("ComSpec") ?? Path.Combine(systemDirectory, "cmd.exe");
+        var cmd = Path.Combine(systemDirectory, "cmd.exe");
         var wsl = Path.Combine(systemDirectory, "wsl.exe");
 
         return new[]
@@ -535,33 +534,6 @@ internal static class TerminalProfileCatalog
                ?? throw new ArgumentException("Unsupported terminal profile.", nameof(profileId));
     }
 
-    private static string? FindOnPath(string executableName)
-    {
-        var pathValue = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(pathValue))
-        {
-            return null;
-        }
-
-        foreach (var rawDirectory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            try
-            {
-                var directory = rawDirectory.Trim().Trim('"');
-                var candidate = Path.GetFullPath(Path.Combine(directory, executableName));
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-            }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-            {
-                // Ignore malformed PATH entries while resolving an allowlisted executable.
-            }
-        }
-
-        return null;
-    }
 }
 
 internal static class NativeMethods

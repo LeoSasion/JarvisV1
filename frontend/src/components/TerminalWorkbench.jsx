@@ -168,6 +168,10 @@ function TerminalViewport({ tab, active, onSessionState, onToast }) {
       terminal.options.disableStdin = true;
       onSessionState(tab.localId, { status: "exited" });
     });
+    const handleThemeChange = () => {
+      terminal.options.theme = readTerminalTheme();
+    };
+    window.addEventListener("jarvis:theme-changed", handleThemeChange);
 
     const fitAndResize = () => {
       resizeFrame = 0;
@@ -238,6 +242,7 @@ function TerminalViewport({ tab, active, onSessionState, onToast }) {
       resizeObserver.disconnect();
       stopOutput();
       stopExit();
+      window.removeEventListener("jarvis:theme-changed", handleThemeChange);
       inputDisposable.dispose();
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
@@ -369,9 +374,8 @@ export function TerminalWorkbench({ open, onClose, onToast }) {
           <button type="button" onClick={onClose} aria-label="Close terminal"><DismissRegular /></button>
         </header>
 
-        {!minimized ? (
-          <>
-            <div className="terminal-tabbar" role="tablist" aria-label="Terminal sessions">
+        <>
+          <div className="terminal-tabbar" role="tablist" aria-label="Terminal sessions">
               <div className="terminal-tabs">
                 {tabs.map((tab, index) => (
                   <div key={tab.localId} className={`terminal-tab${activeTabId === tab.localId ? " is-active" : ""}`}>
@@ -405,31 +409,30 @@ export function TerminalWorkbench({ open, onClose, onToast }) {
               <button type="button" className="terminal-new-tab" onClick={() => addTab()} disabled={tabs.length >= MAX_TABS}>
                 <AddRegular /><span>NEW SESSION</span>
               </button>
-            </div>
+          </div>
 
-            <div className="terminal-stage">
-              <div className="terminal-stage-grid" aria-hidden="true" />
-              {tabs.map((tab) => (
-                <TerminalViewport
-                  key={tab.localId}
-                  tab={tab}
-                  active={activeTabId === tab.localId}
-                  onSessionState={updateSessionState}
-                  onToast={onToast}
-                />
-              ))}
-              {tabs.length === 0 ? <div className="terminal-empty">ESTABLISHING CONPTY CHANNEL…</div> : null}
-            </div>
+          <div className="terminal-stage">
+            <div className="terminal-stage-grid" aria-hidden="true" />
+            {tabs.map((tab) => (
+              <TerminalViewport
+                key={tab.localId}
+                tab={tab}
+                active={!minimized && activeTabId === tab.localId}
+                onSessionState={updateSessionState}
+                onToast={onToast}
+              />
+            ))}
+            {tabs.length === 0 ? <div className="terminal-empty">ESTABLISHING CONPTY CHANNEL…</div> : null}
+          </div>
 
-            <footer className="terminal-statusbar">
-              <span><i />UTF-8</span>
-              <span>VT SEQUENCES</span>
-              <span>CTRL+F · SEARCH</span>
-              <span>SCROLLBACK · 6000</span>
-              <strong>{tabs.find((tab) => tab.localId === activeTabId)?.status?.toUpperCase() ?? "STANDBY"}</strong>
-            </footer>
-          </>
-        ) : null}
+          <footer className="terminal-statusbar">
+            <span><i />UTF-8</span>
+            <span>VT SEQUENCES</span>
+            <span>CTRL+F · SEARCH</span>
+            <span>SCROLLBACK · 6000</span>
+            <strong>{tabs.find((tab) => tab.localId === activeTabId)?.status?.toUpperCase() ?? "STANDBY"}</strong>
+          </footer>
+        </>
       </section>
     </div>
   );
