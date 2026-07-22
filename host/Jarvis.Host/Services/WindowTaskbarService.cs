@@ -27,7 +27,6 @@ internal sealed class WindowTaskbarService
     private const nuint IconSmall2 = 2;
     private const uint SmtoAbortIfHung = 0x0002;
     private const uint ShgfiIcon = 0x000000100;
-    private const uint ShgfiSmallIcon = 0x000000001;
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const int ErrorSuccess = 0;
     private const int ErrorInsufficientBuffer = 122;
@@ -325,7 +324,17 @@ internal sealed class WindowTaskbarService
 
     private static string? TryReadWindowIcon(IntPtr window)
     {
-        var icon = SendForIcon(window, IconSmall2);
+        var icon = SendForIcon(window, IconBig);
+        if (icon == IntPtr.Zero)
+        {
+            icon = GetClassLongPtr(window, GclpHicon);
+        }
+
+        if (icon == IntPtr.Zero)
+        {
+            icon = SendForIcon(window, IconSmall2);
+        }
+
         if (icon == IntPtr.Zero)
         {
             icon = SendForIcon(window, IconSmall);
@@ -334,16 +343,6 @@ internal sealed class WindowTaskbarService
         if (icon == IntPtr.Zero)
         {
             icon = GetClassLongPtr(window, GclpHiconSmall);
-        }
-
-        if (icon == IntPtr.Zero)
-        {
-            icon = SendForIcon(window, IconBig);
-        }
-
-        if (icon == IntPtr.Zero)
-        {
-            icon = GetClassLongPtr(window, GclpHicon);
         }
 
         return icon == IntPtr.Zero ? null : EncodeIcon(icon);
@@ -376,7 +375,7 @@ internal sealed class WindowTaskbarService
                 0,
                 ref fileInfo,
                 (uint)Marshal.SizeOf<ShFileInfo>(),
-                ShgfiIcon | ShgfiSmallIcon) == IntPtr.Zero ||
+                ShgfiIcon) == IntPtr.Zero ||
             fileInfo.IconHandle == IntPtr.Zero)
         {
             return null;

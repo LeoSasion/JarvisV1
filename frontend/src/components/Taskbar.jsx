@@ -318,8 +318,20 @@ export function Taskbar({
   const showOverflow = useCallback((event) => {
     event.preventDefault();
     onHideFlyout();
+    if (platformKind !== "mock") {
+      const windowIds = overflowItems.flatMap((item) =>
+        item.windows.map((window) => window.windowId));
+      if (windowIds.length > 0) {
+        onShowFlyout({
+          mode: "overflow",
+          windowIds,
+          ...getFlyoutAnchor(event.currentTarget),
+        });
+      }
+      return;
+    }
     setMockFlyout({ mode: "overflow", items: overflowItems });
-  }, [onHideFlyout, overflowItems]);
+  }, [getFlyoutAnchor, onHideFlyout, onShowFlyout, overflowItems, platformKind]);
 
   const activateMockFlyoutWindow = useCallback((item, window) => {
     setMockFlyout(null);
@@ -534,6 +546,7 @@ export function Taskbar({
           {alertCount ? <small>{alertCount}</small> : null}
         </button>
       </div>
+      <span className="taskbar-edge-track" aria-hidden="true" />
       {mockFlyout ? (
         <TaskbarLocalFlyout
           flyout={mockFlyout}

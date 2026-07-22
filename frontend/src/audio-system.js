@@ -17,9 +17,12 @@ function readState() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
     if (parsed?.version === 1) {
+      const storedVolume = Number(parsed.volume);
       return Object.freeze({
         enabled: Boolean(parsed.enabled),
-        volume: Math.min(1, Math.max(0, Number(parsed.volume) || 0.14)),
+        volume: Number.isFinite(storedVolume)
+          ? Math.min(1, Math.max(0, storedVolume))
+          : 0.14,
       });
     }
   } catch {

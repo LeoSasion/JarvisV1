@@ -42,7 +42,6 @@ export function TaskbarSurface() {
   const handleAppClick = useCallback(async (item, runningWindow = null, options = {}) => {
     const builtinId = item.pinnedApplication?.id;
     setActiveApp(item.id);
-    await hideTaskbarFlyout();
     try {
       if (builtinId === "explorer") {
         await showDesktopPanel("explorer");
@@ -56,6 +55,7 @@ export function TaskbarSurface() {
         await showDesktopPanel("terminal");
         return;
       }
+      await hideTaskbarFlyout();
       if (runningWindow && !options.forceLaunch) {
         await platform.taskbar.toggleWindow(runningWindow.windowId);
         return;
@@ -73,7 +73,10 @@ export function TaskbarSurface() {
   }, [hideTaskbarFlyout, showDesktopPanel]);
 
   return (
-    <main className="jarvis-taskbar-surface" aria-label="JARVIS taskbar surface">
+    <main
+      className={`jarvis-taskbar-surface${platform.isNative ? " is-native" : ""}`}
+      aria-label="JARVIS taskbar surface"
+    >
       <Taskbar
         activeApp={activeApp}
         onAppClick={handleAppClick}

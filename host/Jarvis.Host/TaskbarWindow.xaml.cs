@@ -31,7 +31,9 @@ public partial class TaskbarWindow : Window
     private readonly NativeWindowAppearanceService _windowAppearanceService;
 
     private WebBridge? _bridge;
+    private TaskbarEdgeOverlayWindow? _edgeOverlayWindow;
     private TaskbarFlyoutWindow? _flyoutWindow;
+    private TaskbarLauncherOverlayWindow? _launcherOverlayWindow;
     private HwndSource? _windowSource;
     private Task? _healthTask;
     private bool _allowClose;
@@ -39,6 +41,7 @@ public partial class TaskbarWindow : Window
     private bool _diagnosticFlyoutShown;
     private bool _reportedReady;
     private bool _reportedFailure;
+    private bool _surfaceRevealed;
 
     internal TaskbarWindow(
         PixelRect bounds,
@@ -67,6 +70,7 @@ public partial class TaskbarWindow : Window
 
     public void Reveal()
     {
+        _surfaceRevealed = true;
         if (!IsVisible)
         {
             Show();
@@ -74,11 +78,14 @@ public partial class TaskbarWindow : Window
 
         Opacity = 1;
         IsHitTestVisible = true;
+        _ = ShowTaskbarOverlaysAsync();
         _ = ShowDiagnosticFlyoutAfterSurfaceReadyAsync();
     }
 
     public void Conceal()
     {
+        _surfaceRevealed = false;
+        CloseTaskbarOverlays();
         IsHitTestVisible = false;
         Opacity = 0;
         Hide();
@@ -87,7 +94,99 @@ public partial class TaskbarWindow : Window
     public void CloseFromHost()
     {
         _allowClose = true;
+        CloseTaskbarOverlays();
         Close();
+    }
+
+    private async Task ShowTaskbarOverlaysAsync()
+    {
+        if (!_surfaceRevealed || _isClosing || WebView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            const string metricsScript = """
+                (() => {
+                  const image = document.querySelector('.jarvis-taskbar-surface .jarvis-launcher img');
+                  const rect = image?.getBoundingClientRect();
+                  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+                  return {
+                    CenterY: rect.top + rect.height / 2,
+                    Size: Math.max(rect.width, rect.height),
+                    ViewportWidth: window.innerWidth,
+                    ViewportHeight: window.innerHeight
+                  };
+                })()
+                """;
+            var json = await WebView.CoreWebView2.ExecuteScriptAsync(metricsScript);
+            var metrics = JsonSerializer.Deserialize<LauncherOverlayMetrics>(json);
+            if (metrics is null ||
+                metrics.Size <= 0 ||
+                metrics.ViewportWidth <= 0 ||
+                metrics.ViewportHeight <= 0 ||
+                !_surfaceRevealed ||
+                _isClosing)
+            {
+                return;
+            }
+
+            var verticalScale = _bounds.Height / metrics.ViewportHeight;
+            var horizontalScale = _bounds.Width / metrics.ViewportWidth;
+            var size = Math.Max(1, checked((int)Math.Round(metrics.Size * horizontalScale)));
+            // The launcher belongs to the monitor, not to a responsive WebView grid column.
+            // Using the physical taskbar midpoint also avoids DPI and ultra-wide drift.
+            var centerX = _bounds.Left + _bounds.Width / 2;
+            var centerY = _bounds.Top + checked((int)Math.Round(metrics.CenterY * verticalScale));
+            var overlayBounds = new PixelRect(
+                centerX - size / 2,
+                centerY - size / 2,
+                centerX - size / 2 + size,
+                centerY - size / 2 + size);
+            var edgeInset = Math.Max(1, checked((int)Math.Round(13 * horizontalScale)));
+            var edgeHeight = Math.Max(5, checked((int)Math.Round(9 * verticalScale)));
+            var edgeTop = _bounds.Top - edgeHeight / 2;
+            var edgeBounds = new PixelRect(
+                _bounds.Left + edgeInset,
+                edgeTop,
+                _bounds.Right - edgeInset,
+                edgeTop + edgeHeight);
+            _edgeOverlayWindow ??= new TaskbarEdgeOverlayWindow();
+            if (!_edgeOverlayWindow.ShowAt(edgeBounds, NativeHandle))
+            {
+                HostLog.Warning("The taskbar edge overlay could not be positioned.");
+            }
+
+            var assetPath = Path.Combine(
+                FrontendLocator.FindDistributionDirectory(),
+                "assets",
+                "jarvis-taskbar-core-launcher-v1.png");
+            _launcherOverlayWindow ??= new TaskbarLauncherOverlayWindow(assetPath);
+            if (!_launcherOverlayWindow.ShowAt(overlayBounds, NativeHandle))
+            {
+                HostLog.Warning("The taskbar launcher overlay could not be positioned.");
+            }
+        }
+        catch (InvalidOperationException) when (_isClosing || !_surfaceRevealed)
+        {
+            // The WebView or overlay may close while taskbar replacement is being restored.
+        }
+        catch (Exception ex)
+        {
+            HostLog.Error("The taskbar chrome overlays could not be shown.", ex);
+            CloseTaskbarOverlays();
+        }
+    }
+
+    private void CloseTaskbarOverlays()
+    {
+        var launcherOverlay = _launcherOverlayWindow;
+        var edgeOverlay = _edgeOverlayWindow;
+        _launcherOverlayWindow = null;
+        _edgeOverlayWindow = null;
+        launcherOverlay?.Close();
+        edgeOverlay?.Close();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -477,6 +576,7 @@ public partial class TaskbarWindow : Window
 
         _reportedFailure = true;
         _healthShutdown.Cancel();
+        CloseTaskbarOverlays();
         HideTaskbarFlyout();
         _surfaceFailed();
     }
@@ -506,12 +606,19 @@ public partial class TaskbarWindow : Window
 
         _isClosing = true;
         _healthShutdown.Cancel();
+        CloseTaskbarOverlays();
         HideTaskbarFlyout();
         _windowSource?.RemoveHook(WindowProcedure);
         _windowSource = null;
         _bridge?.Dispose();
         WebView.Dispose();
     }
+
+    private sealed record LauncherOverlayMetrics(
+        double CenterY,
+        double Size,
+        double ViewportWidth,
+        double ViewportHeight);
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);

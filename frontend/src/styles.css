@@ -110,13 +110,16 @@ input:focus-visible {
 .jarvis-taskbar-surface .taskbar {
   inset: 0;
   height: 100%;
-  grid-template-columns: 72px 220px minmax(430px, 584px) 78px 1fr auto;
+  grid-template-columns: 72px 220px minmax(430px, 584px) 1fr auto;
 }
 
 .jarvis-taskbar-surface .taskbar-apps {
   display: flex;
   min-width: 0;
   overflow: hidden;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .jarvis-taskbar-surface .taskbar-apps button {
@@ -151,9 +154,17 @@ input:focus-visible {
 }
 
 .jarvis-taskbar-surface .jarvis-launcher img {
-  width: 96px;
-  height: 96px;
-  transform: translate(-50%, calc(-50% - 4px));
+  width: 115px;
+  height: 115px;
+  transform: translate(-50%, -50%);
+}
+
+.jarvis-taskbar-surface.is-native .jarvis-launcher img {
+  opacity: 0;
+}
+
+.jarvis-taskbar-surface.is-native .taskbar-edge-track {
+  opacity: 0;
 }
 
 .jarvis-taskbar-surface .taskbar-apps button::after,
@@ -226,8 +237,7 @@ input:focus-visible {
   font-family: Bahnschrift, "Segoe UI", sans-serif;
 }
 
-.topbar::after,
-.taskbar::after {
+.topbar::after {
   content: "";
   position: absolute;
   left: 33.5%;
@@ -420,35 +430,60 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .desktop-shortcuts {
+  --desktop-icon-cell-width: 96px;
+  --desktop-icon-cell-height: 88px;
+  position: relative;
+  grid-column: 1 / 3;
+  grid-row: 1;
   z-index: 4;
   min-width: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 24px 18px 18px 24px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px;
+  pointer-events: none;
+}
+
+.desktop-shortcuts.is-auto-arranged {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(5, minmax(86px, 1fr));
-  align-items: center;
-  justify-items: center;
-  gap: 2px 8px;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--desktop-icon-cell-width);
+  grid-template-rows: repeat(auto-fill, var(--desktop-icon-cell-height));
+  align-content: start;
+  justify-content: start;
+  gap: 0;
+}
+
+.desktop-shortcuts.is-manual {
+  display: block;
+}
+
+.desktop-shortcuts:focus {
+  outline: none;
 }
 
 .desktop-shortcut {
-  width: 100%;
+  width: var(--desktop-icon-cell-width);
   min-width: 0;
-  max-width: 100%;
-  height: 100%;
-  min-height: 80px;
+  max-width: var(--desktop-icon-cell-width);
+  height: var(--desktop-icon-cell-height);
+  min-height: var(--desktop-icon-cell-height);
   overflow: hidden;
   display: grid;
-  grid-template-rows: 54px 32px;
+  grid-template-rows: 48px 30px;
   place-items: center;
   align-content: center;
-  gap: 5px;
-  padding: 5px;
+  gap: 3px;
+  padding: 3px 4px;
   border: 1px solid transparent;
   background-color: transparent;
   cursor: default;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.desktop-shortcuts.is-manual .desktop-shortcut {
+  position: absolute;
+  cursor: move;
 }
 
 .desktop-shortcut:hover,
@@ -462,8 +497,8 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .shortcut-icon {
-  width: 52px;
-  height: 52px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
   color: #75d7ff;
@@ -473,8 +508,8 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .shortcut-icon svg {
-  width: 50px;
-  height: 50px;
+  width: 44px;
+  height: 44px;
   stroke-width: 1.1;
 }
 
@@ -508,10 +543,79 @@ button.top-cluster:hover:not(:disabled) {
   text-overflow: ellipsis;
 }
 
+.desktop-context-menu {
+  position: fixed;
+  z-index: 240;
+  width: 224px;
+  padding: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(45, 147, 205, 0.82);
+  border-radius: 3px;
+  background: rgba(2, 9, 17, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(4, 27, 45, 0.96) inset,
+    0 10px 30px rgba(0, 0, 0, 0.48),
+    0 0 16px rgba(0, 132, 238, 0.14);
+  pointer-events: auto;
+}
+
+.desktop-context-menu header {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 9px;
+  border-bottom: 1px solid rgba(32, 84, 119, 0.58);
+  color: #bcecff;
+  font: 600 9px/1 Bahnschrift, sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.desktop-context-menu header small {
+  color: #56758d;
+  font: 8px/1 "Cascadia Mono", monospace;
+}
+
+.desktop-context-menu > button {
+  width: 100%;
+  height: 38px;
+  margin-top: 5px;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #d4e2ea;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desktop-context-menu > button:hover,
+.desktop-context-menu > button:focus-visible {
+  border-color: rgba(34, 207, 255, 0.34);
+  background: rgba(7, 35, 55, 0.78);
+}
+
+.desktop-menu-check {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(70, 147, 193, 0.66);
+  color: var(--energy-cyan);
+  font: 700 12px/1 "Segoe UI", sans-serif;
+  box-shadow: 0 0 6px rgba(34, 207, 255, 0.12) inset;
+}
+
 .core-stage {
   --parallax-x: 0px;
   --parallax-y: 0px;
   position: relative;
+  grid-column: 2;
+  grid-row: 1;
   z-index: 1;
   min-width: 0;
   overflow: visible;
@@ -567,6 +671,8 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .telemetry-rail {
+  grid-column: 3;
+  grid-row: 1;
   z-index: 5;
   min-width: 0;
   display: grid;
@@ -989,9 +1095,10 @@ button.process-grid:hover {
   z-index: 20;
   height: var(--taskbar-height);
   display: grid;
-  grid-template-columns: 93px 259px 584px 96px 1fr auto;
+  grid-template-columns: 93px 259px 584px 1fr auto;
   align-items: center;
   overflow: visible;
+  isolation: isolate;
   border: 0;
   clip-path: none;
   background: transparent;
@@ -1022,6 +1129,58 @@ button.process-grid:hover {
     13px 100%,
     0 calc(100% - 13px)
   );
+}
+
+.taskbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  border: 1px solid rgba(36, 151, 214, 0.82);
+  background:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 33.5%,
+      var(--energy-blue) 33.5%,
+      var(--energy-blue) calc(33.5% + 54px),
+      transparent calc(33.5% + 54px),
+      transparent 100%
+    ) top / 100% 2px no-repeat;
+  box-shadow:
+    0 0 7px rgba(34, 207, 255, 0.28),
+    0 0 8px rgba(34, 207, 255, 0.18) inset;
+  clip-path: polygon(
+    0 13px,
+    13px 0,
+    17% 0,
+    calc(17% + 11px) 7px,
+    33% 7px,
+    calc(33% + 11px) 0,
+    calc(100% - 13px) 0,
+    100% 13px,
+    100% calc(100% - 13px),
+    calc(100% - 13px) 100%,
+    13px 100%,
+    0 calc(100% - 13px)
+  );
+  pointer-events: none;
+}
+
+.taskbar-edge-track {
+  position: absolute;
+  top: 0;
+  right: 13px;
+  left: 13px;
+  z-index: 90;
+  height: 1px;
+  display: block;
+  background: rgba(36, 151, 214, 0.92);
+  box-shadow:
+    0 0 4px rgba(34, 207, 255, 0.88),
+    0 0 9px rgba(0, 132, 238, 0.46);
+  pointer-events: none;
+  transform: translateZ(0);
 }
 
 .taskbar-start {
@@ -1077,11 +1236,15 @@ button.process-grid:hover {
 }
 
 .taskbar-apps {
-  height: 100%;
+  height: calc(100% - 12px);
   min-width: 0;
+  align-self: center;
   display: flex;
   align-items: center;
   overflow: hidden;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .taskbar-apps button {
@@ -1117,14 +1280,16 @@ button.process-grid:hover {
 }
 
 .taskbar-native-icon {
-  width: 25px;
-  height: 25px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
   object-fit: contain;
-  filter:
-    saturate(0.82)
-    contrast(1.08)
-    drop-shadow(0 0 4px rgba(34, 207, 255, 0.38));
+  image-rendering: auto;
+  filter: drop-shadow(0 0 1px rgba(34, 207, 255, 0.24));
+}
+
+.taskbar-apps button.is-active .taskbar-native-icon {
+  filter: drop-shadow(0 0 3px rgba(34, 207, 255, 0.48));
 }
 
 .taskbar-window-count {
@@ -1371,40 +1536,43 @@ button.process-grid:hover {
   box-shadow: 0 0 8px rgba(34, 207, 255, 0.75);
 }
 
-.taskbar-apps button.is-running:not(.is-active)::after {
-  right: 44%;
-  left: 44%;
-  background-color: rgba(117, 215, 255, 0.72);
-  box-shadow: 0 0 5px rgba(34, 207, 255, 0.48);
+.taskbar-apps button:focus-visible {
+  outline-offset: -4px;
 }
 
 .taskbar-apps svg {
-  width: 23px;
-  height: 23px;
+  width: 22px;
+  height: 22px;
   color: #9fdcff;
   filter: drop-shadow(0 0 3px rgba(0, 132, 238, 0.35));
 }
 
 .jarvis-launcher {
-  position: relative;
-  width: 100%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 100;
+  width: 104px;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  align-self: stretch;
   display: grid;
   place-items: center;
   padding: 0;
+  overflow: visible;
+  transform: translate(-50%, -50%);
 }
 
 .jarvis-launcher img {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 96px;
-  height: 96px;
+  z-index: 2;
+  width: 115px;
+  height: 115px;
   object-fit: contain;
-  transform: translate(-50%, calc(-50% - 4px));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .system-tray {
@@ -5209,12 +5377,9 @@ button.process-grid:hover {
   }
 
   .taskbar {
-    grid-template-columns: 76px 212px 472px 78px 1fr auto;
+    grid-template-columns: 76px 212px 472px 1fr auto;
   }
 
-  .taskbar-apps {
-    grid-template-columns: 139px 108px 98px 127px;
-  }
 }
 
 @media (max-width: 1260px) {
@@ -5242,11 +5407,7 @@ button.process-grid:hover {
   }
 
   .taskbar {
-    grid-template-columns: 68px 150px minmax(245px, auto) 78px 1fr auto;
-  }
-
-  .taskbar-apps {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: 68px 150px minmax(245px, auto) 1fr auto;
   }
 
   .taskbar-apps button {
@@ -5325,9 +5486,9 @@ button.process-grid:hover {
   }
 
   .jarvis-launcher img {
-    width: 78px;
-    height: 78px;
-    transform: translate(-50%, calc(-50% - 3px));
+    width: 94px;
+    height: 94px;
+    transform: translate(-50%, -50%);
   }
 }
 
@@ -5443,6 +5604,12 @@ button.process-grid:hover {
   min-height: 0;
   height: 48px;
   grid-template-rows: 48px;
+}
+
+.terminal-layer.is-minimized .terminal-tabbar,
+.terminal-layer.is-minimized .terminal-stage,
+.terminal-layer.is-minimized .terminal-statusbar {
+  display: none;
 }
 
 @keyframes terminal-workbench-in {
