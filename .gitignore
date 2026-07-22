@@ -1,0 +1,41 @@
+# Local Codex and agent state
+.agents/
+.codex/
+
+# Frontend dependencies, caches, and generated bundles
+frontend/node_modules/
+frontend/.npm-cache/
+frontend/dist/
+frontend/coverage/
+
+# .NET and IDE outputs
+**/bin/
+**/obj/
+.vs/
+.vscode/
+TestResults/
+*.user
+*.suo
+
+# Release and scratch outputs
+artifacts/
+tmp/
+*.log
+
+# Local WebView2 state
+**/EBWebView/
+**/WebView2Data/
+
+# Local environment and signing material
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Operating-system metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

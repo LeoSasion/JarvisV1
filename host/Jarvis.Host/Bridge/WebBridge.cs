@@ -1,0 +1,949 @@
+using System.Text;
+using System.Text.Json;
+using Jarvis.Host.Infrastructure;
+using Jarvis.Host.Services;
+using Microsoft.Web.WebView2.Core;
+using System.Windows.Threading;
+
+namespace Jarvis.Host.Bridge;
+
+internal sealed class WebBridge : IDisposable
+{
+    private const string TrustedOrigin = "https://jarvis.local/";
+
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DictionaryKeyPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private readonly CoreWebView2 _webView;
+    private readonly Dispatcher _dispatcher;
+    private readonly RuntimeSnapshotFeed _snapshotFeed;
+    private readonly SystemDetailsService _systemDetailsService = new();
+    private readonly DesktopService _desktopService;
+    private readonly ShellService _shellService;
+    private readonly FileExplorerService _fileExplorerService;
+    private readonly TerminalSessionService _terminalSessionService;
+    private readonly WindowTaskbarService _taskbarService;
+    private readonly NativeWindowAppearanceService _windowAppearanceService;
+    private readonly RuntimeDiagnosticsService _runtimeDiagnosticsService;
+    private readonly Action _requestExit;
+    private readonly Action<string?> _showDesktop;
+    private readonly Action<TaskbarFlyoutRequest>? _showTaskbarFlyout;
+    private readonly Action? _hideTaskbarFlyout;
+    private readonly bool _terminalEnabled;
+    private readonly CancellationTokenSource _shutdown = new();
+    private readonly object _terminalOutputGate = new();
+    private readonly Dictionary<string, PendingTerminalOutput> _pendingTerminalOutput =
+        new(StringComparer.Ordinal);
+
+    private bool _attached;
+    private bool _telemetryAttached;
+    private bool _terminalOutputFlushScheduled;
+    private bool _disposed;
+
+    public WebBridge(
+        CoreWebView2 webView,
+        Dispatcher dispatcher,
+        RuntimeSnapshotFeed snapshotFeed,
+        DesktopService desktopService,
+        ShellService shellService,
+        FileExplorerService fileExplorerService,
+        TerminalSessionService terminalSessionService,
+        WindowTaskbarService taskbarService,
+        NativeWindowAppearanceService windowAppearanceService,
+        RuntimeDiagnosticsService runtimeDiagnosticsService,
+        Action requestExit,
+        Action<string?> showDesktop,
+        Action<TaskbarFlyoutRequest>? showTaskbarFlyout = null,
+        Action? hideTaskbarFlyout = null,
+        bool terminalEnabled = true)
+    {
+        _webView = webView;
+        _dispatcher = dispatcher;
+        _snapshotFeed = snapshotFeed;
+        _desktopService = desktopService;
+        _shellService = shellService;
+        _fileExplorerService = fileExplorerService;
+        _terminalSessionService = terminalSessionService;
+        _taskbarService = taskbarService;
+        _windowAppearanceService = windowAppearanceService;
+        _runtimeDiagnosticsService = runtimeDiagnosticsService;
+        _requestExit = requestExit;
+        _showDesktop = showDesktop;
+        _showTaskbarFlyout = showTaskbarFlyout;
+        _hideTaskbarFlyout = hideTaskbarFlyout;
+        _terminalEnabled = terminalEnabled;
+    }
+
+    public void Attach()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_attached)
+        {
+            return;
+        }
+
+        _webView.WebMessageReceived += OnWebMessageReceived;
+        _windowAppearanceService.StateChanged += OnWindowAppearanceChanged;
+        if (_terminalEnabled)
+        {
+            _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
+            _terminalSessionService.SessionExited += OnTerminalSessionExited;
+        }
+        _attached = true;
+    }
+
+    public Task StartTelemetryAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_telemetryAttached)
+        {
+            _snapshotFeed.SnapshotAvailable += OnSnapshotAvailable;
+            _telemetryAttached = true;
+            _snapshotFeed.Start();
+        }
+
+        Post(new
+        {
+            @event = "windowAppearance.changed",
+            data = _windowAppearanceService.GetState()
+        });
+
+        return Task.CompletedTask;
+    }
+
+    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        JsonElement requestId = default;
+
+        try
+        {
+            if (!IsTrustedSource(e.Source))
+            {
+                HostLog.Warning($"Rejected bridge message from untrusted origin: {e.Source}");
+                return;
+            }
+
+            using var document = JsonDocument.Parse(e.WebMessageAsJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new BridgeFaultException("INVALID_REQUEST", "Bridge request must be a JSON object.");
+            }
+
+            if (!root.TryGetProperty("id", out var id) ||
+                id.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                throw new BridgeFaultException("INVALID_REQUEST", "Bridge request requires a non-null id.");
+            }
+
+            requestId = id.Clone();
+            if (!root.TryGetProperty("method", out var methodElement) ||
+                methodElement.ValueKind != JsonValueKind.String)
+            {
+                throw new BridgeFaultException("INVALID_REQUEST", "Bridge request requires a method string.");
+            }
+
+            var method = methodElement.GetString()!;
+            var parameters = root.TryGetProperty("params", out var paramsElement)
+                ? paramsElement.Clone()
+                : EmptyObject();
+            var result = await DispatchAsync(method, parameters, _shutdown.Token);
+
+            Post(new { id = requestId, ok = true, result });
+
+            if (method.Equals("lifecycle.exitToWindows", StringComparison.Ordinal))
+            {
+                await Task.Delay(80);
+                _requestExit();
+            }
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // Host shutdown intentionally cancels in-flight bridge work.
+        }
+        catch (BridgeFaultException ex)
+        {
+            PostFailure(requestId, ex.Code, ex.Message);
+        }
+        catch (JsonException ex)
+        {
+            PostFailure(requestId, "INVALID_JSON", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            HostLog.Error("Bridge request failed.", ex);
+            PostFailure(requestId, "HOST_ERROR", "The native host could not complete the request.");
+        }
+    }
+
+    private async Task<object> DispatchAsync(
+        string method,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!_terminalEnabled && method.StartsWith("terminal.", StringComparison.Ordinal))
+        {
+            throw new BridgeFaultException(
+                "METHOD_NOT_AVAILABLE",
+                "Terminal sessions are available only on the JARVIS desktop surface.");
+        }
+
+        return method switch
+        {
+            "system.getSnapshot" => await Task.Run(
+                () => (object)_snapshotFeed.GetSystemSnapshot(),
+                cancellationToken),
+            "system.getDetails" => await Task.Run(
+                () => (object)_systemDetailsService.Capture(),
+                cancellationToken),
+            "desktop.listEntries" => await Task.Run(
+                () => (object)_desktopService.ListEntries(),
+                cancellationToken),
+            "explorer.browse" => await Task.Run(
+                () => (object)_fileExplorerService.Browse(GetOptionalPath(parameters)),
+                cancellationToken),
+            "explorer.openFile" => _fileExplorerService.OpenFile(GetRequiredPath(parameters)),
+            "explorer.openInWindows" => _fileExplorerService.OpenInWindows(GetRequiredPath(parameters)),
+            "explorer.createFolder" => await Task.Run(
+                () => (object)_fileExplorerService.CreateFolder(
+                    GetRequiredPath(parameters),
+                    GetRequiredString(parameters, "name")),
+                cancellationToken),
+            "explorer.rename" => await Task.Run(
+                () => (object)_fileExplorerService.Rename(
+                    GetRequiredPath(parameters),
+                    GetRequiredString(parameters, "name")),
+                cancellationToken),
+            "explorer.transfer" => await Task.Run(
+                () => (object)_fileExplorerService.Transfer(
+                    GetRequiredPaths(parameters),
+                    GetRequiredString(parameters, "destinationPath"),
+                    GetRequiredString(parameters, "mode")),
+                cancellationToken),
+            "explorer.recycle" => await Task.Run(
+                () => (object)_fileExplorerService.Recycle(GetRequiredPaths(parameters)),
+                cancellationToken),
+            "terminal.listProfiles" => _terminalSessionService.ListProfiles(),
+            "terminal.create" => await Task.Run(
+                () => (object)_terminalSessionService.Create(
+                    GetOptionalTerminalProfile(parameters),
+                    GetRequiredBoundedInt(parameters, "columns", 20, 400),
+                    GetRequiredBoundedInt(parameters, "rows", 5, 200)),
+                cancellationToken),
+            "terminal.write" => await _terminalSessionService.WriteAsync(
+                GetRequiredTerminalSessionId(parameters),
+                GetRequiredTerminalData(parameters),
+                cancellationToken),
+            "terminal.resize" => _terminalSessionService.Resize(
+                GetRequiredTerminalSessionId(parameters),
+                GetRequiredBoundedInt(parameters, "columns", 20, 400),
+                GetRequiredBoundedInt(parameters, "rows", 5, 200)),
+            "terminal.close" => _terminalSessionService.Close(
+                GetRequiredTerminalSessionId(parameters)),
+            "taskbar.getSnapshot" => await Task.Run(
+                () => (object)_snapshotFeed.GetTaskbarSnapshot(),
+                cancellationToken),
+            "taskbar.toggleWindow" => _taskbarService.Toggle(GetRequiredWindowId(parameters)),
+            "taskbar.closeWindow" => _taskbarService.Close(GetRequiredWindowId(parameters)),
+            "taskbar.showFlyout" => ShowTaskbarFlyout(GetFlyoutRequest(parameters)),
+            "taskbar.hideFlyout" => HideTaskbarFlyout(),
+            "windowAppearance.getState" => _windowAppearanceService.GetState(),
+            "windowAppearance.setMode" => _windowAppearanceService.SetMode(
+                GetRequiredWindowAppearanceMode(parameters)),
+            "shell.listApplications" => await Task.Run(
+                () => (object)_shellService.ListApplications(),
+                cancellationToken),
+            "shell.openApplication" => _shellService.OpenApplication(
+                GetRequiredString(parameters, "applicationId")),
+            "shell.open" => _shellService.Open(GetRequiredTarget(parameters)),
+            "lifecycle.getRuntimeInfo" => await Task.Run(
+                () => (object)_runtimeDiagnosticsService.CaptureRuntimeInfo(),
+                cancellationToken),
+            "lifecycle.setStartupEnabled" => await Task.Run(
+                () => (object)_runtimeDiagnosticsService.SetStartupEnabled(
+                    GetRequiredBoolean(parameters, "enabled")),
+                cancellationToken),
+            "lifecycle.runDiagnostics" => await Task.Run(
+                () => (object)_runtimeDiagnosticsService.RunDiagnostics(),
+                cancellationToken),
+            "lifecycle.exitToWindows" => new { exiting = true },
+            "lifecycle.showDesktop" => ShowDesktop(GetRequestedPanel(parameters)),
+            _ => throw new BridgeFaultException("METHOD_NOT_FOUND", $"Unknown bridge method: {method}")
+        };
+    }
+
+    private object ShowDesktop(string? panel)
+    {
+        _showDesktop(panel);
+        return new { shown = true, panel };
+    }
+
+    private object ShowTaskbarFlyout(TaskbarFlyoutRequest request)
+    {
+        if (_showTaskbarFlyout is null)
+        {
+            throw new BridgeFaultException(
+                "METHOD_NOT_AVAILABLE",
+                "Taskbar flyouts are only available on the native taskbar surface.");
+        }
+
+        _showTaskbarFlyout(request);
+        return new { shown = true, request.Mode, count = request.WindowIds.Count };
+    }
+
+    private object HideTaskbarFlyout()
+    {
+        _hideTaskbarFlyout?.Invoke();
+        return new { hidden = true };
+    }
+
+    private void OnSnapshotAvailable(RuntimeTelemetrySnapshot snapshot)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        if (snapshot.SystemChanged)
+                        {
+                            Post(new { @event = "system.snapshot", data = snapshot.System });
+                        }
+
+                        if (snapshot.TaskbarChanged)
+                        {
+                            Post(new { @event = "taskbar.snapshot", data = snapshot.Taskbar });
+                        }
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing window can reject the final shared telemetry dispatch.
+        }
+    }
+
+    private void OnWindowAppearanceChanged(NativeWindowAppearanceState state)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "windowAppearance.changed", data = state });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final appearance-state update.
+        }
+    }
+
+    private void OnTerminalOutputReceived(TerminalOutputChunk chunk)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        lock (_terminalOutputGate)
+        {
+            if (!_pendingTerminalOutput.TryGetValue(chunk.SessionId, out var pending))
+            {
+                pending = new PendingTerminalOutput();
+                _pendingTerminalOutput.Add(chunk.SessionId, pending);
+            }
+
+            pending.Sequence = Math.Max(pending.Sequence, chunk.Sequence);
+            pending.Data.Append(chunk.Data);
+            if (_terminalOutputFlushScheduled)
+            {
+                return;
+            }
+
+            _terminalOutputFlushScheduled = true;
+        }
+
+        _ = ScheduleTerminalOutputFlushAsync();
+    }
+
+    private async Task ScheduleTerminalOutputFlushAsync()
+    {
+        try
+        {
+            await Task.Delay(12, _shutdown.Token).ConfigureAwait(false);
+            _ = _dispatcher.BeginInvoke(
+                FlushTerminalOutput,
+                DispatcherPriority.Background);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // Closing the bridge cancels a pending output batch.
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject its final output batch.
+        }
+    }
+
+    private void OnTerminalSessionExited(TerminalSessionExit exit)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    FlushTerminalOutput();
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "terminal.exited", data = exit });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final terminal exit event.
+        }
+    }
+
+    private void FlushTerminalOutput()
+    {
+        TerminalOutputChunk[] chunks;
+        lock (_terminalOutputGate)
+        {
+            chunks = _pendingTerminalOutput.Select(pair => new TerminalOutputChunk(
+                pair.Key,
+                pair.Value.Sequence,
+                pair.Value.Data.ToString())).ToArray();
+            _pendingTerminalOutput.Clear();
+            _terminalOutputFlushScheduled = false;
+        }
+
+        if (_disposed)
+        {
+            return;
+        }
+
+        foreach (var chunk in chunks)
+        {
+            Post(new { @event = "terminal.output", data = chunk });
+        }
+    }
+
+    private static string GetRequiredTarget(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("target", out var targetElement) ||
+            targetElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(targetElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "shell.open requires a non-empty params.target string.");
+        }
+
+        return targetElement.GetString()!;
+    }
+
+    private static string GetRequiredPath(JsonElement parameters)
+    {
+        var path = GetOptionalPath(parameters);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "The explorer request requires a non-empty params.path string.");
+        }
+
+        return path;
+    }
+
+    private static string? GetOptionalPath(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("path", out var pathElement) ||
+            pathElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (pathElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "The explorer path must be a string or null.");
+        }
+
+        return pathElement.GetString();
+    }
+
+    private static string GetRequiredString(JsonElement parameters, string name)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty(name, out var valueElement) ||
+            valueElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(valueElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"The explorer request requires a non-empty params.{name} string.");
+        }
+
+        return valueElement.GetString()!;
+    }
+
+    private static string? GetOptionalTerminalProfile(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("profileId", out var profileElement) ||
+            profileElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (profileElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "terminal.create params.profileId must be a string or null.");
+        }
+
+        var profileId = profileElement.GetString()?.Trim();
+        if (profileId is not ("powershell" or "cmd" or "wsl"))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "terminal.create accepts powershell, cmd, or wsl profiles.");
+        }
+
+        return profileId;
+    }
+
+    private static string GetRequiredTerminalSessionId(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("sessionId", out var sessionElement) ||
+            sessionElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "The terminal request requires params.sessionId.");
+        }
+
+        var sessionId = sessionElement.GetString();
+        if (sessionId is null ||
+            sessionId.Length != 32 ||
+            !sessionId.All(character => char.IsAsciiHexDigit(character)))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "The terminal session identifier is invalid.");
+        }
+
+        return sessionId;
+    }
+
+    private static string GetRequiredTerminalData(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("data", out var dataElement) ||
+            dataElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "terminal.write requires string params.data.");
+        }
+
+        var data = dataElement.GetString() ?? string.Empty;
+        if (data.Length > 65_536)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "terminal.write accepts at most 65536 characters per request.");
+        }
+
+        return data;
+    }
+
+    private static int GetRequiredBoundedInt(
+        JsonElement parameters,
+        string name,
+        int minimum,
+        int maximum)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty(name, out var valueElement) ||
+            valueElement.ValueKind != JsonValueKind.Number ||
+            !valueElement.TryGetInt32(out var value) ||
+            value < minimum ||
+            value > maximum)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"The terminal request requires integer params.{name} between {minimum} and {maximum}.");
+        }
+
+        return value;
+    }
+
+    private static IReadOnlyList<string> GetRequiredPaths(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("paths", out var pathsElement) ||
+            pathsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "The explorer request requires a params.paths array.");
+        }
+
+        var paths = pathsElement
+            .EnumerateArray()
+            .Where(element => element.ValueKind == JsonValueKind.String)
+            .Select(element => element.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(129)
+            .ToArray();
+        if (paths.Length == 0)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "The explorer request requires at least one valid path.");
+        }
+
+        return paths;
+    }
+
+    private static string GetRequiredWindowId(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("windowId", out var windowIdElement) ||
+            windowIdElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(windowIdElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbar.toggleWindow requires a non-empty params.windowId string.");
+        }
+
+        return windowIdElement.GetString()!;
+    }
+
+    private static TaskbarFlyoutRequest GetFlyoutRequest(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("mode", out var modeElement) ||
+            modeElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbar.showFlyout requires params.mode.");
+        }
+
+        var mode = modeElement.GetString();
+        if (mode is not ("windows" or "overflow" or "context"))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbar.showFlyout mode must be windows, overflow, or context.");
+        }
+
+        if (!parameters.TryGetProperty("windowIds", out var windowIdsElement) ||
+            windowIdsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbar.showFlyout requires params.windowIds.");
+        }
+
+        var windowIds = windowIdsElement
+            .EnumerateArray()
+            .Where(element => element.ValueKind == JsonValueKind.String)
+            .Select(element => element.GetString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(24)
+            .ToArray();
+        if (windowIds.Length == 0 && mode != "context")
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbar.showFlyout requires at least one valid window id.");
+        }
+
+        var anchorX = GetRequiredFiniteNumber(parameters, "anchorX");
+        var viewportWidth = GetRequiredFiniteNumber(parameters, "viewportWidth");
+        if (viewportWidth <= 0 || anchorX < 0 || anchorX > viewportWidth)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbar.showFlyout received an invalid anchor position.");
+        }
+
+        string? itemId = null;
+        string? label = null;
+        IReadOnlyList<string> actions = Array.Empty<string>();
+        if (mode == "context")
+        {
+            itemId = GetRequiredTaskbarContextText(parameters, "itemId", 256);
+            label = GetRequiredTaskbarContextText(parameters, "label", 128);
+            if (!parameters.TryGetProperty("actions", out var actionsElement) ||
+                actionsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new BridgeFaultException(
+                    "INVALID_PARAMS",
+                    "Taskbar context menus require params.actions.");
+            }
+
+            var requestedActions = actionsElement.EnumerateArray().ToArray();
+            if (requestedActions.Length is < 1 or > 3 ||
+                requestedActions.Any(element =>
+                    element.ValueKind != JsonValueKind.String ||
+                    element.GetString() is not ("launch" or "close" or "unpin")))
+            {
+                throw new BridgeFaultException(
+                    "INVALID_PARAMS",
+                    "Taskbar context actions must contain one to three supported action identifiers.");
+            }
+
+            actions = requestedActions
+                .Select(element => element.GetString()!)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        return new TaskbarFlyoutRequest(
+            mode,
+            windowIds,
+            anchorX,
+            viewportWidth,
+            itemId,
+            label,
+            actions);
+    }
+
+    private static string GetRequiredTaskbarContextText(
+        JsonElement parameters,
+        string name,
+        int maximumLength)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty(name, out var valueElement) ||
+            valueElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(valueElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"Taskbar context menus require a non-empty params.{name} string.");
+        }
+
+        var value = valueElement.GetString()!.Trim();
+        if (value.Length > maximumLength || value.Any(char.IsControl))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"Taskbar context params.{name} is malformed.");
+        }
+
+        return value;
+    }
+
+    private static double GetRequiredFiniteNumber(JsonElement parameters, string name)
+    {
+        if (!parameters.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetDouble(out var number) ||
+            !double.IsFinite(number))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"taskbar.showFlyout requires a finite params.{name} number.");
+        }
+
+        return number;
+    }
+
+    private static bool GetRequiredBoolean(JsonElement parameters, string name)
+    {
+        if (!parameters.TryGetProperty(name, out var value) ||
+            value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"Bridge request requires a boolean params.{name} value.");
+        }
+
+        return value.GetBoolean();
+    }
+
+    private static string GetRequiredWindowAppearanceMode(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("mode", out var modeElement) ||
+            modeElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "windowAppearance.setMode requires params.mode.");
+        }
+
+        var mode = modeElement.GetString();
+        if (mode is null ||
+            !new[] { "off", "conservative", "enhanced", "immersive" }
+                .Contains(mode, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "windowAppearance.setMode accepts off, conservative, enhanced, or immersive.");
+        }
+
+        return mode;
+    }
+
+    private static string? GetRequestedPanel(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (parameters.TryGetProperty("panel", out var panelElement) &&
+            panelElement.ValueKind == JsonValueKind.String)
+        {
+            var panel = panelElement.GetString();
+            if (panel is "command" or "start" or "quick-settings" or "notifications" or "explorer" or "settings" or "terminal")
+            {
+                return panel;
+            }
+
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "lifecycle.showDesktop received an unsupported panel name.");
+        }
+
+        return parameters.TryGetProperty("openCommand", out var legacyValue) &&
+               legacyValue.ValueKind == JsonValueKind.True
+            ? "command"
+            : null;
+    }
+
+    private static bool IsTrustedSource(string? source)
+    {
+        return Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+               uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+               uri.Host.Equals("jarvis.local", StringComparison.OrdinalIgnoreCase) &&
+               uri.AbsoluteUri.StartsWith(TrustedOrigin, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonElement EmptyObject()
+    {
+        using var document = JsonDocument.Parse("{}");
+        return document.RootElement.Clone();
+    }
+
+    private void PostFailure(JsonElement requestId, string code, string message)
+    {
+        if (requestId.ValueKind is JsonValueKind.Undefined)
+        {
+            Post(new { id = (object?)null, ok = false, error = new { code, message } });
+            return;
+        }
+
+        Post(new { id = requestId, ok = false, error = new { code, message } });
+    }
+
+    private void Post(object payload)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _webView.PostWebMessageAsJson(JsonSerializer.Serialize(payload, JsonOptions));
+        }
+        catch (InvalidOperationException) when (_shutdown.IsCancellationRequested)
+        {
+            // WebView disposal can race the final telemetry tick.
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _shutdown.Cancel();
+        lock (_terminalOutputGate)
+        {
+            _pendingTerminalOutput.Clear();
+            _terminalOutputFlushScheduled = false;
+        }
+        if (_telemetryAttached)
+        {
+            _snapshotFeed.SnapshotAvailable -= OnSnapshotAvailable;
+            _telemetryAttached = false;
+        }
+
+        if (_attached)
+        {
+            _webView.WebMessageReceived -= OnWebMessageReceived;
+            _windowAppearanceService.StateChanged -= OnWindowAppearanceChanged;
+            if (_terminalEnabled)
+            {
+                _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;
+                _terminalSessionService.SessionExited -= OnTerminalSessionExited;
+            }
+        }
+
+        _shutdown.Dispose();
+    }
+}
+
+internal sealed class PendingTerminalOutput
+{
+    public StringBuilder Data { get; } = new();
+
+    public long Sequence { get; set; }
+}
+
+internal sealed record TaskbarFlyoutRequest(
+    string Mode,
+    IReadOnlyList<string> WindowIds,
+    double AnchorX,
+    double ViewportWidth,
+    string? ItemId,
+    string? Label,
+    IReadOnlyList<string> Actions);

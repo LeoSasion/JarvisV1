@@ -1,0 +1,5 @@
+.appdata/
+.dotnet-cli/
+.nuget-packages/
+**/bin/
+**/obj/
