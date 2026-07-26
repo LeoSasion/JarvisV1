@@ -12,6 +12,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
     private bool _active;
     private bool _activating;
     private bool _disposed;
+    private long _generation;
 
     public event Action? ReplacementLost;
 
@@ -28,6 +29,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
 
     public async Task<bool> ActivateAsync(IntPtr replacementWindowHandle)
     {
+        long generation;
         lock (_gate)
         {
             if (_disposed)
@@ -47,6 +49,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
 
             _activating = true;
             _watchdogExited = false;
+            generation = ++_generation;
         }
 
         TaskbarWatchdogChannel? watchdog = null;
@@ -73,7 +76,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
 
             lock (_gate)
             {
-                if (_disposed)
+                if (_disposed || generation != _generation)
                 {
                     watchdog.Process.Exited -= OnWatchdogExited;
                     watchdog.RequestRestore();
@@ -97,7 +100,11 @@ internal sealed class TaskbarReplacementSession : IDisposable
             var activationFailed = false;
             lock (_gate)
             {
-                activationFailed = _disposed || _watchdogExited || watchdog.Process.HasExited;
+                activationFailed = _disposed ||
+                                   generation != _generation ||
+                                   _watchdogExited ||
+                                   watchdog.Process.HasExited ||
+                                   !ReferenceEquals(_watchdog, watchdog);
                 if (!activationFailed)
                 {
                     _active = true;
@@ -132,7 +139,10 @@ internal sealed class TaskbarReplacementSession : IDisposable
         {
             lock (_gate)
             {
-                _activating = false;
+                if (generation == _generation)
+                {
+                    _activating = false;
+                }
             }
         }
     }
@@ -142,7 +152,9 @@ internal sealed class TaskbarReplacementSession : IDisposable
         TaskbarWatchdogChannel? watchdog;
         lock (_gate)
         {
+            _generation++;
             _active = false;
+            _activating = false;
             watchdog = _watchdog;
             _watchdog = null;
         }
@@ -163,6 +175,11 @@ internal sealed class TaskbarReplacementSession : IDisposable
         lock (_gate)
         {
             if (_disposed)
+            {
+                return;
+            }
+
+            if (_watchdog is null || !ReferenceEquals(_watchdog.Process, sender))
             {
                 return;
             }
@@ -195,6 +212,7 @@ internal sealed class TaskbarReplacementSession : IDisposable
             }
 
             _disposed = true;
+            _generation++;
             _shutdown.Cancel();
             watchdog = _watchdog;
             _watchdog = null;

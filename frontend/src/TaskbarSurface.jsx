@@ -5,6 +5,7 @@ import { recordRecentApplication } from "./recent-applications.js";
 
 export function TaskbarSurface() {
   const [activeApp, setActiveApp] = useState("builtin:explorer");
+  const taskbarMode = new URLSearchParams(window.location.search).get("taskbarMode") ?? "full";
 
   const hideTaskbarFlyout = useCallback(async () => {
     try {
@@ -74,7 +75,11 @@ export function TaskbarSurface() {
 
   return (
     <main
-      className={`jarvis-taskbar-surface${platform.isNative ? " is-native" : ""}`}
+      className={[
+        "jarvis-taskbar-surface",
+        platform.isNative ? "is-native" : "",
+        taskbarMode === "hybrid" ? "is-hybrid" : "",
+      ].filter(Boolean).join(" ")}
       aria-label="JARVIS taskbar surface"
     >
       <Taskbar

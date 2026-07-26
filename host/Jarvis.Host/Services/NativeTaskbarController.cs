@@ -20,7 +20,12 @@ internal static class NativeTaskbarController
 
     public static bool TryGetVisiblePrimaryBounds(out PixelRect bounds)
     {
-        var taskbar = FindPrimaryTaskbar();
+        return TryGetVisiblePrimary(out _, out bounds);
+    }
+
+    public static bool TryGetVisiblePrimary(out IntPtr taskbar, out PixelRect bounds)
+    {
+        taskbar = FindPrimaryTaskbar();
         if (taskbar == IntPtr.Zero || !IsWindowVisible(taskbar) || !GetWindowRect(taskbar, out var rect))
         {
             bounds = default;

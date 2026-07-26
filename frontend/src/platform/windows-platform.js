@@ -124,6 +124,20 @@ export function createWindowsPlatform(webview) {
       showFlyout: (options) => request("taskbar.showFlyout", options),
       hideFlyout: () => request("taskbar.hideFlyout"),
     },
+    taskbarMode: {
+      getState: () => request("taskbarMode.getState"),
+      setMode: (mode) => request("taskbarMode.setMode", { mode }),
+    },
+    tray: {
+      getSnapshot: () => request("tray.getSnapshot"),
+      setVolume: (volumePercent) => request("tray.setVolume", { volumePercent }),
+      setMuted: (muted) => request("tray.setMuted", { muted }),
+    },
+    feed: {
+      getSnapshot: () => request("feed.getSnapshot"),
+      markAllRead: () => request("feed.markAllRead"),
+      clear: () => request("feed.clear"),
+    },
     windowAppearance: {
       getState: () => request("windowAppearance.getState"),
       setMode: (mode) => request("windowAppearance.setMode", { mode }),

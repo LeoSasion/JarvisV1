@@ -1,7 +1,6 @@
 import {
   AlertRegular,
   ArrowExitRegular,
-  Battery6Regular,
   CheckmarkCircleRegular,
   DismissRegular,
   GlobeRegular,
@@ -14,6 +13,7 @@ import {
   SettingsRegular,
   ShieldRegular,
   Speaker2Regular,
+  SpeakerOffRegular,
   WindowAppsRegular,
 } from "@fluentui/react-icons";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -24,10 +24,18 @@ import {
   subscribeUiAudio,
 } from "../audio-system.js";
 import {
+  clearSystemFeed,
+  markSystemFeedRead,
+  setTrayMuted,
+  setTrayVolume,
+  setTaskbarMode,
   setWindowAppearanceMode,
   useApplicationCatalog,
   useSystemSnapshot,
+  useSystemFeed,
+  useTaskbarModeState,
   useTaskbarSnapshot,
+  useTrayStatus,
   useWindowAppearanceState,
 } from "../hooks/usePlatformData.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
@@ -100,6 +108,27 @@ const windowAppearanceLabels = Object.fromEntries(
   windowAppearanceOptions.map((option) => [option.mode, option.title]),
 );
 
+const taskbarModeOptions = [
+  {
+    mode: "native",
+    title: "NATIVE",
+    label: "原生回退",
+    description: "完整保留 Windows 任务栏；JARVIS 只运行桌面与工具层。",
+  },
+  {
+    mode: "hybrid",
+    title: "HYBRID",
+    label: "混合任务栏",
+    description: "由 Explorer 保留通知区，JARVIS 接管其余主任务栏区域。",
+  },
+  {
+    mode: "full",
+    title: "FULL",
+    label: "完整替换",
+    description: "实验模式；隐藏原生任务栏，第三方托盘功能可能不可用。",
+  },
+];
+
 function getWindowsReleaseLabel(windows11, osBuild) {
   if (!windows11) return "WIN10";
   const build = Number.parseInt(String(osBuild ?? ""), 10);
@@ -115,6 +144,17 @@ function formatUptime(seconds) {
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
   return days > 0 ? `${days}D ${hours}H` : `${hours}H ${minutes}M`;
+}
+
+function formatFeedTime(timestamp) {
+  if (!timestamp) return "—";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function PanelHeader({ eyebrow, title, onClose }) {
@@ -408,12 +448,40 @@ function StartPanel({
 
 function QuickSettingsPanel({ onClose, onLaunch }) {
   const system = useSystemSnapshot();
+  const tray = useTrayStatus();
+  const [volume, setVolume] = useState(tray.audio.volumePercent ?? 0);
+  const [audioError, setAudioError] = useState("");
   const cpu = system.resources.find((resource) => resource.id === "cpu");
   const memory = system.resources.find((resource) => resource.id === "memory");
-  const { network, power } = system.status;
+  const { network, power, audio } = tray;
+  const AudioIcon = audio.muted ? SpeakerOffRegular : Speaker2Regular;
   const powerLabel = power.batteryPresent
     ? `${Math.round(power.percentage ?? 0)}%${power.charging ? " · charging" : ""}`
     : power.acConnected ? "AC power" : "Desktop power";
+
+  useEffect(() => {
+    if (audio.volumePercent !== null) {
+      setVolume(audio.volumePercent);
+    }
+  }, [audio.volumePercent]);
+
+  const commitVolume = async () => {
+    setAudioError("");
+    try {
+      await setTrayVolume(Math.round(volume));
+    } catch (error) {
+      setAudioError(error.message);
+    }
+  };
+
+  const toggleMute = async () => {
+    setAudioError("");
+    try {
+      await setTrayMuted(!audio.muted);
+    } catch (error) {
+      setAudioError(error.message);
+    }
+  };
 
   return (
     <section className="shell-panel quick-settings-panel" role="dialog" aria-modal="false" aria-label="Quick settings">
@@ -424,6 +492,37 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
         <span><PulseRegular /><strong>{cpu?.value ?? "—"}</strong><small>CPU</small></span>
         <span><WindowAppsRegular /><strong>{memory?.value ?? "—"}</strong><small>MEMORY</small></span>
       </div>
+      <section className="quick-volume-card" aria-label="Windows output volume">
+        <span className="runtime-setting-icon"><AudioIcon /></span>
+        <span>
+          <strong>{audio.available ? audio.muted ? "MUTED" : `${volume}%` : "UNAVAILABLE"}</strong>
+          <small>{tray.simulation ? "SIMULATION" : audio.deviceLabel ?? "DEFAULT WINDOWS OUTPUT"}</small>
+        </span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={volume}
+          disabled={!audio.available}
+          aria-label="Windows output volume"
+          aria-valuetext={audio.available ? `${volume} percent` : "Audio unavailable"}
+          onChange={(event) => setVolume(Number(event.target.value))}
+          onPointerUp={commitVolume}
+          onKeyUp={commitVolume}
+        />
+        <button
+          type="button"
+          className={`runtime-switch ${audio.muted ? "" : "is-on"}`}
+          role="switch"
+          aria-checked={!audio.muted}
+          disabled={!audio.available}
+          onClick={toggleMute}
+        >
+          <span /><strong>{audio.muted ? "MUTED" : "LIVE"}</strong>
+        </button>
+      </section>
+      {audioError ? <p className="runtime-settings-error" role="alert"><AlertRegular />{audioError}</p> : null}
       <div className="quick-setting-grid">
         {quickSettings.map(({ id, label, target, Icon }) => (
           <button key={id} type="button" onClick={() => onLaunch({ label, target })}>
@@ -441,60 +540,47 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
 }
 
 function NotificationsPanel({ onClose, onLaunch }) {
-  const system = useSystemSnapshot();
-  const taskbar = useTaskbarSnapshot();
-  const { network, power } = system.status;
-  const notifications = [
-    {
-      id: "network",
-      kind: network.available ? "ok" : "warning",
-      title: network.available ? "Network link established" : "Network connection unavailable",
-      detail: network.available ? `${network.interfaceName} · ${network.interfaceType}` : "Open Windows network diagnostics",
-      Icon: network.available ? CheckmarkCircleRegular : AlertRegular,
-      target: "ms-settings:network-status",
-    },
-    {
-      id: "session",
-      kind: "info",
-      title: `${taskbar.windows.length} active Windows task${taskbar.windows.length === 1 ? "" : "s"}`,
-      detail: "JARVIS taskbar synchronization is operational",
-      Icon: WindowAppsRegular,
-      target: null,
-    },
-    {
-      id: "power",
-      kind: power.batteryPresent && (power.percentage ?? 100) < 20 ? "warning" : "ok",
-      title: power.batteryPresent ? `Battery at ${Math.round(power.percentage ?? 0)}%` : "Power source stable",
-      detail: power.batteryPresent
-        ? (power.charging ? "Charging from AC power" : "Running on battery")
-        : "No portable battery detected",
-      Icon: power.batteryPresent ? Battery6Regular : PowerRegular,
-      target: "ms-settings:powersleep",
-    },
-  ];
+  const feed = useSystemFeed();
+  const actionTargets = {
+    "open-network-settings": { label: "Network settings", target: "ms-settings:network-status" },
+    "open-sound-settings": { label: "Sound settings", target: "ms-settings:sound" },
+    "open-power-settings": { label: "Power settings", target: "ms-settings:powersleep" },
+    "open-runtime-settings": { label: "JARVIS Settings", target: "jarvis-settings:" },
+  };
 
   return (
-    <section className="shell-panel shell-notifications-panel" role="dialog" aria-modal="false" aria-label="JARVIS notifications">
-      <PanelHeader eyebrow="SYSTEM EVENT STREAM" title="NOTIFICATIONS" onClose={onClose} />
+    <section className="shell-panel shell-notifications-panel" role="dialog" aria-modal="false" aria-label="JARVIS system feed">
+      <PanelHeader eyebrow="CURRENT SESSION · MAX 50 EVENTS" title="JARVIS SYSTEM FEED" onClose={onClose} />
       <div className="shell-notification-list">
-        {notifications.map(({ id, kind, title, detail, Icon, target }) => {
+        {feed.loading ? <p className="system-feed-empty">Connecting to the JARVIS event stream…</p> : null}
+        {feed.error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{feed.error}</p> : null}
+        {!feed.loading && !feed.error && feed.items.length === 0
+          ? <p className="system-feed-empty">No JARVIS events in this session.</p>
+          : null}
+        {feed.items.map((item) => {
+          const target = actionTargets[item.actionId];
           const Item = target ? "button" : "div";
+          const Icon = item.severity === "ok" ? CheckmarkCircleRegular : item.severity === "info" ? WindowAppsRegular : AlertRegular;
           return (
             <Item
-              key={id}
+              key={item.id}
               {...(target
-                ? { type: "button", onClick: () => onLaunch({ label: title, target }) }
+                ? { type: "button", onClick: () => onLaunch(target) }
                 : { role: "status" })}
-              className={`shell-notification-item is-${kind}`}
+              className={`shell-notification-item is-${item.severity} ${item.unread ? "is-unread" : ""}`}
             >
               <span><Icon /></span>
-              <span><strong>{title}</strong><small>{detail}</small></span>
-              <time>NOW</time>
+              <span><strong>{item.title}</strong><small>{item.detail}</small></span>
+              <time dateTime={item.timestamp ?? undefined}>{formatFeedTime(item.timestamp)}</time>
             </Item>
           );
         })}
       </div>
-      <footer className="notification-footer"><CheckmarkCircleRegular /><span>STATUS FEED SYNCHRONIZED WITH WINDOWS</span></footer>
+      <footer className="notification-footer">
+        <span>{feed.unreadCount} UNREAD · CURRENT SESSION ONLY</span>
+        <button type="button" disabled={feed.unreadCount === 0} onClick={() => void markSystemFeedRead()}>MARK ALL READ</button>
+        <button type="button" disabled={feed.items.length === 0} onClick={() => void clearSystemFeed()}>CLEAR</button>
+      </footer>
     </section>
   );
 }
@@ -613,6 +699,8 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
         </div>
       </div>
 
+      <TaskbarModeSettings onToast={onToast} />
+
       <WindowAppearanceSettings onToast={onToast} />
 
       <InterfacePreferences onToast={onToast} />
@@ -658,6 +746,94 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
         <span>{runtime?.safeMode ? "SAFE MODE · NATIVE TASKBAR KEPT" : platform.isNative ? "NATIVE WINDOWS HOST" : "BROWSER PREVIEW"}</span>
         <strong>{startupEnabled ? "AUTO START ARMED" : startupNeedsRepair ? "STARTUP REPAIR REQUIRED" : "MANUAL START"}</strong>
       </footer>
+    </section>
+  );
+}
+
+function TaskbarModeSettings({ onToast }) {
+  const state = useTaskbarModeState();
+  const [pendingMode, setPendingMode] = useState(null);
+  const selectedMode = pendingMode ?? state.requestedMode;
+  const busy = state.loading || pendingMode !== null;
+
+  const updateMode = async (mode) => {
+    if (busy || mode === state.requestedMode) return;
+    setPendingMode(mode);
+    try {
+      const nextState = await setTaskbarMode(mode);
+      onToast?.(nextState.effectiveMode === mode
+        ? `任务栏模式已切换至 ${mode.toUpperCase()}`
+        : `任务栏已安全回退至 ${nextState.effectiveMode.toUpperCase()}`);
+    } catch {
+      // The shared taskbar-mode store exposes bridge failures inline.
+    } finally {
+      setPendingMode(null);
+    }
+  };
+
+  return (
+    <section className="window-appearance-settings" aria-labelledby="taskbar-mode-title" aria-busy={busy}>
+      <header className="window-appearance-header">
+        <span className="window-appearance-icon"><WindowAppsRegular /></span>
+        <span>
+          <strong id="taskbar-mode-title">任务栏接管模式</strong>
+          <small>TASKBAR MODE · 分层回退，不修改 Explorer</small>
+        </span>
+        <code className={state.effectiveMode === state.requestedMode ? "is-compatible" : ""}>
+          {(state.effectiveMode ?? "native").toUpperCase()}
+        </code>
+      </header>
+
+      <fieldset disabled={busy || state.safeMode}>
+        <legend>选择任务栏接管级别</legend>
+        <div className="window-appearance-options">
+          {taskbarModeOptions.map((option, index) => {
+            const selected = selectedMode === option.mode;
+            return (
+              <label
+                key={option.mode}
+                className={`window-appearance-choice ${selected ? "is-selected" : ""} is-${option.mode}`}
+              >
+                <input
+                  type="radio"
+                  name="taskbar-mode"
+                  value={option.mode}
+                  checked={selected}
+                  onChange={() => updateMode(option.mode)}
+                />
+                <span className="window-appearance-level" aria-hidden="true">T{index}</span>
+                <span className="window-appearance-copy">
+                  <strong><span>{option.title}</span><b>{option.label}</b></strong>
+                  <small>{option.description}</small>
+                </span>
+                <span className="window-appearance-selector" aria-hidden="true"><i /></span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <div className="window-appearance-telemetry" role="status" aria-live="polite">
+        <span><small>请求模式 · REQUESTED</small><strong>{busy ? "APPLYING" : state.requestedMode.toUpperCase()}</strong></span>
+        <span><small>实际模式 · EFFECTIVE</small><strong>{state.effectiveMode.toUpperCase()}</strong></span>
+        <span><small>混合探测 · HYBRID</small><strong>{state.hybridAvailable ? "AVAILABLE" : "UNVERIFIED"}</strong></span>
+      </div>
+
+      {state.safeMode ? (
+        <p className="window-appearance-feedback is-fallback" role="status">
+          <ShieldRegular /><span>安全模式已启用：JARVIS_KEEP_NATIVE_TASKBAR=1。</span>
+        </p>
+      ) : null}
+      {state.fallbackReason ? (
+        <p className="window-appearance-feedback is-fallback" role="status">
+          <AlertRegular /><span>{state.fallbackReason}</span>
+        </p>
+      ) : null}
+      {state.error ? (
+        <p className="window-appearance-feedback is-error" role="alert">
+          <AlertRegular /><span>{state.error.message ?? String(state.error)}</span>
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -5,6 +5,8 @@ const DECIMAL_GB = 1_000_000_000;
 const BINARY_GB = 1024 ** 3;
 const WINDOW_APPEARANCE_STORAGE_KEY = "jarvis.windowAppearance.mode.v1";
 const WINDOW_APPEARANCE_MODES = new Set(["off", "conservative", "enhanced", "immersive"]);
+const TASKBAR_MODE_STORAGE_KEY = "jarvis.taskbar.mode.v1";
+const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
 const MOCK_STYLED_WINDOW_COUNTS = {
   off: 0,
   conservative: 4,
@@ -41,6 +43,33 @@ function createMockWindowAppearanceState(mode) {
     hostIntegrityVerified: true,
     safetyHotkeyRegistered: true,
     recoveryArmed: true,
+  };
+}
+
+function readMockTaskbarMode() {
+  try {
+    const mode = globalThis.localStorage?.getItem(TASKBAR_MODE_STORAGE_KEY);
+    return TASKBAR_MODES.has(mode) ? mode : "hybrid";
+  } catch {
+    return "hybrid";
+  }
+}
+
+function persistMockTaskbarMode(mode) {
+  try {
+    globalThis.localStorage?.setItem(TASKBAR_MODE_STORAGE_KEY, mode);
+  } catch {
+    // The in-memory mode remains available when browser storage is disabled.
+  }
+}
+
+function createMockTaskbarModeState(mode) {
+  return {
+    requestedMode: mode,
+    effectiveMode: mode,
+    fallbackReason: null,
+    hybridAvailable: true,
+    safeMode: false,
   };
 }
 
@@ -327,6 +356,34 @@ export function createMockPlatform() {
   const terminalSessions = new Map();
   let terminalSequence = 0;
   let windowAppearanceState = createMockWindowAppearanceState(readMockWindowAppearanceMode());
+  let taskbarModeState = createMockTaskbarModeState(readMockTaskbarMode());
+  let traySnapshot = {
+    timestamp: new Date().toISOString(),
+    audio: {
+      available: true,
+      volumePercent: 64,
+      muted: false,
+      deviceLabel: "Simulated output",
+      error: null,
+    },
+    network: { ...mockSystemSnapshot.network },
+    power: { ...mockSystemSnapshot.power },
+    simulation: true,
+  };
+  let systemFeedSnapshot = {
+    items: [{
+      id: "mock-runtime-ready",
+      type: "runtime.ready",
+      severity: "info",
+      title: "Browser preview simulation active",
+      detail: "Native Windows events are not available in this preview.",
+      timestamp: new Date().toISOString(),
+      unread: true,
+      actionId: null,
+    }],
+    unreadCount: 1,
+    capacity: 50,
+  };
   let runtimeInfo = {
     productName: "JARVIS Night Shell",
     version: "0.1.0-mock",
@@ -340,6 +397,11 @@ export function createMockPlatform() {
     webView2Version: "138.0.3351.48",
     safeMode: true,
     recoveryReady: true,
+    requestedTaskbarMode: taskbarModeState.requestedMode,
+    effectiveTaskbarMode: taskbarModeState.effectiveMode,
+    taskbarFallbackReason: null,
+    taskbarLifecycleState: "ReplacementActive",
+    taskbarGeneration: 1,
   };
   let taskbarSnapshot = {
     ...mockTaskbarSnapshot,
@@ -643,6 +705,93 @@ export function createMockPlatform() {
         return { hidden: true, mock: true };
       },
     },
+    taskbarMode: {
+      async getState() {
+        return { ...taskbarModeState };
+      },
+      async setMode(mode) {
+        if (!TASKBAR_MODES.has(mode)) {
+          const error = new Error(`Unsupported taskbar mode: ${mode}`);
+          error.code = "INVALID_ARGUMENT";
+          throw error;
+        }
+
+        persistMockTaskbarMode(mode);
+        taskbarModeState = createMockTaskbarModeState(mode);
+        runtimeInfo = {
+          ...runtimeInfo,
+          requestedTaskbarMode: mode,
+          effectiveTaskbarMode: mode,
+          taskbarFallbackReason: null,
+          taskbarLifecycleState: mode === "native" ? "NativeVisible" : "ReplacementActive",
+          taskbarGeneration: runtimeInfo.taskbarGeneration + 1,
+        };
+        const state = { ...taskbarModeState };
+        emit("taskbarMode.changed", state);
+        return state;
+      },
+    },
+    tray: {
+      async getSnapshot() {
+        return { ...traySnapshot, audio: { ...traySnapshot.audio } };
+      },
+      async setVolume(volumePercent) {
+        const numericVolume = Number(volumePercent);
+        if (!Number.isInteger(numericVolume) || numericVolume < 0 || numericVolume > 100) {
+          const error = new Error("Volume must be an integer between 0 and 100.");
+          error.code = "INVALID_ARGUMENT";
+          throw error;
+        }
+        traySnapshot = {
+          ...traySnapshot,
+          timestamp: new Date().toISOString(),
+          audio: {
+            ...traySnapshot.audio,
+            volumePercent: numericVolume,
+          },
+        };
+        emit("tray.snapshot", traySnapshot);
+        return { ...traySnapshot, audio: { ...traySnapshot.audio } };
+      },
+      async setMuted(muted) {
+        traySnapshot = {
+          ...traySnapshot,
+          timestamp: new Date().toISOString(),
+          audio: {
+            ...traySnapshot.audio,
+            muted: Boolean(muted),
+          },
+        };
+        emit("tray.snapshot", traySnapshot);
+        return { ...traySnapshot, audio: { ...traySnapshot.audio } };
+      },
+    },
+    feed: {
+      async getSnapshot() {
+        return {
+          ...systemFeedSnapshot,
+          items: systemFeedSnapshot.items.map((item) => ({ ...item })),
+        };
+      },
+      async markAllRead() {
+        systemFeedSnapshot = {
+          ...systemFeedSnapshot,
+          unreadCount: 0,
+          items: systemFeedSnapshot.items.map((item) => ({ ...item, unread: false })),
+        };
+        emit("feed.snapshot", systemFeedSnapshot);
+        return systemFeedSnapshot;
+      },
+      async clear() {
+        systemFeedSnapshot = {
+          ...systemFeedSnapshot,
+          items: [],
+          unreadCount: 0,
+        };
+        emit("feed.snapshot", systemFeedSnapshot);
+        return systemFeedSnapshot;
+      },
+    },
     windowAppearance: {
       async getState() {
         return { ...windowAppearanceState };
@@ -701,6 +850,7 @@ export function createMockPlatform() {
         const startupHealthy = !runtimeInfo.startupEnabled || runtimeInfo.startupCommandCurrent;
         const checks = [
           { id: "windows-recovery", label: "WINDOWS RECOVERY", status: "READY", detail: "Explorer and the native Windows taskbar are available.", verifiedFiles: 0 },
+          { id: "taskbar-mode", label: "TASKBAR MODE", status: "READY", detail: `Requested ${taskbarModeState.requestedMode.toUpperCase()}; effective ${taskbarModeState.effectiveMode.toUpperCase()}.`, verifiedFiles: 0 },
           { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "5/5 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback.", verifiedFiles: 0 },
           { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "READY", detail: "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit.", verifiedFiles: 0 },
           { id: "native-window-appearance", label: "WINDOW APPEARANCE", status: "READY", detail: `${windowAppearanceState.effectiveMode.toUpperCase()} mode is active; event hooks, integrity guard, persistence, and DWM state tracking are ready.`, verifiedFiles: 0 },

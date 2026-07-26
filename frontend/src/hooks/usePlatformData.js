@@ -29,6 +29,142 @@ function createStore(initialValue) {
 }
 
 const WINDOW_APPEARANCE_MODES = new Set(["off", "conservative", "enhanced", "immersive"]);
+const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
+
+function normalizeTaskbarModeState(rawState = {}) {
+  const reportedRequestedMode = rawState.requestedMode ?? rawState.RequestedMode;
+  const requestedMode = TASKBAR_MODES.has(reportedRequestedMode)
+    ? reportedRequestedMode
+    : "native";
+  const reportedEffectiveMode = rawState.effectiveMode ?? rawState.EffectiveMode;
+  const effectiveMode = TASKBAR_MODES.has(reportedEffectiveMode)
+    ? reportedEffectiveMode
+    : "native";
+  const fallbackReason = rawState.fallbackReason ?? rawState.FallbackReason;
+  return {
+    requestedMode,
+    effectiveMode,
+    fallbackReason: fallbackReason ? String(fallbackReason) : null,
+    hybridAvailable: Boolean(rawState.hybridAvailable ?? rawState.HybridAvailable),
+    safeMode: Boolean(rawState.safeMode ?? rawState.SafeMode),
+    loading: false,
+    error: null,
+  };
+}
+
+function taskbarModeStatesEqual(left, right) {
+  return left.requestedMode === right.requestedMode &&
+    left.effectiveMode === right.effectiveMode &&
+    left.fallbackReason === right.fallbackReason &&
+    left.hybridAvailable === right.hybridAvailable &&
+    left.safeMode === right.safeMode &&
+    left.loading === right.loading &&
+    left.error === right.error;
+}
+
+export function normalizeTraySnapshot(rawSnapshot = {}) {
+  const rawAudio = rawSnapshot.audio ?? rawSnapshot.Audio ?? {};
+  const rawNetwork = rawSnapshot.network ?? rawSnapshot.Network ?? {};
+  const rawPower = rawSnapshot.power ?? rawSnapshot.Power ?? {};
+  const reportedVolume = Number(rawAudio.volumePercent ?? rawAudio.VolumePercent);
+  const volumePercent = Number.isFinite(reportedVolume)
+    ? Math.max(0, Math.min(100, Math.round(reportedVolume)))
+    : null;
+
+  return {
+    timestamp: rawSnapshot.timestamp ?? rawSnapshot.Timestamp ?? null,
+    audio: {
+      available: Boolean(rawAudio.available ?? rawAudio.Available),
+      volumePercent,
+      muted: Boolean(rawAudio.muted ?? rawAudio.Muted),
+      deviceLabel: rawAudio.deviceLabel ?? rawAudio.DeviceLabel ?? null,
+      error: rawAudio.error ?? rawAudio.Error ?? null,
+    },
+    network: {
+      available: Boolean(rawNetwork.isAvailable ?? rawNetwork.IsAvailable ?? rawNetwork.available),
+      interfaceName: rawNetwork.interfaceName ?? rawNetwork.InterfaceName ?? null,
+      interfaceType: rawNetwork.interfaceType ?? rawNetwork.InterfaceType ?? null,
+    },
+    power: {
+      batteryPresent: Boolean(rawPower.batteryPresent ?? rawPower.BatteryPresent),
+      percentage: rawPower.percentage ?? rawPower.Percentage ?? null,
+      charging: Boolean(rawPower.charging ?? rawPower.Charging),
+      acConnected: Boolean(rawPower.acConnected ?? rawPower.AcConnected),
+    },
+    simulation: Boolean(rawSnapshot.simulation ?? rawSnapshot.Simulation ?? !platform.isNative),
+    loading: false,
+    error: null,
+  };
+}
+
+function traySnapshotsEqual(left, right) {
+  return left.audio.available === right.audio.available &&
+    left.audio.volumePercent === right.audio.volumePercent &&
+    left.audio.muted === right.audio.muted &&
+    left.audio.deviceLabel === right.audio.deviceLabel &&
+    left.audio.error === right.audio.error &&
+    left.network.available === right.network.available &&
+    left.network.interfaceName === right.network.interfaceName &&
+    left.network.interfaceType === right.network.interfaceType &&
+    left.power.batteryPresent === right.power.batteryPresent &&
+    left.power.percentage === right.power.percentage &&
+    left.power.charging === right.power.charging &&
+    left.power.acConnected === right.power.acConnected &&
+    left.simulation === right.simulation &&
+    left.loading === right.loading &&
+    left.error === right.error;
+}
+
+export function normalizeSystemFeed(rawSnapshot = {}) {
+  const sourceItems = rawSnapshot.items ?? rawSnapshot.Items ?? [];
+  const items = (Array.isArray(sourceItems) ? sourceItems : [])
+    .slice(0, 50)
+    .map((item, index) => ({
+      id: String(item.id ?? item.Id ?? `feed-${index}`),
+      type: String(item.type ?? item.Type ?? "runtime.event"),
+      severity: ["ok", "warning", "error"].includes(item.severity ?? item.Severity)
+        ? (item.severity ?? item.Severity)
+        : "info",
+      title: String(item.title ?? item.Title ?? "JARVIS event"),
+      detail: String(item.detail ?? item.Detail ?? ""),
+      timestamp: item.timestamp ?? item.Timestamp ?? null,
+      unread: Boolean(item.unread ?? item.Unread),
+      actionId: item.actionId ?? item.ActionId ?? null,
+    }));
+  const reportedUnread = Number(rawSnapshot.unreadCount ?? rawSnapshot.UnreadCount);
+  const unreadCount = Number.isFinite(reportedUnread)
+    ? Math.max(0, Math.min(items.length, Math.round(reportedUnread)))
+    : items.filter((item) => item.unread).length;
+
+  return {
+    items,
+    unreadCount,
+    capacity: Math.max(1, Number(rawSnapshot.capacity ?? rawSnapshot.Capacity ?? 50)),
+    loading: false,
+    error: null,
+  };
+}
+
+function systemFeedsEqual(left, right) {
+  if (left.unreadCount !== right.unreadCount ||
+      left.capacity !== right.capacity ||
+      left.loading !== right.loading ||
+      left.error !== right.error ||
+      left.items.length !== right.items.length) {
+    return false;
+  }
+  return left.items.every((item, index) => {
+    const other = right.items[index];
+    return item.id === other.id &&
+      item.type === other.type &&
+      item.severity === other.severity &&
+      item.title === other.title &&
+      item.detail === other.detail &&
+      item.timestamp === other.timestamp &&
+      item.unread === other.unread &&
+      item.actionId === other.actionId;
+  });
+}
 
 function normalizeWindowAppearanceState(rawState = {}) {
   const requestedMode = rawState.mode ?? rawState.Mode;
@@ -230,6 +366,32 @@ const windowAppearanceStore = createStore({
   loading: true,
   error: null,
 });
+const taskbarModeStore = createStore({
+  requestedMode: "native",
+  effectiveMode: "native",
+  fallbackReason: null,
+  hybridAvailable: false,
+  safeMode: false,
+  loading: true,
+  error: null,
+});
+const trayStore = createStore(normalizeTraySnapshot({
+  audio: {
+    available: false,
+    volumePercent: null,
+    muted: false,
+    error: "Waiting for the Windows audio service.",
+  },
+  network: initialSystemSnapshot.status.network,
+  power: initialSystemSnapshot.status.power,
+}));
+const systemFeedStore = createStore({
+  items: [],
+  unreadCount: 0,
+  capacity: 50,
+  loading: true,
+  error: null,
+});
 
 const nativeProjector = createSystemSnapshotProjector();
 let systemSubscribers = 0;
@@ -244,6 +406,159 @@ let stopTaskbarEvents = null;
 let windowAppearanceSubscribers = 0;
 let stopWindowAppearanceEvents = null;
 let windowAppearanceRequest = null;
+let taskbarModeSubscribers = 0;
+let stopTaskbarModeEvents = null;
+let taskbarModeRequest = null;
+let traySubscribers = 0;
+let stopTrayEvents = null;
+let trayRequest = null;
+let systemFeedSubscribers = 0;
+let stopSystemFeedEvents = null;
+let systemFeedRequest = null;
+
+function setSystemFeedState(nextState) {
+  const current = systemFeedStore.getSnapshot();
+  if (!systemFeedsEqual(current, nextState)) {
+    systemFeedStore.set(nextState);
+  }
+}
+
+function publishSystemFeed(rawSnapshot) {
+  setSystemFeedState(normalizeSystemFeed(rawSnapshot));
+}
+
+function reportSystemFeedError(error) {
+  setSystemFeedState({
+    ...systemFeedStore.getSnapshot(),
+    loading: false,
+    error: error?.message ?? "JARVIS system feed is unavailable.",
+  });
+}
+
+function startSystemEventFeed() {
+  if (!stopSystemFeedEvents) {
+    stopSystemFeedEvents = platform.events.subscribe("feed.snapshot", publishSystemFeed);
+  }
+  if (systemFeedRequest) return;
+  systemFeedRequest = platform.feed.getSnapshot()
+    .then(publishSystemFeed)
+    .catch(reportSystemFeedError)
+    .finally(() => {
+      systemFeedRequest = null;
+    });
+}
+
+function subscribeToSystemFeed(listener) {
+  systemFeedSubscribers += 1;
+  startSystemEventFeed();
+  const unsubscribe = systemFeedStore.subscribe(listener);
+  return () => {
+    unsubscribe();
+    systemFeedSubscribers -= 1;
+    if (systemFeedSubscribers === 0 && stopSystemFeedEvents) {
+      stopSystemFeedEvents();
+      stopSystemFeedEvents = null;
+    }
+  };
+}
+
+function setTrayState(nextState) {
+  const current = trayStore.getSnapshot();
+  if (!traySnapshotsEqual(current, nextState)) {
+    trayStore.set(nextState);
+  }
+}
+
+function publishTraySnapshot(rawSnapshot) {
+  setTrayState(normalizeTraySnapshot(rawSnapshot));
+}
+
+function reportTrayError(error) {
+  const current = trayStore.getSnapshot();
+  setTrayState({
+    ...current,
+    loading: false,
+    error: error?.message ?? "Windows tray state is unavailable.",
+  });
+}
+
+function startTrayFeed() {
+  if (!stopTrayEvents) {
+    stopTrayEvents = platform.events.subscribe("tray.snapshot", publishTraySnapshot);
+  }
+  if (trayRequest) return;
+  trayRequest = platform.tray.getSnapshot()
+    .then(publishTraySnapshot)
+    .catch(reportTrayError)
+    .finally(() => {
+      trayRequest = null;
+    });
+}
+
+function subscribeToTray(listener) {
+  traySubscribers += 1;
+  startTrayFeed();
+  const unsubscribe = trayStore.subscribe(listener);
+  return () => {
+    unsubscribe();
+    traySubscribers -= 1;
+    if (traySubscribers === 0 && stopTrayEvents) {
+      stopTrayEvents();
+      stopTrayEvents = null;
+    }
+  };
+}
+
+function setTaskbarModeState(nextState) {
+  const current = taskbarModeStore.getSnapshot();
+  if (!taskbarModeStatesEqual(current, nextState)) {
+    taskbarModeStore.set(nextState);
+  }
+}
+
+function publishTaskbarModeState(rawState) {
+  setTaskbarModeState(normalizeTaskbarModeState(rawState));
+}
+
+function reportTaskbarModeError(error) {
+  const current = taskbarModeStore.getSnapshot();
+  setTaskbarModeState({
+    ...current,
+    loading: false,
+    error: error?.message ?? "Taskbar mode service is unavailable.",
+  });
+}
+
+function startTaskbarModeFeed() {
+  if (!stopTaskbarModeEvents) {
+    stopTaskbarModeEvents = platform.events.subscribe(
+      "taskbarMode.changed",
+      publishTaskbarModeState,
+    );
+  }
+  if (taskbarModeRequest) return;
+
+  taskbarModeRequest = platform.taskbarMode.getState()
+    .then(publishTaskbarModeState)
+    .catch(reportTaskbarModeError)
+    .finally(() => {
+      taskbarModeRequest = null;
+    });
+}
+
+function subscribeToTaskbarMode(listener) {
+  taskbarModeSubscribers += 1;
+  startTaskbarModeFeed();
+  const unsubscribe = taskbarModeStore.subscribe(listener);
+  return () => {
+    unsubscribe();
+    taskbarModeSubscribers -= 1;
+    if (taskbarModeSubscribers === 0 && stopTaskbarModeEvents) {
+      stopTaskbarModeEvents();
+      stopTaskbarModeEvents = null;
+    }
+  };
+}
 
 function setWindowAppearanceState(nextState) {
   const current = windowAppearanceStore.getSnapshot();
@@ -471,6 +786,54 @@ export async function setWindowAppearanceMode(mode) {
   }
 }
 
+export async function setTaskbarMode(mode) {
+  if (!TASKBAR_MODES.has(mode)) {
+    throw new Error(`Unsupported taskbar mode: ${mode}`);
+  }
+
+  const current = taskbarModeStore.getSnapshot();
+  if (current.requestedMode === mode && !current.error) return current;
+  setTaskbarModeState({ ...current, loading: true, error: null });
+
+  try {
+    const result = await platform.taskbarMode.setMode(mode);
+    publishTaskbarModeState(result);
+    return taskbarModeStore.getSnapshot();
+  } catch (error) {
+    reportTaskbarModeError(error);
+    throw error;
+  }
+}
+
+export async function setTrayVolume(volumePercent) {
+  const numericVolume = Number(volumePercent);
+  if (!Number.isInteger(numericVolume) || numericVolume < 0 || numericVolume > 100) {
+    throw new Error("Volume must be an integer between 0 and 100.");
+  }
+
+  const result = await platform.tray.setVolume(numericVolume);
+  publishTraySnapshot(result);
+  return trayStore.getSnapshot();
+}
+
+export async function setTrayMuted(muted) {
+  const result = await platform.tray.setMuted(Boolean(muted));
+  publishTraySnapshot(result);
+  return trayStore.getSnapshot();
+}
+
+export async function markSystemFeedRead() {
+  const result = await platform.feed.markAllRead();
+  publishSystemFeed(result);
+  return systemFeedStore.getSnapshot();
+}
+
+export async function clearSystemFeed() {
+  const result = await platform.feed.clear();
+  publishSystemFeed(result);
+  return systemFeedStore.getSnapshot();
+}
+
 function subscribeToDesktop(listener) {
   const unsubscribe = desktopStore.subscribe(listener);
   if (!desktopLoaded) refreshDesktopEntries();
@@ -530,6 +893,30 @@ export function useWindowAppearanceState() {
     subscribeToWindowAppearance,
     windowAppearanceStore.getSnapshot,
     windowAppearanceStore.getSnapshot,
+  );
+}
+
+export function useTaskbarModeState() {
+  return useSyncExternalStore(
+    subscribeToTaskbarMode,
+    taskbarModeStore.getSnapshot,
+    taskbarModeStore.getSnapshot,
+  );
+}
+
+export function useTrayStatus() {
+  return useSyncExternalStore(
+    subscribeToTray,
+    trayStore.getSnapshot,
+    trayStore.getSnapshot,
+  );
+}
+
+export function useSystemFeed() {
+  return useSyncExternalStore(
+    subscribeToSystemFeed,
+    systemFeedStore.getSnapshot,
+    systemFeedStore.getSnapshot,
   );
 }
 

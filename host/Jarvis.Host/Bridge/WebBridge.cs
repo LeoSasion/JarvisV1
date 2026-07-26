@@ -27,6 +27,9 @@ internal sealed class WebBridge : IDisposable
     private readonly TerminalSessionService _terminalSessionService;
     private readonly WindowTaskbarService _taskbarService;
     private readonly NativeWindowAppearanceService _windowAppearanceService;
+    private readonly TaskbarModeService _taskbarModeService;
+    private readonly TrayStatusService _trayStatusService;
+    private readonly SystemFeedService _systemFeedService;
     private readonly RuntimeDiagnosticsService _runtimeDiagnosticsService;
     private readonly Action _requestExit;
     private readonly Action<string?> _showDesktop;
@@ -53,6 +56,9 @@ internal sealed class WebBridge : IDisposable
         TerminalSessionService terminalSessionService,
         WindowTaskbarService taskbarService,
         NativeWindowAppearanceService windowAppearanceService,
+        TaskbarModeService taskbarModeService,
+        TrayStatusService trayStatusService,
+        SystemFeedService systemFeedService,
         RuntimeDiagnosticsService runtimeDiagnosticsService,
         Action requestExit,
         Action<string?> showDesktop,
@@ -69,6 +75,9 @@ internal sealed class WebBridge : IDisposable
         _terminalSessionService = terminalSessionService;
         _taskbarService = taskbarService;
         _windowAppearanceService = windowAppearanceService;
+        _taskbarModeService = taskbarModeService;
+        _trayStatusService = trayStatusService;
+        _systemFeedService = systemFeedService;
         _runtimeDiagnosticsService = runtimeDiagnosticsService;
         _requestExit = requestExit;
         _showDesktop = showDesktop;
@@ -87,6 +96,9 @@ internal sealed class WebBridge : IDisposable
 
         _webView.WebMessageReceived += OnWebMessageReceived;
         _windowAppearanceService.StateChanged += OnWindowAppearanceChanged;
+        _taskbarModeService.StateChanged += OnTaskbarModeChanged;
+        _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
+        _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
         if (_terminalEnabled)
         {
             _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
@@ -103,12 +115,29 @@ internal sealed class WebBridge : IDisposable
             _snapshotFeed.SnapshotAvailable += OnSnapshotAvailable;
             _telemetryAttached = true;
             _snapshotFeed.Start();
+            _trayStatusService.Start();
+            _systemFeedService.Start();
         }
 
         Post(new
         {
             @event = "windowAppearance.changed",
             data = _windowAppearanceService.GetState()
+        });
+        Post(new
+        {
+            @event = "taskbarMode.changed",
+            data = _taskbarModeService.GetState()
+        });
+        Post(new
+        {
+            @event = "tray.snapshot",
+            data = _trayStatusService.GetSnapshot()
+        });
+        Post(new
+        {
+            @event = "feed.snapshot",
+            data = _systemFeedService.GetSnapshot()
         });
 
         return Task.CompletedTask;
@@ -207,23 +236,27 @@ internal sealed class WebBridge : IDisposable
                 cancellationToken),
             "explorer.openFile" => _fileExplorerService.OpenFile(GetRequiredPath(parameters)),
             "explorer.openInWindows" => _fileExplorerService.OpenInWindows(GetRequiredPath(parameters)),
-            "explorer.createFolder" => await Task.Run(
+            "explorer.createFolder" => await RunFileOperationAsync(
+                "create-folder",
                 () => (object)_fileExplorerService.CreateFolder(
                     GetRequiredPath(parameters),
                     GetRequiredString(parameters, "name")),
                 cancellationToken),
-            "explorer.rename" => await Task.Run(
+            "explorer.rename" => await RunFileOperationAsync(
+                "rename",
                 () => (object)_fileExplorerService.Rename(
                     GetRequiredPath(parameters),
                     GetRequiredString(parameters, "name")),
                 cancellationToken),
-            "explorer.transfer" => await Task.Run(
+            "explorer.transfer" => await RunFileOperationAsync(
+                "transfer",
                 () => (object)_fileExplorerService.Transfer(
                     GetRequiredPaths(parameters),
                     GetRequiredString(parameters, "destinationPath"),
                     GetRequiredString(parameters, "mode")),
                 cancellationToken),
-            "explorer.recycle" => await Task.Run(
+            "explorer.recycle" => await RunFileOperationAsync(
+                "recycle",
                 () => (object)_fileExplorerService.Recycle(GetRequiredPaths(parameters)),
                 cancellationToken),
             "terminal.listProfiles" => _terminalSessionService.ListProfiles(),
@@ -250,6 +283,17 @@ internal sealed class WebBridge : IDisposable
             "taskbar.closeWindow" => _taskbarService.Close(GetRequiredWindowId(parameters)),
             "taskbar.showFlyout" => ShowTaskbarFlyout(GetFlyoutRequest(parameters)),
             "taskbar.hideFlyout" => HideTaskbarFlyout(),
+            "taskbarMode.getState" => _taskbarModeService.GetState(),
+            "taskbarMode.setMode" => _taskbarModeService.SetRequestedMode(
+                GetRequiredTaskbarMode(parameters)),
+            "tray.getSnapshot" => _trayStatusService.GetSnapshot(),
+            "tray.setVolume" => _trayStatusService.SetVolume(
+                GetRequiredBoundedInt(parameters, "volumePercent", 0, 100)),
+            "tray.setMuted" => _trayStatusService.SetMuted(
+                GetRequiredBoolean(parameters, "muted")),
+            "feed.getSnapshot" => _systemFeedService.GetSnapshot(),
+            "feed.markAllRead" => _systemFeedService.MarkAllRead(),
+            "feed.clear" => _systemFeedService.Clear(),
             "windowAppearance.getState" => _windowAppearanceService.GetState(),
             "windowAppearance.setMode" => _windowAppearanceService.SetMode(
                 GetRequiredWindowAppearanceMode(parameters)),
@@ -266,13 +310,60 @@ internal sealed class WebBridge : IDisposable
                 () => (object)_runtimeDiagnosticsService.SetStartupEnabled(
                     GetRequiredBoolean(parameters, "enabled")),
                 cancellationToken),
-            "lifecycle.runDiagnostics" => await Task.Run(
-                () => (object)_runtimeDiagnosticsService.RunDiagnostics(),
-                cancellationToken),
+            "lifecycle.runDiagnostics" => await RunDiagnosticsAsync(cancellationToken),
             "lifecycle.exitToWindows" => new { exiting = true },
             "lifecycle.showDesktop" => ShowDesktop(GetRequestedPanel(parameters)),
             _ => throw new BridgeFaultException("METHOD_NOT_FOUND", $"Unknown bridge method: {method}")
         };
+    }
+
+    private async Task<object> RunFileOperationAsync(
+        string operation,
+        Func<object> run,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await Task.Run(run, cancellationToken);
+            _systemFeedService.Add(
+                $"explorer.{operation}.completed",
+                "ok",
+                "File operation completed",
+                $"JARVIS File Explorer completed {operation}.",
+                actionId: null,
+                deduplicationKey: $"explorer:{operation}:completed");
+            return result;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _systemFeedService.Add(
+                $"explorer.{operation}.failed",
+                "error",
+                "File operation failed",
+                $"JARVIS File Explorer could not complete {operation}.",
+                actionId: null,
+                deduplicationKey: $"explorer:{operation}:failed");
+            throw;
+        }
+    }
+
+    private async Task<object> RunDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        var result = await Task.Run(
+            _runtimeDiagnosticsService.RunDiagnostics,
+            cancellationToken);
+        if (!string.Equals(result.OverallStatus, "READY", StringComparison.Ordinal))
+        {
+            _systemFeedService.Add(
+                "diagnostics.attention",
+                "warning",
+                "Runtime diagnostics need attention",
+                $"Diagnostics completed with status {result.OverallStatus}.",
+                "open-runtime-settings",
+                $"diagnostics:{result.OverallStatus}");
+        }
+
+        return result;
     }
 
     private object ShowDesktop(string? panel)
@@ -340,6 +431,17 @@ internal sealed class WebBridge : IDisposable
             return;
         }
 
+        if (!string.IsNullOrWhiteSpace(state.FallbackReason))
+        {
+            _systemFeedService.Add(
+                "window-appearance.fallback",
+                "warning",
+                "Window appearance mode fell back",
+                state.FallbackReason,
+                "open-runtime-settings",
+                $"window-appearance:{state.EffectiveMode}:{state.FallbackReason}");
+        }
+
         try
         {
             _ = _dispatcher.BeginInvoke(
@@ -355,6 +457,81 @@ internal sealed class WebBridge : IDisposable
         catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
         {
             // A closing renderer can reject the final appearance-state update.
+        }
+    }
+
+    private void OnTaskbarModeChanged(TaskbarModeState state)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "taskbarMode.changed", data = state });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final taskbar-mode update.
+        }
+    }
+
+    private void OnTraySnapshotChanged(TrayStatusSnapshot snapshot)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "tray.snapshot", data = snapshot });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final tray-state update.
+        }
+    }
+
+    private void OnSystemFeedChanged(SystemFeedSnapshot snapshot)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "feed.snapshot", data = snapshot });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final system-feed update.
         }
     }
 
@@ -414,6 +591,16 @@ internal sealed class WebBridge : IDisposable
 
         try
         {
+            if (exit.ExitCode is not (null or 0))
+            {
+                _systemFeedService.Add(
+                    "terminal.exited",
+                    "warning",
+                    "Terminal session ended unexpectedly",
+                    $"The terminal process exited with code {exit.ExitCode}.",
+                    actionId: null,
+                    deduplicationKey: $"terminal:exit:{exit.ExitCode}");
+            }
             _ = _dispatcher.BeginInvoke(
                 () =>
                 {
@@ -605,7 +792,7 @@ internal sealed class WebBridge : IDisposable
         {
             throw new BridgeFaultException(
                 "INVALID_PARAMS",
-                $"The terminal request requires integer params.{name} between {minimum} and {maximum}.");
+                $"Bridge request requires integer params.{name} between {minimum} and {maximum}.");
         }
 
         return value;
@@ -828,6 +1015,28 @@ internal sealed class WebBridge : IDisposable
         return mode;
     }
 
+    private static string GetRequiredTaskbarMode(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("mode", out var modeElement) ||
+            modeElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbarMode.setMode requires params.mode.");
+        }
+
+        var mode = modeElement.GetString();
+        if (!TaskbarModeService.TryParseMode(mode, out _))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "taskbarMode.setMode accepts native, hybrid, or full.");
+        }
+
+        return mode!;
+    }
+
     private static string? GetRequestedPanel(JsonElement parameters)
     {
         if (parameters.ValueKind != JsonValueKind.Object)
@@ -921,6 +1130,9 @@ internal sealed class WebBridge : IDisposable
         {
             _webView.WebMessageReceived -= OnWebMessageReceived;
             _windowAppearanceService.StateChanged -= OnWindowAppearanceChanged;
+            _taskbarModeService.StateChanged -= OnTaskbarModeChanged;
+            _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
+            _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
             if (_terminalEnabled)
             {
                 _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;

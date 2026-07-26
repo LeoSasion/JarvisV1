@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
 using Jarvis.Host.Bridge;
 using Jarvis.Host.Infrastructure;
 using Jarvis.Host.Services;
@@ -12,14 +14,24 @@ namespace Jarvis.Host;
 
 public partial class MainWindow : Window
 {
+    private static readonly int TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+
     private readonly TaskbarReplacementSession _taskbarReplacement = new();
+    private readonly TaskbarModeService _taskbarModeService = new();
     private readonly WindowTaskbarService _taskbarService = new();
     private readonly TerminalSessionService _terminalSessionService = new();
     private readonly RuntimeSnapshotFeed _snapshotFeed;
+    private readonly AudioEndpointService _audioEndpointService;
+    private readonly TrayStatusService _trayStatusService;
+    private readonly SystemFeedService _systemFeedService;
+    private readonly TaskbarLifecycleMachine _taskbarLifecycle = new();
     private readonly NativeWindowAppearanceService _windowAppearanceService;
     private GlobalSafetyHotkey? _safetyHotkey;
     private WebBridge? _bridge;
+    private HwndSource? _windowSource;
     private TaskbarWindow? _taskbarWindow;
+    private CancellationTokenSource? _taskbarRebindCancellation;
+    private long _taskbarGeneration;
     private bool _isClosing;
     private bool _diagnosticPanelShown;
     private bool _desktopReady;
@@ -27,10 +39,16 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         _snapshotFeed = new RuntimeSnapshotFeed(new SystemSnapshotService(), _taskbarService);
+        _audioEndpointService = new AudioEndpointService();
+        _trayStatusService = new TrayStatusService(_snapshotFeed, _audioEndpointService);
+        _systemFeedService = new SystemFeedService(_trayStatusService);
         _windowAppearanceService = new NativeWindowAppearanceService(Dispatcher);
         InitializeComponent();
         _taskbarReplacement.ReplacementLost += OnTaskbarReplacementLost;
+        _taskbarModeService.RequestedModeChanged += OnRequestedTaskbarModeChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        SystemEvents.SessionSwitch += OnSessionSwitch;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -38,6 +56,9 @@ public partial class MainWindow : Window
         _safetyHotkey = new GlobalSafetyHotkey(this, RequestSafeExit);
         _ = _safetyHotkey.Register();
         _windowAppearanceService.Start();
+        var handle = new WindowInteropHelper(this).Handle;
+        _windowSource = handle == IntPtr.Zero ? null : HwndSource.FromHwnd(handle);
+        _windowSource?.AddHook(WindowProcedure);
         if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var bounds) ||
             !NativeDisplay.PositionWindow(this, bounds))
         {
@@ -94,10 +115,15 @@ public partial class MainWindow : Window
             _terminalSessionService,
             _taskbarService,
             _windowAppearanceService,
+            _taskbarModeService,
+            _trayStatusService,
+            _systemFeedService,
             new RuntimeDiagnosticsService(
                 new StartupRegistrationService(),
                 _windowAppearanceService,
-                _snapshotFeed),
+                _snapshotFeed,
+                _taskbarModeService,
+                CaptureTaskbarLifecycle),
             RequestSafeExit,
             ShowDesktop);
         _bridge.Attach();
@@ -134,8 +160,8 @@ public partial class MainWindow : Window
             }
 
             _desktopReady = true;
-            HostLog.Info("Desktop surface is ready; creating the native taskbar surface.");
-            CreateTaskbarSurface();
+            HostLog.Info("Desktop surface is ready; evaluating the requested taskbar mode.");
+            QueueTaskbarRebind("desktop-ready", TimeSpan.Zero);
             _ = ShowDiagnosticShellPanelAsync();
         }
         catch (Exception ex)
@@ -195,40 +221,81 @@ public partial class MainWindow : Window
         ShowDesktop(normalizedPanel);
     }
 
-    private void CreateTaskbarSurface()
+    private void CreateTaskbarSurface(
+        long generation,
+        TaskbarMode mode,
+        PixelRect bounds,
+        PixelRect? notificationAreaBounds,
+        bool hybridAvailable)
     {
-        if (_isClosing || !_desktopReady || _taskbarWindow is not null)
+        if (_isClosing ||
+            !_desktopReady ||
+            generation != Volatile.Read(ref _taskbarGeneration) ||
+            _taskbarWindow is not null)
         {
-            return;
-        }
-
-        if (!_taskbarReplacement.TryGetTargetBounds(out var bounds))
-        {
-            HostLog.Warning(
-                "Native taskbar replacement was skipped because the taskbar is unavailable, vertical, already hidden, or safe mode is enabled.");
             return;
         }
 
         HostLog.Info(
-            $"Native taskbar target bounds detected: {bounds.Left},{bounds.Top} {bounds.Width}x{bounds.Height}.");
+            $"Taskbar surface target detected for {TaskbarModeService.ToWireValue(mode)} mode: " +
+            $"{bounds.Left},{bounds.Top} {bounds.Width}x{bounds.Height}.");
         _taskbarWindow = new TaskbarWindow(
             bounds,
+            mode,
+            notificationAreaBounds,
             _snapshotFeed,
             _taskbarService,
             _terminalSessionService,
             _windowAppearanceService,
-            OnTaskbarSurfaceReady,
-            DisableTaskbarReplacement,
+            _taskbarModeService,
+            _trayStatusService,
+            _systemFeedService,
+            () => OnTaskbarSurfaceReady(generation, mode, hybridAvailable),
+            () => OnTaskbarSurfaceFailed(generation, mode, hybridAvailable),
             RequestSafeExit,
             ShowDesktop);
         _taskbarWindow.Show();
         HostLog.Info("Taskbar surface window created; awaiting renderer readiness.");
     }
 
-    private async void OnTaskbarSurfaceReady()
+    private void OnTaskbarSurfaceFailed(
+        long generation,
+        TaskbarMode mode,
+        bool hybridAvailable)
     {
-        if (_isClosing || _taskbarWindow is null)
+        if (_isClosing || generation != Volatile.Read(ref _taskbarGeneration))
         {
+            return;
+        }
+
+        DisableTaskbarReplacement();
+        SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "taskbar surface failed");
+        _taskbarModeService.ReportEffectiveMode(
+            TaskbarMode.Native,
+            hybridAvailable,
+            mode == TaskbarMode.Hybrid
+                ? "The hybrid taskbar surface could not safely yield the native notification area."
+                : "The full replacement renderer did not become ready.");
+    }
+
+    private async void OnTaskbarSurfaceReady(
+        long generation,
+        TaskbarMode mode,
+        bool hybridAvailable)
+    {
+        if (_isClosing ||
+            generation != Volatile.Read(ref _taskbarGeneration) ||
+            _taskbarWindow is null)
+        {
+            return;
+        }
+
+        if (mode == TaskbarMode.Hybrid)
+        {
+            _taskbarWindow.Reveal();
+            SetTaskbarLifecycleState(TaskbarLifecycleState.ReplacementActive, "hybrid surface ready");
+            _taskbarModeService.ReportEffectiveMode(TaskbarMode.Hybrid, hybridAvailable, null);
+            HostLog.Info("JARVIS hybrid taskbar surface revealed; Explorer notification area remains active.");
             return;
         }
 
@@ -236,23 +303,96 @@ public partial class MainWindow : Window
         HostLog.Info($"Taskbar renderer is ready; activating replacement for window 0x{taskbarHandle.ToInt64():X}.");
         if (await _taskbarReplacement.ActivateAsync(taskbarHandle))
         {
+            if (_isClosing ||
+                generation != Volatile.Read(ref _taskbarGeneration) ||
+                _taskbarWindow is null)
+            {
+                _taskbarReplacement.Restore();
+                return;
+            }
+
             _taskbarWindow?.Reveal();
+            SetTaskbarLifecycleState(TaskbarLifecycleState.ReplacementActive, "full surface ready");
+            _taskbarModeService.ReportEffectiveMode(TaskbarMode.Full, hybridAvailable, null);
             HostLog.Info("JARVIS taskbar surface revealed.");
         }
         else
         {
             DisableTaskbarReplacement();
+            SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "full activation failed");
+            _taskbarModeService.ReportEffectiveMode(
+                TaskbarMode.Native,
+                hybridAvailable,
+                "The full replacement watchdog did not confirm a safe activation.");
             HostLog.Warning("JARVIS taskbar surface remained concealed because activation was not confirmed.");
         }
     }
 
     private void OnTaskbarReplacementLost()
     {
-        Dispatcher.BeginInvoke(DisableTaskbarReplacement);
+        QueueTaskbarRebind("watchdog-lost", TimeSpan.FromMilliseconds(750));
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
+        QueueTaskbarRebind("display-settings-changed", TimeSpan.FromMilliseconds(900));
+    }
+
+    private void OnRequestedTaskbarModeChanged()
+    {
+        QueueTaskbarRebind("requested-mode-changed", TimeSpan.Zero);
+    }
+
+    private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Suspend)
+        {
+            QueueNativeRestore("system-suspend");
+            return;
+        }
+
+        if (e.Mode == PowerModes.Resume)
+        {
+            QueueTaskbarRebind("system-resume", TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason == SessionSwitchReason.SessionLock)
+        {
+            QueueNativeRestore("session-lock");
+            return;
+        }
+
+        if (e.Reason == SessionSwitchReason.SessionUnlock)
+        {
+            QueueTaskbarRebind("session-unlock", TimeSpan.FromMilliseconds(750));
+        }
+    }
+
+    private IntPtr WindowProcedure(
+        IntPtr window,
+        int message,
+        IntPtr wordParameter,
+        IntPtr longParameter,
+        ref bool handled)
+    {
+        if (TaskbarCreatedMessage > 0 && message == TaskbarCreatedMessage)
+        {
+            QueueTaskbarRebind("explorer-taskbar-created", TimeSpan.FromMilliseconds(750));
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void QueueNativeRestore(string reason)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
         _ = Dispatcher.BeginInvoke(() =>
         {
             if (_isClosing)
@@ -260,15 +400,185 @@ public partial class MainWindow : Window
                 return;
             }
 
-            HostLog.Warning(
-                "Windows display settings changed; restoring the native taskbar until JARVIS is restarted.");
+            Interlocked.Increment(ref _taskbarGeneration);
+            CancelPendingTaskbarRebind();
+            SetTaskbarLifecycleState(TaskbarLifecycleState.Recovering, reason);
             DisableTaskbarReplacement();
-            if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var bounds) ||
-                !NativeDisplay.PositionWindow(this, bounds))
-            {
-                HostLog.Warning("The desktop host could not be refitted after the display change.");
-            }
+            SetTaskbarLifecycleState(TaskbarLifecycleState.NativeVisible, reason);
+            _taskbarModeService.ReportEffectiveMode(
+                TaskbarMode.Native,
+                hybridAvailable: false,
+                $"The native taskbar is active during {reason}.");
         });
+    }
+
+    private void QueueTaskbarRebind(string reason, TimeSpan delay)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var generation = Interlocked.Increment(ref _taskbarGeneration);
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _taskbarRebindCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        _ = Dispatcher.BeginInvoke(
+            () => _ = RebindTaskbarAsync(generation, reason, delay, cancellation.Token));
+    }
+
+    private async Task RebindTaskbarAsync(
+        long generation,
+        string reason,
+        TimeSpan delay,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            if (_isClosing ||
+                !_desktopReady ||
+                generation != Volatile.Read(ref _taskbarGeneration))
+            {
+                return;
+            }
+
+            SetTaskbarLifecycleState(TaskbarLifecycleState.Rebinding, reason);
+            DisableTaskbarReplacement();
+
+            if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var desktopBounds) ||
+                !NativeDisplay.PositionWindow(this, desktopBounds))
+            {
+                SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "desktop positioning failed");
+                _taskbarModeService.ReportEffectiveMode(
+                    TaskbarMode.Native,
+                    hybridAvailable: false,
+                    "The desktop host could not be positioned on the primary monitor.");
+                return;
+            }
+
+            var requestedMode = _taskbarModeService.RequestedMode;
+            if (requestedMode == TaskbarMode.Native ||
+                Environment.GetEnvironmentVariable("JARVIS_KEEP_NATIVE_TASKBAR") == "1")
+            {
+                SetTaskbarLifecycleState(TaskbarLifecycleState.NativeVisible, reason);
+                _taskbarModeService.ReportEffectiveMode(
+                    TaskbarMode.Native,
+                    hybridAvailable: false,
+                    requestedMode == TaskbarMode.Native
+                        ? null
+                        : "JARVIS_KEEP_NATIVE_TASKBAR=1 keeps the native Windows taskbar active.");
+                return;
+            }
+
+            if (requestedMode == TaskbarMode.Hybrid)
+            {
+                if (!NativeShellSurfaceService.TryCapture(out var shellSurface, out var failureReason))
+                {
+                    SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "hybrid probe failed");
+                    _taskbarModeService.ReportEffectiveMode(
+                        TaskbarMode.Native,
+                        hybridAvailable: false,
+                        failureReason ?? "Explorer's notification area is unavailable.");
+                    return;
+                }
+
+                SetTaskbarLifecycleState(TaskbarLifecycleState.Preparing, "hybrid probe ready");
+                CreateTaskbarSurface(
+                    generation,
+                    TaskbarMode.Hybrid,
+                    shellSurface.TaskbarBounds,
+                    shellSurface.NotificationAreaBounds,
+                    hybridAvailable: true);
+                return;
+            }
+
+            if (!_taskbarReplacement.TryGetTargetBounds(out var taskbarBounds))
+            {
+                SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "full target unavailable");
+                _taskbarModeService.ReportEffectiveMode(
+                    TaskbarMode.Native,
+                    hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _),
+                    "The visible bottom-aligned primary taskbar is unavailable for full replacement.");
+                return;
+            }
+
+            SetTaskbarLifecycleState(TaskbarLifecycleState.Preparing, "full target ready");
+            CreateTaskbarSurface(
+                generation,
+                TaskbarMode.Full,
+                taskbarBounds,
+                notificationAreaBounds: null,
+                hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A newer lifecycle generation superseded this rebind.
+        }
+        catch (Exception ex)
+        {
+            HostLog.Error($"Taskbar rebind failed after {reason}.", ex);
+            DisableTaskbarReplacement();
+            SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "rebind exception");
+            _taskbarModeService.ReportEffectiveMode(
+                TaskbarMode.Native,
+                hybridAvailable: false,
+                "The taskbar lifecycle coordinator encountered an error and restored Windows.");
+        }
+    }
+
+    private void SetTaskbarLifecycleState(TaskbarLifecycleState state, string reason)
+    {
+        var transition = _taskbarLifecycle.Transition(state, reason);
+        if (!transition.Changed && !transition.ForcedFallback)
+        {
+            return;
+        }
+
+        HostLog.Info(
+            $"Taskbar lifecycle: {transition.PreviousState} -> {transition.State} " +
+            $"({transition.Reason}).");
+        if (transition.ForcedFallback)
+        {
+            DisableTaskbarReplacement();
+            _taskbarModeService.ReportEffectiveMode(
+                TaskbarMode.Native,
+                hybridAvailable: false,
+                transition.Reason);
+        }
+
+        var effectiveState = transition.State;
+        _systemFeedService.Add(
+            $"taskbar.{effectiveState.ToString().ToLowerInvariant()}",
+            effectiveState == TaskbarLifecycleState.NativeFallback ? "warning" : "info",
+            effectiveState switch
+            {
+                TaskbarLifecycleState.ReplacementActive => "Taskbar surface active",
+                TaskbarLifecycleState.NativeFallback => "Native taskbar fallback active",
+                TaskbarLifecycleState.Rebinding => "Taskbar rebind started",
+                _ => $"Taskbar state: {effectiveState}"
+            },
+            transition.Reason,
+            effectiveState == TaskbarLifecycleState.NativeFallback ? "open-runtime-settings" : null,
+            $"taskbar:{effectiveState}:{transition.Reason}");
+    }
+
+    private TaskbarLifecycleSnapshot CaptureTaskbarLifecycle() => new(
+        _taskbarLifecycle.State.ToString(),
+        Volatile.Read(ref _taskbarGeneration),
+        _taskbarWindow is not null,
+        NativeTaskbarController.IsPrimaryVisible());
+
+    private void CancelPendingTaskbarRebind()
+    {
+        var cancellation = Interlocked.Exchange(ref _taskbarRebindCancellation, null);
+        cancellation?.Cancel();
+        cancellation?.Dispose();
     }
 
     private void DisableTaskbarReplacement()
@@ -358,8 +668,15 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         _isClosing = true;
+        Interlocked.Increment(ref _taskbarGeneration);
+        CancelPendingTaskbarRebind();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
         _taskbarReplacement.ReplacementLost -= OnTaskbarReplacementLost;
+        _taskbarModeService.RequestedModeChanged -= OnRequestedTaskbarModeChanged;
+        _windowSource?.RemoveHook(WindowProcedure);
+        _windowSource = null;
         _bridge?.Dispose();
         _safetyHotkey?.Dispose();
         _safetyHotkey = null;
@@ -369,8 +686,14 @@ public partial class MainWindow : Window
         _taskbarReplacement.Dispose();
         _taskbarWindow?.CloseFromHost();
         _taskbarWindow = null;
+        _systemFeedService.Dispose();
+        _trayStatusService.Dispose();
         _snapshotFeed.Dispose();
+        _audioEndpointService.Dispose();
         _terminalSessionService.Dispose();
         WebView.Dispose();
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int RegisterWindowMessage(string messageName);
 }

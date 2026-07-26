@@ -49,27 +49,3 @@ export const processes = [
   ["SecureSync", "1.2%", "160 MB", "2 Mbps"],
   ["System", "0.9%", "100 MB", "1 Mbps"],
 ];
-
-export const notifications = [
-  {
-    id: "mission",
-    kind: "mission",
-    title: "MISSION UPDATE",
-    detail: "New mission available: Border Skirmish",
-    time: "22:45",
-  },
-  {
-    id: "maintenance",
-    kind: "maintenance",
-    title: "SYSTEM MAINTENANCE",
-    detail: "Scheduled maintenance at 02:00",
-    time: "22:30",
-  },
-  {
-    id: "comms",
-    kind: "comms",
-    title: "COMMS MESSAGE",
-    detail: "New message from Command",
-    time: "22:15",
-  },
-];

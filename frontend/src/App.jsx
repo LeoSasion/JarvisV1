@@ -21,7 +21,6 @@ const BootSequence = lazy(() => import("./components/BootSequence.jsx")
 
 export function App() {
   const hasExternalTaskbar = new URLSearchParams(window.location.search).get("taskbar") === "external";
-  const [micActive, setMicActive] = useState(true);
   const [selectedShortcut, setSelectedShortcut] = useState(null);
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [commandOpen, setCommandOpen] = useState(false);
@@ -302,11 +301,9 @@ export function App() {
   ]);
 
   return (
-    <main className={`jarvis-shell ${micActive ? "is-mic-active" : "is-mic-muted"} ${hasExternalTaskbar ? "has-external-taskbar" : ""}`}>
+    <main className={`jarvis-shell is-mic-muted ${hasExternalTaskbar ? "has-external-taskbar" : ""}`}>
       <div className="ambient-field" aria-hidden="true" />
       <TopStatusBar
-        micActive={micActive}
-        onToggleMic={() => setMicActive((current) => !current)}
         onOpenCommand={openCommand}
         onPower={exitToWindows}
       />
@@ -317,9 +314,8 @@ export function App() {
           onSelect={setSelectedShortcut}
           onOpen={openShortcut}
         />
-        <CoreStage listening={micActive} onActivate={openCommand} />
+        <CoreStage listening={false} onActivate={openCommand} />
         <TelemetryRail
-          micActive={micActive}
           onInspect={inspect}
           onNotification={handleNotification}
         />
