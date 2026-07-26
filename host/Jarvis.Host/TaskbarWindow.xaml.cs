@@ -20,6 +20,8 @@ public partial class TaskbarWindow : Window
     private const int MaNoActivate = 3;
 
     private readonly PixelRect _bounds;
+    private readonly TaskbarMode _mode;
+    private readonly PixelRect? _notificationAreaBounds;
     private readonly Action _surfaceReady;
     private readonly Action _surfaceFailed;
     private readonly Action _requestExit;
@@ -29,6 +31,9 @@ public partial class TaskbarWindow : Window
     private readonly WindowTaskbarService _taskbarService;
     private readonly TerminalSessionService _terminalSessionService;
     private readonly NativeWindowAppearanceService _windowAppearanceService;
+    private readonly TaskbarModeService _taskbarModeService;
+    private readonly TrayStatusService _trayStatusService;
+    private readonly SystemFeedService _systemFeedService;
 
     private WebBridge? _bridge;
     private TaskbarEdgeOverlayWindow? _edgeOverlayWindow;
@@ -45,20 +50,30 @@ public partial class TaskbarWindow : Window
 
     internal TaskbarWindow(
         PixelRect bounds,
+        TaskbarMode mode,
+        PixelRect? notificationAreaBounds,
         RuntimeSnapshotFeed snapshotFeed,
         WindowTaskbarService taskbarService,
         TerminalSessionService terminalSessionService,
         NativeWindowAppearanceService windowAppearanceService,
+        TaskbarModeService taskbarModeService,
+        TrayStatusService trayStatusService,
+        SystemFeedService systemFeedService,
         Action surfaceReady,
         Action surfaceFailed,
         Action requestExit,
         Action<string?> showDesktop)
     {
         _bounds = bounds;
+        _mode = mode;
+        _notificationAreaBounds = notificationAreaBounds;
         _snapshotFeed = snapshotFeed;
         _taskbarService = taskbarService;
         _terminalSessionService = terminalSessionService;
         _windowAppearanceService = windowAppearanceService;
+        _taskbarModeService = taskbarModeService;
+        _trayStatusService = trayStatusService;
+        _systemFeedService = systemFeedService;
         _surfaceReady = surfaceReady;
         _surfaceFailed = surfaceFailed;
         _requestExit = requestExit;
@@ -194,6 +209,21 @@ public partial class TaskbarWindow : Window
         if (!NativeDisplay.PositionWindow(this, _bounds))
         {
             ReportFailure("TASKBAR POSITIONING FAILED");
+            return;
+        }
+        else if (_mode == TaskbarMode.Hybrid &&
+                 (!_notificationAreaBounds.HasValue ||
+                  !NativeShellSurfaceService.ApplyNotificationAreaExclusion(
+                      this,
+                      _bounds,
+                      _notificationAreaBounds.Value)))
+        {
+            ReportFailure("HYBRID NOTIFICATION REGION FAILED");
+            return;
+        }
+        else if (_mode != TaskbarMode.Hybrid)
+        {
+            NativeShellSurfaceService.ClearWindowRegion(this);
         }
 
         var handle = new WindowInteropHelper(this).Handle;
@@ -265,10 +295,14 @@ public partial class TaskbarWindow : Window
             _terminalSessionService,
             _taskbarService,
             _windowAppearanceService,
+            _taskbarModeService,
+            _trayStatusService,
+            _systemFeedService,
             new RuntimeDiagnosticsService(
                 new StartupRegistrationService(),
                 _windowAppearanceService,
-                _snapshotFeed),
+                _snapshotFeed,
+                _taskbarModeService),
             _requestExit,
             _showDesktop,
             ShowTaskbarFlyout,
@@ -277,7 +311,8 @@ public partial class TaskbarWindow : Window
         _bridge.Attach();
 
         WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-        var source = WebViewHostConfiguration.CreateAppUri("surface=taskbar");
+        var source = WebViewHostConfiguration.CreateAppUri(
+            $"surface=taskbar&taskbarMode={TaskbarModeService.ToWireValue(_mode)}");
         HostLog.Info($"Navigating taskbar surface to {source}.");
         WebView.Source = source;
     }
@@ -368,7 +403,7 @@ public partial class TaskbarWindow : Window
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                 var probe = WebView.CoreWebView2.ExecuteScriptAsync(
-                    "Boolean(document.querySelector('.jarvis-taskbar-surface .taskbar'));" );
+                    "Boolean(document.querySelector('.jarvis-taskbar-surface .taskbar'));");
                 var result = await probe.WaitAsync(TimeSpan.FromSeconds(3), cancellationToken);
                 if (!result.Equals("true", StringComparison.OrdinalIgnoreCase))
                 {

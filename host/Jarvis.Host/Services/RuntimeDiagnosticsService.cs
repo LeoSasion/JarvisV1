@@ -17,21 +17,40 @@ internal sealed partial class RuntimeDiagnosticsService
     private readonly StartupRegistrationService _startupRegistrationService;
     private readonly NativeWindowAppearanceService? _windowAppearanceService;
     private readonly RuntimeSnapshotFeed? _snapshotFeed;
+    private readonly TaskbarModeService? _taskbarModeService;
+    private readonly Func<TaskbarLifecycleSnapshot>? _taskbarLifecycleProvider;
 
     public RuntimeDiagnosticsService(
         StartupRegistrationService startupRegistrationService,
         NativeWindowAppearanceService? windowAppearanceService = null,
-        RuntimeSnapshotFeed? snapshotFeed = null)
+        RuntimeSnapshotFeed? snapshotFeed = null,
+        TaskbarModeService? taskbarModeService = null,
+        Func<TaskbarLifecycleSnapshot>? taskbarLifecycleProvider = null)
     {
         _startupRegistrationService = startupRegistrationService;
         _windowAppearanceService = windowAppearanceService;
         _snapshotFeed = snapshotFeed;
+        _taskbarModeService = taskbarModeService;
+        _taskbarLifecycleProvider = taskbarLifecycleProvider;
     }
 
     public RuntimeInfoSnapshot CaptureRuntimeInfo()
     {
         var startup = _startupRegistrationService.Capture();
         var installationMode = DetectInstallationMode(startup.ExecutablePath);
+        var taskbarMode = _taskbarModeService?.GetState() ??
+                          new TaskbarModeState(
+                              "native",
+                              "native",
+                              "Taskbar mode diagnostics are unavailable.",
+                              HybridAvailable: false,
+                              SafeMode: IsSafeModeEnabled());
+        var lifecycle = _taskbarLifecycleProvider?.Invoke() ??
+                        new TaskbarLifecycleSnapshot(
+                            "UNAVAILABLE",
+                            Generation: 0,
+                            SurfaceVisible: false,
+                            NativeTaskbarVisible: NativeTaskbarController.IsPrimaryVisible());
 
         return new RuntimeInfoSnapshot(
             startup.ProductName,
@@ -45,7 +64,12 @@ internal sealed partial class RuntimeDiagnosticsService
             Environment.OSVersion.VersionString,
             GetWebView2Version() ?? "UNAVAILABLE",
             IsSafeModeEnabled(),
-            IsRecoveryReady());
+            IsRecoveryReady(),
+            taskbarMode.RequestedMode,
+            taskbarMode.EffectiveMode,
+            taskbarMode.FallbackReason,
+            lifecycle.State,
+            lifecycle.Generation);
     }
 
     public RuntimeInfoSnapshot SetStartupEnabled(bool enabled)
@@ -60,6 +84,7 @@ internal sealed partial class RuntimeDiagnosticsService
         var checks = new List<RuntimeDiagnosticCheck>();
 
         AddRecoveryCheck(checks);
+        AddTaskbarModeCheck(checks);
         AddTaskbarSynchronizationCheck(checks);
         AddSafetyHotkeyCheck(checks);
         AddNativeWindowAppearanceCheck(checks);
@@ -123,6 +148,35 @@ internal sealed partial class RuntimeDiagnosticsService
             "taskbar-synchronization",
             "TASKBAR SYNCHRONIZATION",
             status,
+            detail,
+            0));
+    }
+
+    private void AddTaskbarModeCheck(ICollection<RuntimeDiagnosticCheck> checks)
+    {
+        if (_taskbarModeService is null)
+        {
+            checks.Add(new RuntimeDiagnosticCheck(
+                "taskbar-mode",
+                "TASKBAR MODE",
+                DiagnosticStatus.Attention,
+                "Taskbar mode diagnostics are unavailable on this renderer.",
+                0));
+            return;
+        }
+
+        var mode = _taskbarModeService.GetState();
+        var lifecycle = _taskbarLifecycleProvider?.Invoke();
+        var fallback = !string.IsNullOrWhiteSpace(mode.FallbackReason);
+        var detail =
+            $"Requested {mode.RequestedMode.ToUpperInvariant()}; " +
+            $"effective {mode.EffectiveMode.ToUpperInvariant()}." +
+            (lifecycle is null ? string.Empty : $" Lifecycle {lifecycle.State}, generation {lifecycle.Generation}.") +
+            (fallback ? $" Fallback: {mode.FallbackReason}" : string.Empty);
+        checks.Add(new RuntimeDiagnosticCheck(
+            "taskbar-mode",
+            "TASKBAR MODE",
+            fallback ? DiagnosticStatus.Attention : DiagnosticStatus.Ready,
             detail,
             0));
     }
@@ -423,7 +477,12 @@ internal sealed record RuntimeInfoSnapshot(
     string WindowsVersion,
     string WebView2Version,
     bool SafeMode,
-    bool RecoveryReady);
+    bool RecoveryReady,
+    string RequestedTaskbarMode,
+    string EffectiveTaskbarMode,
+    string? TaskbarFallbackReason,
+    string TaskbarLifecycleState,
+    long TaskbarGeneration);
 
 internal sealed record RuntimeDiagnosticsSnapshot(
     string OverallStatus,

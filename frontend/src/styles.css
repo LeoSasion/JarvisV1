@@ -167,6 +167,11 @@ input:focus-visible {
   opacity: 0;
 }
 
+.jarvis-taskbar-surface.is-hybrid .system-tray {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .jarvis-taskbar-surface .taskbar-apps button::after,
 .jarvis-taskbar-surface .jarvis-launcher::after {
   bottom: 7px;
@@ -4180,6 +4185,42 @@ button.process-grid:hover {
   padding: 0 12px 12px;
 }
 
+.quick-volume-card {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 34px minmax(104px, 1fr) minmax(110px, 1.5fr) 76px;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(25, 70, 100, 0.76);
+  background: rgba(2, 13, 23, 0.74);
+}
+
+.quick-volume-card > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.quick-volume-card > span:nth-child(2) strong {
+  color: #c8dbe4;
+  font: 600 10px/1 Bahnschrift, sans-serif;
+}
+
+.quick-volume-card > span:nth-child(2) small {
+  overflow: hidden;
+  color: #587a90;
+  font: 7.5px/1 Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-volume-card input[type="range"] {
+  width: 100%;
+  accent-color: var(--energy-cyan);
+}
+
 .quick-setting-grid > button {
   min-width: 0;
   height: 92px;
@@ -4261,6 +4302,14 @@ button.process-grid:hover {
   border-color: rgba(231, 73, 49, 0.48);
 }
 
+.shell-notification-item.is-error {
+  border-color: rgba(255, 76, 76, 0.76);
+}
+
+.shell-notification-item.is-unread {
+  box-shadow: inset 2px 0 #29bfff;
+}
+
 .shell-notification-item > span:first-child {
   width: 36px;
   height: 36px;
@@ -4271,6 +4320,12 @@ button.process-grid:hover {
   color: #ff806d;
   border-color: rgba(231, 73, 49, 0.58);
   filter: drop-shadow(0 0 4px rgba(231, 73, 49, 0.28));
+}
+
+.shell-notification-item.is-error > span:first-child {
+  color: #ff6f68;
+  border-color: rgba(255, 76, 76, 0.76);
+  filter: drop-shadow(0 0 4px rgba(255, 76, 76, 0.34));
 }
 
 .shell-notification-item > span:nth-child(2) {
@@ -4303,13 +4358,33 @@ button.process-grid:hover {
 }
 
 .notification-footer {
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 8px;
   color: #6f9eb7;
 }
 
-.notification-footer svg {
-  color: var(--success);
+.notification-footer > span {
+  margin-right: auto;
+}
+
+.notification-footer button {
+  min-height: 25px;
+  padding: 0 8px;
+  border: 1px solid rgba(25, 90, 130, 0.7);
+  color: #83bad8;
+  font: 7.5px/1 Consolas, monospace;
+}
+
+.notification-footer button:disabled {
+  opacity: 0.38;
+}
+
+.system-feed-empty {
+  margin: 0;
+  padding: 20px 12px;
+  color: #587a90;
+  font: 9px/1.4 Consolas, monospace;
+  text-align: center;
 }
 
 .runtime-settings-panel {

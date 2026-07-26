@@ -7,6 +7,7 @@ import {
   PlugConnectedRegular,
   SearchRegular,
   Speaker2Regular,
+  SpeakerOffRegular,
   Wifi4Regular,
   WindowAppsRegular,
 } from "@fluentui/react-icons";
@@ -15,7 +16,8 @@ import {
   usePlatformClock,
   usePlatformKind,
   useApplicationCatalog,
-  useSystemTrayStatus,
+  useSystemFeed,
+  useTrayStatus,
   useTaskbarSnapshot,
 } from "../hooks/usePlatformData.js";
 import { usePinnedApplicationRefs } from "../hooks/usePinnedApplications.js";
@@ -252,7 +254,8 @@ export function Taskbar({
 }) {
   const clock = usePlatformClock();
   const platformKind = usePlatformKind();
-  const systemStatus = useSystemTrayStatus();
+  const tray = useTrayStatus();
+  const feed = useSystemFeed();
   const taskbar = useTaskbarSnapshot();
   const pinnedApplicationRefs = usePinnedApplicationRefs();
   const needsApplicationCatalog = pinnedApplicationRefs.some((reference) =>
@@ -288,11 +291,11 @@ export function Taskbar({
   const visibleItems = hasOverflow ? taskbarItems.slice(0, capacity - 1) : taskbarItems;
   const overflowItems = hasOverflow ? taskbarItems.slice(capacity - 1) : [];
   const hasActiveWindow = taskbar.windows.some((window) => window.active);
-  const networkAvailable = systemStatus.network.available;
-  const power = systemStatus.power;
-  const alertCount = (networkAvailable ? 0 : 1) +
-    (power.batteryPresent && (power.percentage ?? 100) < 20 ? 1 : 0);
+  const networkAvailable = tray.network.available;
+  const power = tray.power;
+  const alertCount = feed.unreadCount;
   const PowerIcon = power.batteryPresent ? Battery6Regular : PlugConnectedRegular;
+  const AudioIcon = tray.audio.muted ? SpeakerOffRegular : Speaker2Regular;
 
   const getFlyoutAnchor = useCallback((element) => {
     const rect = element.getBoundingClientRect();
@@ -537,11 +540,11 @@ export function Taskbar({
         >
           <ChevronUpRegular />
           <Wifi4Regular className={networkAvailable ? "" : "is-offline"} />
-          <Speaker2Regular />
+          <AudioIcon />
           <PowerIcon />
         </button>
         <span className="tray-clock"><strong>{clock.time}</strong><small>{clock.shortDate}</small></span>
-        <button className="tray-notifications" type="button" aria-label={`Notifications${alertCount ? ` (${alertCount})` : ""}`} title="Notifications" onClick={onOpenNotifications}>
+        <button className="tray-notifications" type="button" aria-label={`JARVIS system feed${alertCount ? ` (${alertCount} unread)` : ""}`} title="JARVIS System Feed" onClick={onOpenNotifications}>
           <AlertRegular />
           {alertCount ? <small>{alertCount}</small> : null}
         </button>

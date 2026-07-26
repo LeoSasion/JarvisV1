@@ -11,13 +11,16 @@ import {
   WindowConsoleRegular,
 } from "@fluentui/react-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  clampDesktopCoordinate as clamp,
+  DESKTOP_ICON_CELL_HEIGHT as ICON_CELL_HEIGHT,
+  DESKTOP_ICON_CELL_WIDTH as ICON_CELL_WIDTH,
+  getDesktopFallbackPosition as getFallbackPosition,
+} from "../desktop-layout.js";
 import { useDesktopEntries } from "../hooks/usePlatformData.js";
 
 const AUTO_ARRANGE_STORAGE_KEY = "jarvis.desktop.auto-arrange.v1";
 const MANUAL_POSITIONS_STORAGE_KEY = "jarvis.desktop.icon-positions.v1";
-const ICON_CELL_WIDTH = 96;
-const ICON_CELL_HEIGHT = 88;
-const ICON_GRID_PADDING = 18;
 
 function readAutoArrangePreference() {
   try {
@@ -34,19 +37,6 @@ function readManualPositions() {
   } catch {
     return {};
   }
-}
-
-function clamp(value, minimum, maximum) {
-  return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
-}
-
-function getFallbackPosition(index, height) {
-  const availableHeight = Math.max(ICON_CELL_HEIGHT, height - ICON_GRID_PADDING * 2);
-  const rowCount = Math.max(1, Math.floor(availableHeight / ICON_CELL_HEIGHT));
-  return {
-    x: ICON_GRID_PADDING + Math.floor(index / rowCount) * ICON_CELL_WIDTH,
-    y: ICON_GRID_PADDING + (index % rowCount) * ICON_CELL_HEIGHT,
-  };
 }
 
 const iconMap = {

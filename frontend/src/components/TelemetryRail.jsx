@@ -1,11 +1,9 @@
 import {
-  ChatRegular,
+  AlertRegular,
   CheckmarkCircleRegular,
-  TargetRegular,
-  WrenchRegular,
+  InfoRegular,
 } from "@fluentui/react-icons";
-import { notifications } from "../data.js";
-import { useSystemSnapshot } from "../hooks/usePlatformData.js";
+import { useSystemFeed, useSystemSnapshot } from "../hooks/usePlatformData.js";
 import { HudPanel } from "./HudPanel.jsx";
 import { SparklineCanvas } from "./SparklineCanvas.jsx";
 import { WaveformCanvas } from "./WaveformCanvas.jsx";
@@ -38,14 +36,17 @@ function ResourceRow({ resource, onInspect }) {
   );
 }
 
-const notificationIcons = {
-  mission: TargetRegular,
-  maintenance: WrenchRegular,
-  comms: ChatRegular,
-};
+function formatFeedTime(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
-export function TelemetryRail({ micActive, onInspect, onNotification }) {
+export function TelemetryRail({ onInspect, onNotification }) {
   const { processes, resources } = useSystemSnapshot();
+  const feed = useSystemFeed();
+  const visibleEvents = feed.items.slice(0, 3);
+  const hasWarning = feed.items.some((item) => item.severity === "warning" || item.severity === "error");
 
   return (
     <aside className="telemetry-rail" aria-label="System telemetry">
@@ -54,9 +55,9 @@ export function TelemetryRail({ micActive, onInspect, onNotification }) {
           <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
           <div className="core-status__copy">
             <span>CORE STATUS</span>
-            <strong>READY</strong>
-            <small>STANDBY</small>
-            <div className="core-wave"><WaveformCanvas active={micActive} compact /></div>
+            <strong>LOCAL</strong>
+            <small>AGENT NOT CONNECTED</small>
+            <div className="core-wave"><WaveformCanvas active={false} compact /></div>
           </div>
         </div>
       </HudPanel>
@@ -84,10 +85,15 @@ export function TelemetryRail({ micActive, onInspect, onNotification }) {
         </div>
       </HudPanel>
 
-      <HudPanel title="NOTIFICATIONS" action={<span className="notification-count">3</span>} className="notifications-panel">
+      <HudPanel title="JARVIS SYSTEM FEED" action={<span className="notification-count">{feed.unreadCount}</span>} className="notifications-panel">
         <div className="notification-list">
-          {notifications.map((notification) => {
-            const Icon = notificationIcons[notification.kind];
+          {visibleEvents.length === 0 ? <p className="system-feed-empty">No session events</p> : null}
+          {visibleEvents.map((notification) => {
+            const Icon = notification.severity === "ok"
+              ? CheckmarkCircleRegular
+              : notification.severity === "info"
+                ? InfoRegular
+                : AlertRegular;
             return (
               <button key={notification.id} type="button" className="notification-row" onClick={() => onNotification(notification)}>
                 <Icon />
@@ -95,7 +101,7 @@ export function TelemetryRail({ micActive, onInspect, onNotification }) {
                   <strong>{notification.title}</strong>
                   <small>{notification.detail}</small>
                 </span>
-                <time>{notification.time}</time>
+                <time dateTime={notification.timestamp ?? undefined}>{formatFeedTime(notification.timestamp)}</time>
               </button>
             );
           })}
@@ -104,10 +110,10 @@ export function TelemetryRail({ micActive, onInspect, onNotification }) {
 
       <HudPanel title="SYSTEM HEALTH" className="health-panel" onClick={() => onInspect("System Health") }>
         <div className="health-status">
-          <CheckmarkCircleRegular />
+          {hasWarning ? <AlertRegular /> : <CheckmarkCircleRegular />}
           <span>
-            <strong>ALL SYSTEMS NOMINAL</strong>
-            <small>No actions required</small>
+            <strong>{hasWarning ? "ATTENTION RECORDED" : "NO CRITICAL EVENTS"}</strong>
+            <small>{feed.loading ? "Connecting to event feed" : `${feed.items.length} session events`}</small>
           </span>
         </div>
       </HudPanel>

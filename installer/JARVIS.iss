@@ -31,7 +31,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+MinVersion=10.0.17763
 OutputDir={#OutputDir}
 OutputBaseFilename=JARVIS-Setup-{#MyAppVersion}-win-x64
 Compression=lzma2/ultra64
@@ -70,6 +70,33 @@ Root: HKCU; Subkey: "{#StartupKey}"; ValueType: string; ValueName: "{#StartupVal
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  WebView2ClientKey = 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  WebView2MachineClientKey = 'Software\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+
+function HasWebView2Runtime(): Boolean;
+var
+  Version: String;
+begin
+  Result :=
+    (RegQueryStringValue(HKCU, WebView2ClientKey, 'pv', Version) and
+      (Trim(Version) <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKLM, WebView2MachineClientKey, 'pv', Version) and
+      (Trim(Version) <> '') and (Version <> '0.0.0.0'));
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  Result := HasWebView2Runtime();
+  if not Result then
+    MsgBox(
+      'JARVIS requires Microsoft Edge WebView2 Runtime.' + #13#10 + #13#10 +
+      'Install the Evergreen Runtime from Microsoft, then run this installer again. ' +
+      'No Windows shell settings have been changed.',
+      mbError,
+      MB_OK);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then

@@ -7,7 +7,10 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 ## Current scope
 
 - Windows 10 and Windows 11 Home/Pro desktop environments
-- Native taskbar overlay with running-window synchronization and recovery watchdog
+- Native, hybrid, and experimental full-replacement taskbar modes with running-window synchronization and recovery watchdog
+- Explorer-owned notification area in hybrid mode, with automatic native fallback
+- Real Windows audio, network, and power state shared by the top bar, taskbar, and Quick Settings
+- Session-only JARVIS System Feed with bounded, deduplicated host events
 - Keyboard-first application search and launcher
 - Windows-native system telemetry and on-demand process/hardware inspection
 - Integrated PowerShell, Command Prompt, and WSL sessions through ConPTY
@@ -31,10 +34,14 @@ The WebView renderer receives bounded capabilities rather than executable paths 
 
 Requirements:
 
-- Windows 10 version 1809 or later, or Windows 11
+- x64-compatible Windows 10 build 17763 (version 1809) or later, or Windows 11
 - Node.js and npm
 - .NET 8 SDK
 - Microsoft Edge WebView2 Runtime
+
+The installer and native host both verify WebView2. If the Evergreen Runtime is
+missing, setup stops before writing application files and the host also fails
+closed without changing the Windows desktop or taskbar.
 
 Build the frontend:
 
@@ -53,6 +60,11 @@ dotnet run --project .\host\Jarvis.Host\Jarvis.Host.csproj
 ```
 
 Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md).
+
+Taskbar modes are stored per user. `native` preserves the complete Windows
+taskbar, `hybrid` yields the notification area to Explorer, and `full` hides the
+primary taskbar behind the watchdog-backed experimental replacement. Any failed
+probe or activation returns to the native taskbar.
 
 ## License
 

@@ -25,6 +25,10 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3351.48" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jarvis.Host.Tests" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('..\..\frontend\dist\index.html')">
     <Content Include="..\..\frontend\dist\**\*">
       <Link>frontend\%(RecursiveDir)%(Filename)%(Extension)</Link>

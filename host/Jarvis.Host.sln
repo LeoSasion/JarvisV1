@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jarvis.Host", "Jarvis.Host\Jarvis.Host.csproj", "{E583FD63-C263-40FA-9C6E-D71EA8BCB7E6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jarvis.Host.Tests", "Jarvis.Host.Tests\Jarvis.Host.Tests.csproj", "{B87B4766-6824-4B0C-BC45-4EE34B3FB0BC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,5 +17,9 @@ Global
 		{E583FD63-C263-40FA-9C6E-D71EA8BCB7E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E583FD63-C263-40FA-9C6E-D71EA8BCB7E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E583FD63-C263-40FA-9C6E-D71EA8BCB7E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B87B4766-6824-4B0C-BC45-4EE34B3FB0BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B87B4766-6824-4B0C-BC45-4EE34B3FB0BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B87B4766-6824-4B0C-BC45-4EE34B3FB0BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B87B4766-6824-4B0C-BC45-4EE34B3FB0BC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
