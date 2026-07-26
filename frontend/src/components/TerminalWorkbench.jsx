@@ -56,29 +56,31 @@ function readTerminalTheme() {
   };
 }
 
-function TerminalViewport({ tab, active, onSessionState, onToast }) {
+function TerminalViewport({ tab, active, focused, onSessionState, onToast }) {
   const containerRef = useRef(null);
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
   const searchAddonRef = useRef(null);
   const sessionIdRef = useRef(null);
   const activeRef = useRef(active);
+  const focusedRef = useRef(focused);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     activeRef.current = active;
+    focusedRef.current = focused;
     if (!active || !terminalRef.current || !fitAddonRef.current) return undefined;
     const frame = window.requestAnimationFrame(() => {
       try {
         fitAddonRef.current?.fit();
-        terminalRef.current?.focus();
+        if (focused) terminalRef.current?.focus();
       } catch {
         // A tab can be removed while its activation frame is pending.
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [active]);
+  }, [active, focused]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -214,7 +216,7 @@ function TerminalViewport({ tab, active, onSessionState, onToast }) {
         processId: session.processId,
         label: session.profileLabel,
       });
-      terminal.focus();
+      if (focusedRef.current) terminal.focus();
       return null;
     }).catch((error) => {
       if (!mounted) return;
@@ -288,12 +290,20 @@ function TerminalViewport({ tab, active, onSessionState, onToast }) {
   );
 }
 
-export function TerminalWorkbench({ open, onClose, onToast }) {
+export function TerminalWorkbench({
+  open,
+  active,
+  visible,
+  maximized,
+  onClose,
+  onMinimize,
+  onToggleMaximize,
+  onToast,
+}) {
   const [profiles, setProfiles] = useState([]);
   const [selectedProfileId, setSelectedProfileId] = useState("powershell");
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
-  const [minimized, setMinimized] = useState(false);
   const sequenceRef = useRef(0);
 
   const addTab = useCallback((profileId = selectedProfileId, sourceProfiles = profiles) => {
@@ -359,19 +369,31 @@ export function TerminalWorkbench({ open, onClose, onToast }) {
   if (!open) return null;
 
   return (
-    <div className={`terminal-layer${minimized ? " is-minimized" : ""}`} role="presentation">
+    <div className="terminal-layer" role="presentation">
       <section className="terminal-workbench" role="dialog" aria-modal="false" aria-label="JARVIS Terminal Workbench">
-        <header className="terminal-titlebar">
+        <header
+          className="terminal-titlebar"
+          data-window-drag-handle
+          aria-keyshortcuts="Alt+F4 Alt+F9 Alt+F10"
+        >
           <span className="terminal-titlemark"><WindowConsoleRegular /></span>
           <span className="terminal-titlecopy">
             <small>CONPTY SECURE CHANNEL</small>
             <strong>TERMINAL WORKBENCH</strong>
           </span>
           <span className="terminal-link-status"><i />LOCAL HOST · {platform.isNative ? "NATIVE" : "SIMULATION"}</span>
-          <button type="button" onClick={() => setMinimized((current) => !current)} aria-label={minimized ? "Restore terminal" : "Minimize terminal"}>
+          <button type="button" data-no-window-drag onClick={onMinimize} aria-label="Minimize terminal">
             <SubtractRegular />
           </button>
-          <button type="button" onClick={onClose} aria-label="Close terminal"><DismissRegular /></button>
+          <button
+            type="button"
+            data-no-window-drag
+            onClick={onToggleMaximize}
+            aria-label={maximized ? "Restore terminal" : "Maximize terminal"}
+          >
+            {maximized ? "❐" : "□"}
+          </button>
+          <button type="button" data-no-window-drag onClick={onClose} aria-label="Close terminal"><DismissRegular /></button>
         </header>
 
         <>
@@ -417,7 +439,8 @@ export function TerminalWorkbench({ open, onClose, onToast }) {
               <TerminalViewport
                 key={tab.localId}
                 tab={tab}
-                active={!minimized && activeTabId === tab.localId}
+                active={visible && activeTabId === tab.localId}
+                focused={active && activeTabId === tab.localId}
                 onSessionState={updateSessionState}
                 onToast={onToast}
               />

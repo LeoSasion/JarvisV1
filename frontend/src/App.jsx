@@ -2,11 +2,14 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { CommandOverlay } from "./components/CommandOverlay.jsx";
 import { CoreStage } from "./components/CoreStage.jsx";
 import { DesktopShortcuts } from "./components/DesktopShortcuts.jsx";
+import { ManagedWorkspaceWindow } from "./components/ManagedWorkspaceWindow.jsx";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { TelemetryRail } from "./components/TelemetryRail.jsx";
 import { TopStatusBar } from "./components/TopStatusBar.jsx";
+import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
+import { subscribeWorkspaceCommands } from "./workspace-runtime-channel.js";
 
 const FileExplorerWindow = lazy(() => import("./components/FileExplorerWindow.jsx")
   .then((module) => ({ default: module.FileExplorerWindow })));
@@ -21,12 +24,23 @@ const BootSequence = lazy(() => import("./components/BootSequence.jsx")
 
 export function App() {
   const hasExternalTaskbar = new URLSearchParams(window.location.search).get("taskbar") === "external";
+  const {
+    state: workspaceState,
+    taskbarWindows: internalTaskbarWindows,
+    open: openWorkspaceWindow,
+    close: closeWorkspaceWindow,
+    activate: activateWorkspaceWindow,
+    minimize: minimizeWorkspaceWindow,
+    toggleMaximize: toggleMaximizeWorkspaceWindow,
+    toggleFromTaskbar: toggleWorkspaceWindowFromTaskbar,
+    commitBounds: commitWorkspaceWindowBounds,
+    cycle: cycleWorkspaceWindows,
+  } = useWorkspaceManager({ bottomInset: hasExternalTaskbar ? 90 : 128 });
   const [selectedShortcut, setSelectedShortcut] = useState(null);
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [shellPanel, setShellPanel] = useState(null);
-  const [explorerSession, setExplorerSession] = useState({ open: false, path: null, sequence: 0 });
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [explorerRequest, setExplorerRequest] = useState({ path: null, sequence: 0 });
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
   const [toast, setToast] = useState("");
@@ -37,20 +51,22 @@ export function App() {
   const openExplorer = useCallback((path = null) => {
     setCommandOpen(false);
     setShellPanel(null);
-    setActiveApp("explorer");
-    setExplorerSession((current) => ({
-      open: true,
-      path,
-      sequence: current.sequence + 1,
-    }));
-  }, []);
+    setActiveApp("builtin:explorer");
+    if (path) {
+      setExplorerRequest((current) => ({
+        path,
+        sequence: current.sequence + 1,
+      }));
+    }
+    openWorkspaceWindow("explorer");
+  }, [openWorkspaceWindow]);
 
   const openTerminal = useCallback(() => {
     setCommandOpen(false);
     setShellPanel(null);
-    setTerminalOpen(true);
     setActiveApp("builtin:terminal");
-  }, []);
+    openWorkspaceWindow("terminal");
+  }, [openWorkspaceWindow]);
 
   const hideTaskbarFlyout = useCallback(async () => {
     try {
@@ -69,13 +85,21 @@ export function App() {
   }, [showToast]);
 
   const closeTaskbarWindow = useCallback(async (windowId) => {
+    if (windowId.startsWith("jarvis:")) {
+      const internalWindowId = windowId.slice("jarvis:".length);
+      if (workspaceState.windows[internalWindowId]) {
+        closeWorkspaceWindow(internalWindowId);
+        showToast("JARVIS window closed");
+      }
+      return;
+    }
     try {
       await platform.taskbar.closeWindow(windowId);
       showToast("Window close requested");
     } catch (error) {
       showToast(`Unable to close window: ${error.message}`);
     }
-  }, [showToast]);
+  }, [closeWorkspaceWindow, showToast, workspaceState.windows]);
 
   const openCommand = useCallback(async () => {
     await hideTaskbarFlyout();
@@ -94,11 +118,43 @@ export function App() {
       if ((event.ctrlKey || event.metaKey) && event.code === "Space") {
         event.preventDefault();
         setCommandOpen((current) => !current);
+        return;
+      }
+      const activeWindowId = workspaceState.activeId;
+      if (event.ctrlKey && event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        event.preventDefault();
+        cycleWorkspaceWindows(event.key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      if (!activeWindowId || !event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key === "F4") {
+        event.preventDefault();
+        closeWorkspaceWindow(activeWindowId);
+      } else if (event.key === "F9") {
+        event.preventDefault();
+        minimizeWorkspaceWindow(activeWindowId);
+      } else if (event.key === "F10") {
+        event.preventDefault();
+        toggleMaximizeWorkspaceWindow(activeWindowId);
       }
     };
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
+  }, [
+    closeWorkspaceWindow,
+    cycleWorkspaceWindows,
+    minimizeWorkspaceWindow,
+    toggleMaximizeWorkspaceWindow,
+    workspaceState.activeId,
+  ]);
+
+  useEffect(() => subscribeWorkspaceCommands(({ id, action }) => {
+    if (action === "close") {
+      closeWorkspaceWindow(id);
+      return;
+    }
+    toggleWorkspaceWindowFromTaskbar(id);
+  }), [closeWorkspaceWindow, toggleWorkspaceWindowFromTaskbar]);
 
   useEffect(() => {
     const handleOpenPanel = (event) => {
@@ -153,7 +209,9 @@ export function App() {
 
   const inspect = useCallback((label) => {
     setInspectorTarget(label);
-  }, []);
+    setActiveApp("internal:inspector");
+    openWorkspaceWindow("inspector");
+  }, [openWorkspaceWindow]);
 
   const handleNotification = useCallback((notification) => {
     showToast(`${notification.title}: ${notification.detail}`);
@@ -177,6 +235,13 @@ export function App() {
     setActiveApp(item.id);
     await hideTaskbarFlyout();
     try {
+      if (runningWindow?.internalWindowId) {
+        toggleWorkspaceWindowFromTaskbar(runningWindow.internalWindowId);
+        showToast(runningWindow.active && !runningWindow.minimized
+          ? `Minimizing ${item.label}`
+          : `Switching to ${item.label}`);
+        return;
+      }
       if (builtinId === "explorer") {
         openExplorer();
         showToast("JARVIS File Explorer ready");
@@ -214,7 +279,14 @@ export function App() {
       const appLabel = item.label ?? runningWindow?.processName ?? item.id;
       showToast(`Unable to open ${appLabel}: ${error.message}`);
     }
-  }, [hideTaskbarFlyout, launchInstalledApplication, openExplorer, openTerminal, showToast]);
+  }, [
+    hideTaskbarFlyout,
+    launchInstalledApplication,
+    openExplorer,
+    openTerminal,
+    showToast,
+    toggleWorkspaceWindowFromTaskbar,
+  ]);
 
   const openShellPanel = useCallback(async (panel) => {
     await hideTaskbarFlyout();
@@ -327,42 +399,86 @@ export function App() {
         </Suspense>
       ) : null}
 
-      {explorerSession.open ? (
-        <Suspense fallback={null}>
-          <FileExplorerWindow
-            key={explorerSession.sequence}
-            open
-            initialPath={explorerSession.path}
-            onClose={() => setExplorerSession((current) => ({ ...current, open: false }))}
-            onToast={showToast}
-          />
-        </Suspense>
+      {workspaceState.windows.explorer.open ? (
+        <ManagedWorkspaceWindow
+          id="explorer"
+          windowState={workspaceState.windows.explorer}
+          viewport={workspaceState.viewport}
+          active={workspaceState.activeId === "explorer"}
+          onActivate={activateWorkspaceWindow}
+          onCommitBounds={commitWorkspaceWindowBounds}
+          onToggleMaximize={toggleMaximizeWorkspaceWindow}
+        >
+          <Suspense fallback={null}>
+            <FileExplorerWindow
+              open
+              active={workspaceState.activeId === "explorer" && !workspaceState.windows.explorer.minimized}
+              initialPath={explorerRequest.path}
+              requestSequence={explorerRequest.sequence}
+              maximized={workspaceState.windows.explorer.maximized}
+              onMinimize={() => minimizeWorkspaceWindow("explorer")}
+              onToggleMaximize={() => toggleMaximizeWorkspaceWindow("explorer")}
+              onClose={() => closeWorkspaceWindow("explorer")}
+              onToast={showToast}
+            />
+          </Suspense>
+        </ManagedWorkspaceWindow>
       ) : null}
 
-      {terminalOpen ? (
-        <Suspense fallback={null}>
-          <TerminalWorkbench
-            open
-            onClose={() => setTerminalOpen(false)}
-            onToast={showToast}
-          />
-        </Suspense>
+      {workspaceState.windows.terminal.open ? (
+        <ManagedWorkspaceWindow
+          id="terminal"
+          windowState={workspaceState.windows.terminal}
+          viewport={workspaceState.viewport}
+          active={workspaceState.activeId === "terminal"}
+          onActivate={activateWorkspaceWindow}
+          onCommitBounds={commitWorkspaceWindowBounds}
+          onToggleMaximize={toggleMaximizeWorkspaceWindow}
+        >
+          <Suspense fallback={null}>
+            <TerminalWorkbench
+              open
+              active={workspaceState.activeId === "terminal" && !workspaceState.windows.terminal.minimized}
+              visible={!workspaceState.windows.terminal.minimized}
+              maximized={workspaceState.windows.terminal.maximized}
+              onMinimize={() => minimizeWorkspaceWindow("terminal")}
+              onToggleMaximize={() => toggleMaximizeWorkspaceWindow("terminal")}
+              onClose={() => closeWorkspaceWindow("terminal")}
+              onToast={showToast}
+            />
+          </Suspense>
+        </ManagedWorkspaceWindow>
       ) : null}
 
-      {inspectorTarget ? (
-        <Suspense fallback={null}>
-          <SystemInspector
-            open
-            target={inspectorTarget}
-            onClose={() => setInspectorTarget(null)}
-            onToast={showToast}
-          />
-        </Suspense>
+      {workspaceState.windows.inspector.open ? (
+        <ManagedWorkspaceWindow
+          id="inspector"
+          windowState={workspaceState.windows.inspector}
+          viewport={workspaceState.viewport}
+          active={workspaceState.activeId === "inspector"}
+          onActivate={activateWorkspaceWindow}
+          onCommitBounds={commitWorkspaceWindowBounds}
+          onToggleMaximize={toggleMaximizeWorkspaceWindow}
+        >
+          <Suspense fallback={null}>
+            <SystemInspector
+              open
+              active={workspaceState.activeId === "inspector" && !workspaceState.windows.inspector.minimized}
+              target={inspectorTarget}
+              maximized={workspaceState.windows.inspector.maximized}
+              onMinimize={() => minimizeWorkspaceWindow("inspector")}
+              onToggleMaximize={() => toggleMaximizeWorkspaceWindow("inspector")}
+              onClose={() => closeWorkspaceWindow("inspector")}
+              onToast={showToast}
+            />
+          </Suspense>
+        </ManagedWorkspaceWindow>
       ) : null}
 
       {!hasExternalTaskbar && (
         <Taskbar
           activeApp={activeApp}
+          internalWindows={internalTaskbarWindows}
           onAppClick={handleAppClick}
           onOpenCommand={openCommand}
           onOpenStart={() => openShellPanel("start")}

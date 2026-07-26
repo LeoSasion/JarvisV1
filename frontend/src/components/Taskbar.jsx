@@ -5,6 +5,7 @@ import {
   DismissRegular,
   MoreHorizontalRegular,
   PlugConnectedRegular,
+  PulseRegular,
   SearchRegular,
   Speaker2Regular,
   SpeakerOffRegular,
@@ -84,11 +85,14 @@ function getProcessLabel(processName, fallbackTitle) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function buildTaskbarItems(windows, pinnedApps, runningOrder) {
+function buildTaskbarItems(windows, pinnedApps, runningOrder, internalWindows = []) {
   const { matchedWindowsByApplication, unmatchedWindows } =
     partitionWindowsByPinnedApplications(windows, pinnedApps);
+  const consumedInternalWindowIds = new Set();
   const pinnedItems = pinnedApps.map((app, index) => {
-    const appWindows = matchedWindowsByApplication[index];
+    const internalMatches = internalWindows.filter((window) => window.taskbarItemId === app.id);
+    internalMatches.forEach((window) => consumedInternalWindowIds.add(window.windowId));
+    const appWindows = [...matchedWindowsByApplication[index], ...internalMatches];
     return {
       ...app,
       isPinned: true,
@@ -114,6 +118,17 @@ function buildTaskbarItems(windows, pinnedApps, runningOrder) {
     }
     group.windows.push(window);
   });
+  internalWindows
+    .filter((window) => !consumedInternalWindowIds.has(window.windowId))
+    .forEach((window) => {
+      runningGroups.set(window.taskbarItemId, {
+        id: window.taskbarItemId,
+        label: window.title,
+        Icon: window.internalWindowId === "inspector" ? PulseRegular : WindowAppsRegular,
+        isPinned: false,
+        windows: [window],
+      });
+    });
 
   const runningItems = Array.from(runningGroups.values(), (group) => ({
     ...group,
@@ -121,6 +136,9 @@ function buildTaskbarItems(windows, pinnedApps, runningOrder) {
   }));
   const orderById = new Map(runningOrder.map((id, index) => [id, index]));
   runningItems.sort((left, right) => {
+    const leftIsInternal = left.windows.some((window) => window.internalWindowId);
+    const rightIsInternal = right.windows.some((window) => window.internalWindowId);
+    if (leftIsInternal !== rightIsInternal) return leftIsInternal ? -1 : 1;
     const leftIndex = orderById.get(left.id);
     const rightIndex = orderById.get(right.id);
     if (leftIndex === undefined && rightIndex === undefined) return 0;
@@ -243,6 +261,7 @@ function TaskbarLocalFlyout({ flyout, onActivate, onCloseWindow, onContextAction
 
 export function Taskbar({
   activeApp,
+  internalWindows = [],
   onAppClick,
   onOpenCommand,
   onOpenStart,
@@ -274,8 +293,8 @@ export function Taskbar({
     resolvePinnedApplications(pinnedApplicationRefs, menuApplications),
   ), [menuApplications, pinnedApplicationRefs]);
   const taskbarItems = useMemo(
-    () => buildTaskbarItems(taskbar.windows, orderedPinnedApps, runningOrder),
-    [orderedPinnedApps, runningOrder, taskbar.windows],
+    () => buildTaskbarItems(taskbar.windows, orderedPinnedApps, runningOrder, internalWindows),
+    [internalWindows, orderedPinnedApps, runningOrder, taskbar.windows],
   );
   useEffect(() => {
     taskbarItemsRef.current = taskbarItems;
@@ -290,7 +309,8 @@ export function Taskbar({
   const hasOverflow = taskbarItems.length > capacity;
   const visibleItems = hasOverflow ? taskbarItems.slice(0, capacity - 1) : taskbarItems;
   const overflowItems = hasOverflow ? taskbarItems.slice(capacity - 1) : [];
-  const hasActiveWindow = taskbar.windows.some((window) => window.active);
+  const hasActiveWindow = taskbar.windows.some((window) => window.active)
+    || internalWindows.some((window) => window.active);
   const networkAvailable = tray.network.available;
   const power = tray.power;
   const alertCount = feed.unreadCount;
@@ -311,7 +331,7 @@ export function Taskbar({
       windowIds: item.windows.map((window) => window.windowId),
       ...getFlyoutAnchor(event.currentTarget),
     };
-    if (platformKind === "mock") {
+    if (platformKind === "mock" || item.windows.some((window) => window.internalWindowId)) {
       setMockFlyout({ mode: "windows", item });
       return;
     }
@@ -321,7 +341,8 @@ export function Taskbar({
   const showOverflow = useCallback((event) => {
     event.preventDefault();
     onHideFlyout();
-    if (platformKind !== "mock") {
+    if (platformKind !== "mock" && !overflowItems.some((item) =>
+      item.windows.some((window) => window.internalWindowId))) {
       const windowIds = overflowItems.flatMap((item) =>
         item.windows.map((window) => window.windowId));
       if (windowIds.length > 0) {
@@ -383,12 +404,6 @@ export function Taskbar({
       onAppClick(item, null, { forceLaunch: true });
       return;
     }
-    if (item.pinnedApplication?.id === "explorer" && item.isPinned) {
-      setMockFlyout(null);
-      onHideFlyout();
-      onAppClick(item, null);
-      return;
-    }
     if (item.windows.length > 1) {
       showWindowGroup(event, item);
       return;
@@ -418,7 +433,7 @@ export function Taskbar({
       actions,
       ...getFlyoutAnchor(event.currentTarget),
     };
-    if (platformKind === "mock") {
+    if (platformKind === "mock" || item.windows.some((window) => window.internalWindowId)) {
       setMockFlyout({ mode: "context", item, actions });
       return;
     }
@@ -449,8 +464,15 @@ export function Taskbar({
       <nav ref={appsRef} className="taskbar-apps" aria-label="Taskbar applications">
         {visibleItems.map((item) => {
           const { id, label, windows, selectedWindow: runningWindow } = item;
+          const isInternalBuiltin = item.pinnedApplication?.id === "explorer"
+            || item.pinnedApplication?.id === "terminal";
           const isActive = runningWindow?.active
-            ?? (platformKind === "mock" && taskbar.windows.length === 0 && activeApp === id);
+            ?? (
+              platformKind === "mock" &&
+              taskbar.windows.length === 0 &&
+              !isInternalBuiltin &&
+              activeApp === id
+            );
           const className = [
             isActive ? "is-active" : "",
             runningWindow ? "is-running" : "",

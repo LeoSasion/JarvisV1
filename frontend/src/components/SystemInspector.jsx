@@ -159,7 +159,16 @@ function HardwareView({ details }) {
   );
 }
 
-export function SystemInspector({ open, target, onClose, onToast }) {
+export function SystemInspector({
+  open,
+  active,
+  target,
+  maximized,
+  onClose,
+  onMinimize,
+  onToggleMaximize,
+  onToast,
+}) {
   const system = useSystemSnapshot();
   const [view, setView] = useState("overview");
   const [details, setDetails] = useState(null);
@@ -186,25 +195,38 @@ export function SystemInspector({ open, target, onClose, onToast }) {
   }, [open, refresh]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || !active) return undefined;
     const handleEscape = (event) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose, open]);
+  }, [active, onClose, open]);
 
   if (!open) return null;
 
   return (
-    <div className="system-inspector-layer" onMouseDown={onClose}>
-      <section className="system-inspector" role="dialog" aria-modal="false" aria-label="System inspector" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="system-inspector-titlebar">
+    <div className="system-inspector-layer">
+      <section className="system-inspector" role="dialog" aria-modal="false" aria-label="System inspector">
+        <header
+          className="system-inspector-titlebar"
+          data-window-drag-handle
+          aria-keyshortcuts="Alt+F4 Alt+F9 Alt+F10"
+        >
           <span><PulseRegular /></span>
           <span><small>ON-DEMAND NATIVE SNAPSHOT</small><strong>SYSTEM INSPECTOR</strong></span>
           <code>{status === "loading" ? "SCANNING" : status === "error" ? "DEGRADED" : "SNAPSHOT READY"}</code>
-          <button type="button" onClick={refresh} disabled={status === "loading"} aria-label="Refresh system details"><ArrowClockwiseRegular /></button>
-          <button type="button" onClick={onClose} aria-label="Close system inspector"><DismissRegular /></button>
+          <button type="button" data-no-window-drag onClick={refresh} disabled={status === "loading"} aria-label="Refresh system details"><ArrowClockwiseRegular /></button>
+          <button type="button" data-no-window-drag onClick={onMinimize} aria-label="Minimize system inspector">—</button>
+          <button
+            type="button"
+            data-no-window-drag
+            onClick={onToggleMaximize}
+            aria-label={maximized ? "Restore system inspector" : "Maximize system inspector"}
+          >
+            {maximized ? "❐" : "□"}
+          </button>
+          <button type="button" data-no-window-drag onClick={onClose} aria-label="Close system inspector"><DismissRegular /></button>
         </header>
 
         <nav className="system-inspector-tabs" aria-label="System detail views">

@@ -225,7 +225,17 @@ function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm }) {
   );
 }
 
-export function FileExplorerWindow({ open, initialPath, onClose, onToast }) {
+export function FileExplorerWindow({
+  open,
+  active,
+  initialPath,
+  requestSequence,
+  maximized,
+  onClose,
+  onMinimize,
+  onToggleMaximize,
+  onToast,
+}) {
   const requestIdRef = useRef(0);
   const [snapshot, setSnapshot] = useState(EMPTY_SNAPSHOT);
   const [history, setHistory] = useState([]);
@@ -314,7 +324,7 @@ export function FileExplorerWindow({ open, initialPath, onClose, onToast }) {
       cancelled = true;
       requestIdRef.current += 1;
     };
-  }, [browse, initialPath, open]);
+  }, [browse, initialPath, open, requestSequence]);
 
   const visibleEntries = useMemo(() => {
     if (!deferredSearch) return snapshot.entries;
@@ -540,7 +550,7 @@ export function FileExplorerWindow({ open, initialPath, onClose, onToast }) {
   }, [commandDialog, runMutation, snapshot.currentPath]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || !active) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -586,6 +596,7 @@ export function FileExplorerWindow({ open, initialPath, onClose, onToast }) {
   }, [
     commandDialog,
     copySelection,
+    active,
     onClose,
     open,
     openCreateDialog,
@@ -607,12 +618,23 @@ export function FileExplorerWindow({ open, initialPath, onClose, onToast }) {
   return (
     <div className="explorer-layer" aria-hidden={false}>
       <section className="jarvis-explorer" role="dialog" aria-modal="false" aria-label="JARVIS File Explorer">
-        <header className="explorer-titlebar">
+        <header
+          className="explorer-titlebar"
+          data-window-drag-handle
+          aria-keyshortcuts="Alt+F4 Alt+F9 Alt+F10"
+        >
           <FolderRegular aria-hidden="true" />
           <strong>FILE EXPLORER</strong>
           <span>LOCAL FILESYSTEM · RECYCLE-SAFE WRITE MODE</span>
-          <div className="explorer-window-actions">
-            <button type="button" aria-label="Minimize JARVIS File Explorer" onClick={onClose}>—</button>
+          <div className="explorer-window-actions" data-no-window-drag>
+            <button type="button" aria-label="Minimize JARVIS File Explorer" onClick={onMinimize}>—</button>
+            <button
+              type="button"
+              aria-label={maximized ? "Restore JARVIS File Explorer" : "Maximize JARVIS File Explorer"}
+              onClick={onToggleMaximize}
+            >
+              {maximized ? "❐" : "□"}
+            </button>
             <button type="button" aria-label="Close JARVIS File Explorer" onClick={onClose}><DismissRegular /></button>
           </div>
         </header>

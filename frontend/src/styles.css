@@ -2962,7 +2962,7 @@ button.process-grid:hover {
 
 .system-inspector-titlebar {
   display: grid;
-  grid-template-columns: 32px minmax(220px, auto) 1fr 38px 38px;
+  grid-template-columns: 32px minmax(180px, auto) 1fr repeat(4, 38px);
   align-items: center;
   gap: 11px;
   padding: 0 10px 0 15px;
@@ -5696,7 +5696,7 @@ button.process-grid:hover {
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: 34px minmax(220px, auto) 1fr 38px 38px;
+  grid-template-columns: 34px minmax(220px, auto) 1fr repeat(3, 38px);
   align-items: center;
   gap: 10px;
   padding: 0 9px 0 16px;
@@ -6177,5 +6177,198 @@ button.process-grid:hover {
 
   .terminal-new-tab span {
     display: none;
+  }
+}
+
+/* Shared renderer window manager. Geometry lives on the outer frame so every
+   internal tool follows the same activation, persistence and viewport rules. */
+.workspace-window {
+  position: fixed;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: auto;
+  isolation: isolate;
+  contain: layout style;
+  transition: filter 120ms ease, opacity 120ms ease;
+}
+
+.workspace-window[hidden] {
+  display: none !important;
+}
+
+.workspace-window.is-manipulating {
+  user-select: none;
+  transition: none;
+}
+
+.workspace-window:not(.is-active) {
+  opacity: 0.94;
+}
+
+.workspace-window.is-active {
+  opacity: 1;
+}
+
+.workspace-window .explorer-layer,
+.workspace-window .terminal-layer,
+.workspace-window .system-inspector-layer {
+  position: absolute;
+  inset: 0;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: auto;
+  background: transparent;
+  animation: none;
+}
+
+.workspace-window .jarvis-explorer,
+.workspace-window .terminal-workbench,
+.workspace-window .system-inspector {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
+  animation: terminal-workbench-in 160ms cubic-bezier(0.18, 0.75, 0.2, 1);
+}
+
+.workspace-window.is-active .jarvis-explorer,
+.workspace-window.is-active .terminal-workbench,
+.workspace-window.is-active .system-inspector {
+  border-color: rgba(41, 181, 255, 0.96);
+  box-shadow:
+    0 0 0 1px rgba(0, 42, 72, 0.96) inset,
+    0 0 18px rgba(0, 126, 230, 0.2),
+    0 18px 48px rgba(0, 0, 0, 0.62);
+}
+
+.workspace-window.is-maximized .jarvis-explorer,
+.workspace-window.is-maximized .terminal-workbench,
+.workspace-window.is-maximized .system-inspector {
+  border-radius: 0;
+  clip-path: none;
+}
+
+.workspace-window [data-window-drag-handle] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.workspace-window.is-manipulating [data-window-drag-handle] {
+  cursor: grabbing;
+}
+
+.workspace-window [data-window-drag-handle] button,
+.workspace-window [data-window-drag-handle] input,
+.workspace-window [data-window-drag-handle] select,
+.workspace-window [data-window-drag-handle] a {
+  cursor: pointer;
+}
+
+.workspace-resize-handle {
+  position: absolute;
+  z-index: 90;
+  display: block;
+  outline: 0;
+  touch-action: none;
+}
+
+.workspace-resize-handle:focus-visible {
+  background: rgba(74, 215, 255, 0.35);
+  box-shadow: 0 0 8px rgba(34, 207, 255, 0.8);
+}
+
+.workspace-resize-handle.is-n,
+.workspace-resize-handle.is-s {
+  right: 10px;
+  left: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.workspace-resize-handle.is-n { top: -4px; }
+.workspace-resize-handle.is-s { bottom: -4px; }
+
+.workspace-resize-handle.is-e,
+.workspace-resize-handle.is-w {
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.workspace-resize-handle.is-e { right: -4px; }
+.workspace-resize-handle.is-w { left: -4px; }
+
+.workspace-resize-handle.is-ne,
+.workspace-resize-handle.is-se,
+.workspace-resize-handle.is-sw,
+.workspace-resize-handle.is-nw {
+  width: 14px;
+  height: 14px;
+}
+
+.workspace-resize-handle.is-ne {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.workspace-resize-handle.is-se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+
+.workspace-resize-handle.is-sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.workspace-resize-handle.is-nw {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.system-inspector-titlebar,
+.terminal-titlebar,
+.explorer-titlebar {
+  user-select: none;
+}
+
+@media (max-width: 900px), (max-height: 620px) {
+  .workspace-window .explorer-titlebar > span,
+  .workspace-window .terminal-link-status,
+  .workspace-window .system-inspector-titlebar code {
+    display: none;
+  }
+
+  .workspace-window .explorer-titlebar {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+  }
+
+  .workspace-window .terminal-titlebar {
+    grid-template-columns: 34px minmax(0, 1fr) repeat(3, 38px);
+  }
+
+  .workspace-window .system-inspector-titlebar {
+    grid-template-columns: 32px minmax(0, 1fr) repeat(4, 38px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-window,
+  .workspace-window .jarvis-explorer,
+  .workspace-window .terminal-workbench,
+  .workspace-window .system-inspector {
+    transition: none;
+    animation: none;
   }
 }

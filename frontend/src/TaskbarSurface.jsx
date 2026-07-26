@@ -1,11 +1,19 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
+import {
+  readWorkspaceRuntime,
+  sendWorkspaceCommand,
+  subscribeWorkspaceRuntime,
+} from "./workspace-runtime-channel.js";
 
 export function TaskbarSurface() {
   const [activeApp, setActiveApp] = useState("builtin:explorer");
+  const [internalWindows, setInternalWindows] = useState(readWorkspaceRuntime);
   const taskbarMode = new URLSearchParams(window.location.search).get("taskbarMode") ?? "full";
+
+  useEffect(() => subscribeWorkspaceRuntime(setInternalWindows), []);
 
   const hideTaskbarFlyout = useCallback(async () => {
     try {
@@ -23,14 +31,6 @@ export function TaskbarSurface() {
     }
   }, []);
 
-  const closeTaskbarWindow = useCallback(async (windowId) => {
-    try {
-      await platform.taskbar.closeWindow(windowId);
-    } catch {
-      // A window may close on its own before the native request arrives.
-    }
-  }, []);
-
   const showDesktopPanel = useCallback(async (panel = null) => {
     await hideTaskbarFlyout();
     try {
@@ -40,10 +40,29 @@ export function TaskbarSurface() {
     }
   }, [hideTaskbarFlyout]);
 
+  const closeTaskbarWindow = useCallback(async (windowId) => {
+    if (windowId.startsWith("jarvis:")) {
+      const internalWindowId = windowId.slice("jarvis:".length);
+      await showDesktopPanel();
+      sendWorkspaceCommand(internalWindowId, "close");
+      return;
+    }
+    try {
+      await platform.taskbar.closeWindow(windowId);
+    } catch {
+      // A window may close on its own before the native request arrives.
+    }
+  }, [showDesktopPanel]);
+
   const handleAppClick = useCallback(async (item, runningWindow = null, options = {}) => {
     const builtinId = item.pinnedApplication?.id;
     setActiveApp(item.id);
     try {
+      if (runningWindow?.internalWindowId) {
+        await showDesktopPanel();
+        sendWorkspaceCommand(runningWindow.internalWindowId, "toggle");
+        return;
+      }
       if (builtinId === "explorer") {
         await showDesktopPanel("explorer");
         return;
@@ -84,6 +103,7 @@ export function TaskbarSurface() {
     >
       <Taskbar
         activeApp={activeApp}
+        internalWindows={internalWindows}
         onAppClick={handleAppClick}
         onOpenCommand={() => showDesktopPanel("command")}
         onOpenStart={() => showDesktopPanel("start")}
