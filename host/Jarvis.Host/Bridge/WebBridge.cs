@@ -307,6 +307,8 @@ internal sealed class WebBridge : IDisposable
             "windowAppearance.getState" => _windowAppearanceService.GetState(),
             "windowAppearance.setMode" => _windowAppearanceService.SetMode(
                 GetRequiredWindowAppearanceMode(parameters)),
+            "windowAppearance.setRule" => SetWindowAppearanceRule(parameters),
+            "windowAppearance.removeRule" => RemoveWindowAppearanceRule(parameters),
             "shell.listApplications" => await Task.Run(
                 () => (object)_shellService.ListApplications(),
                 cancellationToken),
@@ -1101,6 +1103,58 @@ internal sealed class WebBridge : IDisposable
         }
 
         return mode;
+    }
+
+    private object SetWindowAppearanceRule(JsonElement parameters)
+    {
+        var processName = GetRequiredWindowAppearanceProcessName(parameters);
+        if (!parameters.TryGetProperty("action", out var actionElement) ||
+            actionElement.ValueKind != JsonValueKind.String ||
+            !NativeWindowAppearanceRuleSet.TryParseAction(actionElement.GetString(), out _))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "windowAppearance.setRule requires params.action set to allow or deny.");
+        }
+
+        try
+        {
+            return _windowAppearanceService.SetRule(processName, actionElement.GetString()!);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new BridgeFaultException("INVALID_PARAMS", exception.Message);
+        }
+    }
+
+    private object RemoveWindowAppearanceRule(JsonElement parameters)
+    {
+        var processName = GetRequiredWindowAppearanceProcessName(parameters);
+        try
+        {
+            return _windowAppearanceService.RemoveRule(processName);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new BridgeFaultException("INVALID_PARAMS", exception.Message);
+        }
+    }
+
+    private static string GetRequiredWindowAppearanceProcessName(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("processName", out var processNameElement) ||
+            processNameElement.ValueKind != JsonValueKind.String ||
+            !NativeWindowAppearanceRuleSet.TryNormalizeProcessName(
+                processNameElement.GetString(),
+                out var processName))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "Window appearance rules require a process filename without a path.");
+        }
+
+        return processName;
     }
 
     private static string GetRequiredTaskbarMode(JsonElement parameters)

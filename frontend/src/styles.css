@@ -5025,6 +5025,282 @@ button.process-grid:hover {
   color: #e4b166;
 }
 
+.window-rule-editor,
+.window-compatibility {
+  border-top: 1px solid rgba(27, 74, 103, 0.72);
+  background: rgba(1, 10, 18, 0.6);
+}
+
+.window-rule-editor > header,
+.window-compatibility > header {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px;
+  background: linear-gradient(90deg, rgba(6, 31, 47, 0.72), transparent);
+}
+
+.window-rule-editor > header span,
+.window-compatibility > header span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.window-rule-editor > header strong,
+.window-compatibility > header strong {
+  color: #b8d8e7;
+  font: 600 9px/1 "Segoe UI", sans-serif;
+}
+
+.window-rule-editor > header small,
+.window-compatibility > header small {
+  overflow: hidden;
+  color: #5f8297;
+  font: 7px/1 Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-compatibility > header > b {
+  min-width: 24px;
+  padding: 5px;
+  border: 1px solid rgba(42, 132, 185, 0.62);
+  color: #82d8fa;
+  font: 600 8px/1 Consolas, monospace;
+  text-align: center;
+}
+
+.window-rule-editor form {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) auto auto;
+  gap: 6px;
+  padding: 0 11px 10px;
+}
+
+.window-rule-editor form label {
+  min-width: 0;
+}
+
+.window-rule-editor form input {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(39, 91, 120, 0.78);
+  border-radius: 0;
+  outline: 0;
+  background: rgba(0, 7, 13, 0.92);
+  color: #bde8f8;
+  font: 9px/1 Consolas, monospace;
+}
+
+.window-rule-editor form input::placeholder {
+  color: #466477;
+}
+
+.window-rule-editor form input:focus {
+  border-color: #36b8eb;
+  box-shadow: 0 0 8px rgba(34, 179, 232, 0.18) inset;
+}
+
+.window-rule-editor form input[aria-invalid="true"] {
+  border-color: rgba(239, 111, 87, 0.88);
+}
+
+.window-rule-action {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+}
+
+.window-rule-action button,
+.window-rule-submit,
+.window-rule-list button,
+.window-compatibility-list button {
+  border: 1px solid rgba(45, 82, 103, 0.84);
+  border-radius: 0;
+  background: rgba(2, 15, 24, 0.92);
+  color: #66889a;
+  font: 600 7px/1 Consolas, monospace;
+}
+
+.window-rule-action button {
+  height: 30px;
+  margin-left: -1px;
+}
+
+.window-rule-action button.is-active.is-allow,
+.window-rule-list button.is-allow {
+  border-color: rgba(42, 165, 202, 0.82);
+  color: #87e3ff;
+  background: rgba(5, 53, 68, 0.72);
+}
+
+.window-rule-action button.is-active.is-deny,
+.window-rule-list button.is-deny {
+  border-color: rgba(215, 123, 72, 0.78);
+  color: #ffc18c;
+  background: rgba(62, 31, 13, 0.68);
+}
+
+.window-rule-submit {
+  min-width: 52px;
+  height: 30px;
+  border-color: rgba(41, 135, 178, 0.82);
+  color: #8fdfff;
+}
+
+.window-rule-action button:focus-visible,
+.window-rule-submit:focus-visible,
+.window-rule-list button:focus-visible,
+.window-compatibility-list button:focus-visible {
+  outline: 1px solid #a7e9ff;
+  outline-offset: 2px;
+}
+
+.window-rule-action button:disabled,
+.window-rule-submit:disabled,
+.window-rule-list button:disabled,
+.window-compatibility-list button:disabled {
+  cursor: wait;
+  opacity: 0.48;
+}
+
+.window-rule-inline-error,
+.window-rule-empty {
+  margin: 0;
+  padding: 0 11px 10px;
+  color: #66879a;
+  font: 8px/1.35 "Segoe UI", sans-serif;
+}
+
+.window-rule-inline-error {
+  color: #ff9c8d;
+}
+
+.window-rule-list {
+  display: grid;
+  gap: 1px;
+  max-height: 142px;
+  overflow: auto;
+  border-top: 1px solid rgba(22, 60, 85, 0.54);
+  background: rgba(22, 60, 85, 0.44);
+}
+
+.window-rule-list > div {
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(1, 10, 18, 0.97);
+}
+
+.window-rule-list code {
+  overflow: hidden;
+  color: #9fc6d7;
+  font: 8px/1 Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-rule-list button {
+  height: 23px;
+}
+
+.window-rule-list .window-rule-remove {
+  display: grid;
+  place-items: center;
+  border-color: transparent;
+  color: #607f91;
+}
+
+.window-rule-list .window-rule-remove svg {
+  width: 13px;
+  height: 13px;
+}
+
+.window-compatibility-list {
+  display: grid;
+  gap: 1px;
+  max-height: 228px;
+  overflow: auto;
+  background: rgba(22, 60, 85, 0.44);
+}
+
+.window-compatibility-list > div {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) auto 58px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(1, 10, 18, 0.97);
+  box-shadow: 2px 0 0 rgba(48, 141, 184, 0.7) inset;
+}
+
+.window-compatibility-list > div.is-denied {
+  box-shadow: 2px 0 0 rgba(213, 127, 68, 0.78) inset;
+}
+
+.window-compatibility-list > div.is-limited,
+.window-compatibility-list > div.is-protected {
+  box-shadow: 2px 0 0 rgba(91, 111, 124, 0.68) inset;
+}
+
+.window-compatibility-list > div > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.window-compatibility-list code {
+  overflow: hidden;
+  color: #a5cfdf;
+  font: 8px/1 Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-compatibility-list > div > span:first-child small {
+  overflow: hidden;
+  color: #5f8195;
+  font: 8px/1 "Segoe UI", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-compatibility-counts {
+  display: grid;
+  grid-template-columns: repeat(3, auto auto);
+  gap: 5px;
+  align-items: baseline;
+  text-align: center;
+}
+
+.window-compatibility-counts small {
+  color: #49697d;
+  font: 6px/1 Consolas, monospace;
+}
+
+.window-compatibility-counts b {
+  color: #87cce7;
+  font: 600 8px/1 Consolas, monospace;
+}
+
+.window-compatibility-list button {
+  min-width: 58px;
+  height: 25px;
+  color: #7fcce9;
+}
+
+.window-compatibility-list button:disabled {
+  cursor: default;
+  color: #5b7482;
+}
+
 .window-appearance-safety-note,
 .window-appearance-feedback {
   min-height: 38px;

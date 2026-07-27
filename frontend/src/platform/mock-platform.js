@@ -1,10 +1,22 @@
 import { processes, resources, shortcuts } from "../data.js";
+import { normalizeWindowAppearanceProcessName } from "../window-appearance-model.js";
 
 const DECIMAL_MB = 1_000_000;
 const DECIMAL_GB = 1_000_000_000;
 const BINARY_GB = 1024 ** 3;
 const WINDOW_APPEARANCE_STORAGE_KEY = "jarvis.windowAppearance.mode.v1";
+const WINDOW_APPEARANCE_RULES_STORAGE_KEY = "jarvis.windowAppearance.rules.v1";
 const WINDOW_APPEARANCE_MODES = new Set(["off", "conservative", "enhanced", "immersive"]);
+const WINDOW_APPEARANCE_RULE_ACTIONS = new Set(["allow", "deny"]);
+const WINDOW_APPEARANCE_PROTECTED_PROCESSES = new Set([
+  "dwm",
+  "lockapp",
+  "searchhost",
+  "searchapp",
+  "shellexperiencehost",
+  "startmenuexperiencehost",
+  "textinputhost",
+]);
 const TASKBAR_MODE_STORAGE_KEY = "jarvis.taskbar.mode.v1";
 const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
 const MOCK_STYLED_WINDOW_COUNTS = {
@@ -31,7 +43,62 @@ function persistMockWindowAppearanceMode(mode) {
   }
 }
 
-function createMockWindowAppearanceState(mode) {
+function readMockWindowAppearanceRules() {
+  try {
+    const rules = JSON.parse(globalThis.localStorage?.getItem(WINDOW_APPEARANCE_RULES_STORAGE_KEY) ?? "[]");
+    return Array.isArray(rules) ? rules.filter((rule) =>
+      normalizeWindowAppearanceProcessName(rule?.processName) &&
+      WINDOW_APPEARANCE_RULE_ACTIONS.has(rule?.action)).slice(0, 64) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistMockWindowAppearanceRules(rules) {
+  try {
+    globalThis.localStorage?.setItem(WINDOW_APPEARANCE_RULES_STORAGE_KEY, JSON.stringify(rules));
+  } catch {
+    // The in-memory rules remain usable when browser storage is disabled.
+  }
+}
+
+function createMockWindowCompatibility(mode, rules) {
+  const ruleByProcess = new Map(
+    rules.map((rule) => [rule.processName.toLowerCase(), rule.action]),
+  );
+  return [
+    { processName: "explorer", windowCount: 2, eligibleWindowCount: 2 },
+    { processName: "Code", windowCount: 1, eligibleWindowCount: 1 },
+    { processName: "msedge", windowCount: 1, eligibleWindowCount: 1 },
+    { processName: "SearchHost", windowCount: 1, eligibleWindowCount: 0, protected: true },
+  ].map((entry) => {
+    const action = ruleByProcess.get(entry.processName.toLowerCase());
+    const decision = entry.protected
+      ? "protected"
+      : action === "allow"
+        ? "allowed"
+        : action === "deny"
+          ? "denied"
+          : "automatic";
+    const eligibleWindowCount = decision === "denied" || decision === "protected"
+      ? 0
+      : entry.eligibleWindowCount;
+    return {
+      processName: entry.processName,
+      windowCount: entry.windowCount,
+      eligibleWindowCount,
+      styledWindowCount: mode === "off" || eligibleWindowCount === 0 ? 0 : eligibleWindowCount,
+      decision,
+      reasonCode: entry.protected
+        ? "system-protected"
+        : action
+          ? `user-${action}`
+          : "automatic",
+    };
+  });
+}
+
+function createMockWindowAppearanceState(mode, rules = []) {
   return {
     mode,
     effectiveMode: mode,
@@ -43,6 +110,8 @@ function createMockWindowAppearanceState(mode) {
     hostIntegrityVerified: true,
     safetyHotkeyRegistered: true,
     recoveryArmed: true,
+    rules: rules.map((rule) => ({ ...rule })),
+    compatibilityMatrix: createMockWindowCompatibility(mode, rules),
   };
 }
 
@@ -355,7 +424,11 @@ export function createMockPlatform() {
   const eventListeners = new Map();
   const terminalSessions = new Map();
   let terminalSequence = 0;
-  let windowAppearanceState = createMockWindowAppearanceState(readMockWindowAppearanceMode());
+  let windowAppearanceRules = readMockWindowAppearanceRules();
+  let windowAppearanceState = createMockWindowAppearanceState(
+    readMockWindowAppearanceMode(),
+    windowAppearanceRules,
+  );
   let taskbarModeState = createMockTaskbarModeState(readMockTaskbarMode());
   let traySnapshot = {
     timestamp: new Date().toISOString(),
@@ -974,7 +1047,61 @@ export function createMockPlatform() {
         }
 
         persistMockWindowAppearanceMode(mode);
-        windowAppearanceState = createMockWindowAppearanceState(mode);
+        windowAppearanceState = createMockWindowAppearanceState(mode, windowAppearanceRules);
+        const state = { ...windowAppearanceState };
+        emit("windowAppearance.changed", state);
+        return state;
+      },
+      async setRule(processNameValue, action) {
+        const processName = normalizeWindowAppearanceProcessName(processNameValue);
+        if (!processName || !WINDOW_APPEARANCE_RULE_ACTIONS.has(action)) {
+          const error = new Error("Window appearance rules require a process name and allow or deny.");
+          error.code = "INVALID_ARGUMENT";
+          throw error;
+        }
+        if (WINDOW_APPEARANCE_PROTECTED_PROCESSES.has(processName.toLowerCase())) {
+          const error = new Error("Windows protected processes cannot be overridden.");
+          error.code = "INVALID_ARGUMENT";
+          throw error;
+        }
+
+        const rule = { processName, action };
+        const existingIndex = windowAppearanceRules.findIndex((entry) =>
+          entry.processName.localeCompare(processName, undefined, { sensitivity: "base" }) === 0);
+        if (existingIndex >= 0) {
+          windowAppearanceRules = windowAppearanceRules.with(existingIndex, rule);
+        } else {
+          if (windowAppearanceRules.length >= 64) {
+            const error = new Error("At most 64 window appearance rules can be saved.");
+            error.code = "INVALID_ARGUMENT";
+            throw error;
+          }
+          windowAppearanceRules = [...windowAppearanceRules, rule];
+        }
+
+        persistMockWindowAppearanceRules(windowAppearanceRules);
+        windowAppearanceState = createMockWindowAppearanceState(
+          windowAppearanceState.mode,
+          windowAppearanceRules,
+        );
+        const state = { ...windowAppearanceState };
+        emit("windowAppearance.changed", state);
+        return state;
+      },
+      async removeRule(processNameValue) {
+        const processName = normalizeWindowAppearanceProcessName(processNameValue);
+        if (!processName) {
+          const error = new Error("Window appearance rules require a process name.");
+          error.code = "INVALID_ARGUMENT";
+          throw error;
+        }
+        windowAppearanceRules = windowAppearanceRules.filter((entry) =>
+          entry.processName.localeCompare(processName, undefined, { sensitivity: "base" }) !== 0);
+        persistMockWindowAppearanceRules(windowAppearanceRules);
+        windowAppearanceState = createMockWindowAppearanceState(
+          windowAppearanceState.mode,
+          windowAppearanceRules,
+        );
         const state = { ...windowAppearanceState };
         emit("windowAppearance.changed", state);
         return state;

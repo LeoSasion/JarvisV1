@@ -484,6 +484,6 @@ R2-09 原生验收与交付
 1. JARVIS 内部窗口管理器：统一 Explorer、Terminal、Inspector 的拖动、最小化、最大化、层级和任务栏状态。
 2. File Explorer 大文件进度、取消、冲突策略、长路径、reparse point 和跨盘事务。
 3. Start Menu 应用目录热刷新、搜索虚拟化和大型目录性能。
-4. 原生窗口外观应用级允许/禁用规则与完整兼容矩阵。
+4. ~~原生窗口外观应用级允许/禁用规则与完整兼容矩阵。~~ R6 已完成，见 [`R6_WINDOW_APPEARANCE_RULES_PLAN.md`](R6_WINDOW_APPEARANCE_RULES_PLAN.md)。
 5. MSIX + `UserNotificationListener` 的 Windows 通知历史可行性验证。
 6. 独立 Windows 10 测试机上的兼容性完善。

@@ -36,10 +36,12 @@ import {
   clearSystemFeed,
   markSystemFeedRead,
   refreshApplicationCatalog,
+  removeWindowAppearanceRule,
   setTrayMuted,
   setTrayVolume,
   setTaskbarMode,
   setWindowAppearanceMode,
+  setWindowAppearanceRule,
   useApplicationCatalog,
   useSystemSnapshot,
   useSystemFeed,
@@ -80,6 +82,10 @@ import {
   subscribeVisualTheme,
   visualThemes,
 } from "../theme-system.js";
+import {
+  getWindowCompatibilityReasonLabel,
+  normalizeWindowAppearanceProcessName,
+} from "../window-appearance-model.js";
 
 const windowAppearanceOptions = [
   {
@@ -1108,8 +1114,12 @@ function InterfacePreferences({ onToast }) {
 function WindowAppearanceSettings({ onToast }) {
   const appearance = useWindowAppearanceState();
   const [pendingMode, setPendingMode] = useState(null);
+  const [pendingRule, setPendingRule] = useState(false);
+  const [processInput, setProcessInput] = useState("");
+  const [ruleAction, setRuleAction] = useState("deny");
+  const [ruleInputError, setRuleInputError] = useState(null);
   const selectedMode = pendingMode ?? appearance.mode;
-  const busy = appearance.loading || pendingMode !== null;
+  const busy = appearance.loading || pendingMode !== null || pendingRule;
   const effectiveLabel = windowAppearanceLabels[appearance.effectiveMode] ?? "OFF";
   const windowsReleaseLabel = getWindowsReleaseLabel(appearance.windows11, appearance.osBuild);
 
@@ -1127,6 +1137,46 @@ function WindowAppearanceSettings({ onToast }) {
     } finally {
       setPendingMode(null);
     }
+  };
+
+  const updateRule = async (processNameValue, action, clearInput = false) => {
+    if (busy) return;
+    const processName = normalizeWindowAppearanceProcessName(processNameValue);
+    if (!processName) {
+      setRuleInputError("请输入进程文件名，例如 notepad.exe；不能包含路径或通配符。");
+      return;
+    }
+
+    setRuleInputError(null);
+    setPendingRule(true);
+    try {
+      await setWindowAppearanceRule(processName, action);
+      if (clearInput) setProcessInput("");
+      onToast?.(`${processName} 已设为${action === "allow" ? "允许接管" : "禁止接管"}`);
+    } catch {
+      // The shared appearance store exposes native validation errors inline.
+    } finally {
+      setPendingRule(false);
+    }
+  };
+
+  const removeRule = async (processName) => {
+    if (busy) return;
+    setRuleInputError(null);
+    setPendingRule(true);
+    try {
+      await removeWindowAppearanceRule(processName);
+      onToast?.(`${processName} 已恢复自动判定`);
+    } catch {
+      // The shared appearance store exposes bridge errors inline.
+    } finally {
+      setPendingRule(false);
+    }
+  };
+
+  const submitRule = (event) => {
+    event.preventDefault();
+    updateRule(processInput, ruleAction, true);
   };
 
   return (
@@ -1197,6 +1247,132 @@ function WindowAppearanceSettings({ onToast }) {
           <i />RECOVERY {appearance.recoveryArmed ? "ARMED" : "PENDING"}
         </span>
       </div>
+
+      <section className="window-rule-editor" aria-labelledby="window-rule-title">
+        <header>
+          <span>
+            <strong id="window-rule-title">应用规则</strong>
+            <small>APP RULES · 系统保护项不可覆盖 · {appearance.rules.length}/64</small>
+          </span>
+        </header>
+        <form onSubmit={submitRule}>
+          <label>
+            <span className="sr-only">进程文件名</span>
+            <input
+              type="text"
+              value={processInput}
+              maxLength={68}
+              placeholder="notepad.exe"
+              autoComplete="off"
+              spellCheck="false"
+              disabled={busy}
+              aria-invalid={Boolean(ruleInputError)}
+              aria-describedby={ruleInputError ? "window-rule-input-error" : undefined}
+              onChange={(event) => {
+                setProcessInput(event.target.value);
+                setRuleInputError(null);
+              }}
+            />
+          </label>
+          <div className="window-rule-action" role="group" aria-label="规则动作">
+            <button
+              type="button"
+              className={ruleAction === "allow" ? "is-active is-allow" : ""}
+              disabled={busy}
+              onClick={() => setRuleAction("allow")}
+            >
+              ALLOW
+            </button>
+            <button
+              type="button"
+              className={ruleAction === "deny" ? "is-active is-deny" : ""}
+              disabled={busy}
+              onClick={() => setRuleAction("deny")}
+            >
+              DENY
+            </button>
+          </div>
+          <button type="submit" className="window-rule-submit" disabled={busy || !processInput.trim()}>
+            {pendingRule ? "APPLYING" : "APPLY"}
+          </button>
+        </form>
+        {ruleInputError ? (
+          <p id="window-rule-input-error" className="window-rule-inline-error" role="alert">
+            {ruleInputError}
+          </p>
+        ) : null}
+        {appearance.rules.length ? (
+          <div className="window-rule-list" aria-label="已保存应用规则">
+            {appearance.rules.map((rule) => (
+              <div key={rule.processName}>
+                <code>{rule.processName}.exe</code>
+                <button
+                  type="button"
+                  className={`is-${rule.action}`}
+                  disabled={busy}
+                  onClick={() => updateRule(
+                    rule.processName,
+                    rule.action === "allow" ? "deny" : "allow",
+                  )}
+                >
+                  {rule.action.toUpperCase()}
+                </button>
+                <button
+                  type="button"
+                  className="window-rule-remove"
+                  disabled={busy}
+                  aria-label={`移除 ${rule.processName} 规则`}
+                  onClick={() => removeRule(rule.processName)}
+                >
+                  <DismissRegular />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="window-rule-empty">尚未添加规则；合格应用继续使用自动兼容判定。</p>
+        )}
+      </section>
+
+      <section className="window-compatibility" aria-labelledby="window-compatibility-title">
+        <header>
+          <span>
+            <strong id="window-compatibility-title">当前窗口兼容矩阵</strong>
+            <small>VISIBLE TOP-LEVEL WINDOWS · 按进程聚合</small>
+          </span>
+          <b>{appearance.compatibilityMatrix.length}</b>
+        </header>
+        {appearance.compatibilityMatrix.length ? (
+          <div className="window-compatibility-list">
+            {appearance.compatibilityMatrix.map((entry) => {
+              const actionable = !["protected", "limited"].includes(entry.decision);
+              const nextAction = entry.decision === "denied" ? "allow" : "deny";
+              return (
+                <div key={entry.processName} className={`is-${entry.decision}`}>
+                  <span>
+                    <code>{entry.processName}.exe</code>
+                    <small>{getWindowCompatibilityReasonLabel(entry.reasonCode)}</small>
+                  </span>
+                  <span className="window-compatibility-counts">
+                    <small>WIN</small><b>{entry.windowCount}</b>
+                    <small>READY</small><b>{entry.eligibleWindowCount}</b>
+                    <small>LIVE</small><b>{entry.styledWindowCount}</b>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy || !actionable}
+                    onClick={() => updateRule(entry.processName, nextAction)}
+                  >
+                    {actionable ? nextAction.toUpperCase() : entry.decision.toUpperCase()}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="window-rule-empty">暂无可评估的用户可见顶层窗口。</p>
+        )}
+      </section>
 
       <p className="window-appearance-safety-note">
         <ShieldRegular />

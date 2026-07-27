@@ -9,6 +9,11 @@ import {
   createSystemSnapshotProjector,
   normalizeDesktopEntries,
 } from "../platform/presentation-data.js";
+import {
+  normalizeWindowAppearanceProcessName,
+  normalizeWindowAppearanceRules,
+  normalizeWindowCompatibilityMatrix,
+} from "../window-appearance-model.js";
 
 function createStore(initialValue) {
   let value = initialValue;
@@ -166,7 +171,7 @@ function systemFeedsEqual(left, right) {
   });
 }
 
-function normalizeWindowAppearanceState(rawState = {}) {
+export function normalizeWindowAppearanceState(rawState = {}) {
   const requestedMode = rawState.mode ?? rawState.Mode;
   const mode = WINDOW_APPEARANCE_MODES.has(requestedMode) ? requestedMode : "off";
   const reportedEffectiveMode = rawState.effectiveMode ?? rawState.EffectiveMode;
@@ -191,6 +196,10 @@ function normalizeWindowAppearanceState(rawState = {}) {
       rawState.safetyHotkeyRegistered ?? rawState.SafetyHotkeyRegistered,
     ),
     recoveryArmed: Boolean(rawState.recoveryArmed ?? rawState.RecoveryArmed),
+    rules: normalizeWindowAppearanceRules(rawState.rules ?? rawState.Rules),
+    compatibilityMatrix: normalizeWindowCompatibilityMatrix(
+      rawState.compatibilityMatrix ?? rawState.CompatibilityMatrix,
+    ),
     loading: false,
     error: null,
   };
@@ -207,8 +216,28 @@ function windowAppearanceStatesEqual(left, right) {
     left.hostIntegrityVerified === right.hostIntegrityVerified &&
     left.safetyHotkeyRegistered === right.safetyHotkeyRegistered &&
     left.recoveryArmed === right.recoveryArmed &&
+    windowAppearanceRulesEqual(left.rules, right.rules) &&
+    windowCompatibilityMatricesEqual(left.compatibilityMatrix, right.compatibilityMatrix) &&
     left.loading === right.loading &&
     left.error === right.error;
+}
+
+function windowAppearanceRulesEqual(left = [], right = []) {
+  return left.length === right.length && left.every((rule, index) =>
+    rule.processName === right[index]?.processName &&
+    rule.action === right[index]?.action);
+}
+
+function windowCompatibilityMatricesEqual(left = [], right = []) {
+  return left.length === right.length && left.every((entry, index) => {
+    const other = right[index];
+    return entry.processName === other?.processName &&
+      entry.windowCount === other.windowCount &&
+      entry.eligibleWindowCount === other.eligibleWindowCount &&
+      entry.styledWindowCount === other.styledWindowCount &&
+      entry.decision === other.decision &&
+      entry.reasonCode === other.reasonCode;
+  });
 }
 
 const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -371,6 +400,8 @@ const windowAppearanceStore = createStore({
   windows11: false,
   styledWindowCount: 0,
   fallbackReason: null,
+  rules: [],
+  compatibilityMatrix: [],
   loading: true,
   error: null,
 });
@@ -824,6 +855,42 @@ export async function setWindowAppearanceMode(mode) {
 
   try {
     const result = await platform.windowAppearance.setMode(mode);
+    publishWindowAppearanceState(result);
+    return windowAppearanceStore.getSnapshot();
+  } catch (error) {
+    reportWindowAppearanceError(error);
+    throw error;
+  }
+}
+
+export async function setWindowAppearanceRule(processNameValue, action) {
+  const processName = normalizeWindowAppearanceProcessName(processNameValue);
+  if (!processName || !["allow", "deny"].includes(action)) {
+    throw new Error("Window appearance rules require a process name and allow or deny.");
+  }
+
+  const current = windowAppearanceStore.getSnapshot();
+  setWindowAppearanceState({ ...current, loading: true, error: null });
+  try {
+    const result = await platform.windowAppearance.setRule(processName, action);
+    publishWindowAppearanceState(result);
+    return windowAppearanceStore.getSnapshot();
+  } catch (error) {
+    reportWindowAppearanceError(error);
+    throw error;
+  }
+}
+
+export async function removeWindowAppearanceRule(processNameValue) {
+  const processName = normalizeWindowAppearanceProcessName(processNameValue);
+  if (!processName) {
+    throw new Error("Window appearance rules require a process name.");
+  }
+
+  const current = windowAppearanceStore.getSnapshot();
+  setWindowAppearanceState({ ...current, loading: true, error: null });
+  try {
+    const result = await platform.windowAppearance.removeRule(processName);
     publishWindowAppearanceState(result);
     return windowAppearanceStore.getSnapshot();
   } catch (error) {

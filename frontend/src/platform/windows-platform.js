@@ -148,6 +148,10 @@ export function createWindowsPlatform(webview) {
     windowAppearance: {
       getState: () => request("windowAppearance.getState"),
       setMode: (mode) => request("windowAppearance.setMode", { mode }),
+      setRule: (processName, action) =>
+        request("windowAppearance.setRule", { processName, action }),
+      removeRule: (processName) =>
+        request("windowAppearance.removeRule", { processName }),
     },
     shell: {
       listApplications: () => request("shell.listApplications"),

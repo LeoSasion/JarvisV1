@@ -72,17 +72,6 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         "XamlExplorerHostIslandWindow"
     };
 
-    private static readonly HashSet<string> ExcludedProcesses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "dwm",
-        "LockApp",
-        "SearchHost",
-        "SearchApp",
-        "ShellExperienceHost",
-        "StartMenuExperienceHost",
-        "TextInputHost"
-    };
-
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JARVIS",
@@ -103,8 +92,13 @@ internal sealed class NativeWindowAppearanceService : IDisposable
     private readonly bool _ownIntegrityKnown;
     private readonly int _osBuild;
     private readonly bool _windows11;
+    private readonly NativeWindowAppearanceRuleSet _rules;
 
     private NativeWindowAppearanceMode _mode;
+    private IReadOnlyList<NativeWindowAppearanceRule> _ruleSnapshot;
+    private IReadOnlyList<NativeWindowCompatibilityEntry> _compatibilitySnapshot =
+        Array.Empty<NativeWindowCompatibilityEntry>();
+    private DateTimeOffset _compatibilitySnapshotExpiresAt = DateTimeOffset.MinValue;
     private NativeWindowGlowWindow? _glowWindow;
     private IntPtr _foregroundHook;
     private IntPtr _objectLifecycleHook;
@@ -129,9 +123,14 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         _ownIntegrityKnown = TryGetProcessIntegrityLevel(
             GetCurrentProcess(),
             out _ownIntegrityLevel);
-        _mode = LoadMode() ?? (_windows11
-            ? NativeWindowAppearanceMode.Enhanced
-            : NativeWindowAppearanceMode.Conservative);
+        var settings = LoadSettings();
+        _rules = new NativeWindowAppearanceRuleSet(settings?.Rules);
+        _ruleSnapshot = _rules.GetSnapshot();
+        _mode = TryParseMode(settings?.Mode, out var savedMode)
+            ? savedMode
+            : (_windows11
+                ? NativeWindowAppearanceMode.Enhanced
+                : NativeWindowAppearanceMode.Conservative);
     }
 
     public event Action<NativeWindowAppearanceState>? StateChanged;
@@ -157,7 +156,9 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             _hooksReady,
             _ownIntegrityKnown,
             safetyHotkeyStatus.Registered,
-            styledWindowCount == 0 || NativeWindowAppearanceRecovery.HasPendingSnapshot);
+            styledWindowCount == 0 || NativeWindowAppearanceRecovery.HasPendingSnapshot,
+            _ruleSnapshot,
+            GetCompatibilitySnapshot());
     }
 
     public NativeWindowAppearanceDiagnostic CaptureDiagnostics()
@@ -167,7 +168,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         var hookContractReady = state.EffectiveMode == ToWireValue(NativeWindowAppearanceMode.Off)
             ? !state.HooksReady
             : state.HooksReady;
-        var persistenceReady = IsModePersistenceReady();
+        var persistenceReady = IsSettingsPersistenceReady();
         var dwmReadbackReady = true;
         var verifiedStyledWindows = 0;
         NativeWindowGlowDiagnostic glowDiagnostic;
@@ -235,7 +236,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
 
         if (!persistenceReady)
         {
-            issues.Add("the saved mode does not match the active request");
+            issues.Add("the saved mode or application rules do not match the active request");
         }
 
         if (!state.RecoveryArmed)
@@ -314,7 +315,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             RestoreAllStyledWindows();
             HideGlow();
             _mode = requestedMode;
-            SaveMode(_mode);
+            SaveSettings();
         }
 
         if (_started)
@@ -336,6 +337,46 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             $"Native window appearance mode is {ToWireValue(_mode)} " +
             $"(effective {ToWireValue(GetEffectiveMode(out _))}, hooks ready: {_hooksReady}).");
 
+        PublishStateIfChanged(force: true);
+        return GetState();
+    }
+
+    public NativeWindowAppearanceState SetRule(string processName, string action)
+    {
+        VerifyDispatcherAccess();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_rules.TrySet(processName, action, out var normalizedProcessName, out var error))
+        {
+            throw new ArgumentException(error, nameof(processName));
+        }
+
+        _ruleSnapshot = _rules.GetSnapshot();
+        SaveSettings();
+        ReapplyRules();
+        HostLog.Info(
+            $"Native window appearance rule set: {normalizedProcessName} => {action.ToLowerInvariant()}.");
+        PublishStateIfChanged(force: true);
+        return GetState();
+    }
+
+    public NativeWindowAppearanceState RemoveRule(string processName)
+    {
+        VerifyDispatcherAccess();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_rules.TryRemove(processName, out var normalizedProcessName, out var error))
+        {
+            if (error is not null)
+            {
+                throw new ArgumentException(error, nameof(processName));
+            }
+
+            return GetState();
+        }
+
+        _ruleSnapshot = _rules.GetSnapshot();
+        SaveSettings();
+        ReapplyRules();
+        HostLog.Info($"Native window appearance rule removed: {normalizedProcessName}.");
         PublishStateIfChanged(force: true);
         return GetState();
     }
@@ -411,6 +452,17 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         }
 
         SynchronizeForegroundWindow();
+    }
+
+    private void ReapplyRules()
+    {
+        RestoreAllStyledWindows();
+        HideGlow();
+        InvalidateCompatibilitySnapshot();
+        if (_hooksReady)
+        {
+            ApplyMode();
+        }
     }
 
     private void OnWinEvent(
@@ -530,6 +582,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
                         if (_styledWindows.Remove(window))
                         {
                             PersistRecoverySnapshotCore();
+                            InvalidateCompatibilitySnapshot();
                         }
                     }
 
@@ -735,9 +788,11 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             {
                 _styledWindows.Remove(window);
                 PersistRecoverySnapshotCore();
+                InvalidateCompatibilitySnapshot();
                 return false;
             }
 
+            InvalidateCompatibilitySnapshot();
             return true;
         }
     }
@@ -746,15 +801,21 @@ internal sealed class NativeWindowAppearanceService : IDisposable
     {
         lock (_styleGate)
         {
+            var restoredAny = false;
             foreach (var (window, styledWindow) in _styledWindows.ToArray())
             {
                 if (RestoreStyledWindowCore(window, styledWindow))
                 {
                     _styledWindows.Remove(window);
+                    restoredAny = true;
                 }
             }
 
             PersistRecoverySnapshotCore();
+            if (restoredAny)
+            {
+                InvalidateCompatibilitySnapshot();
+            }
         }
     }
 
@@ -773,6 +834,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             }
 
             PersistRecoverySnapshotCore();
+            InvalidateCompatibilitySnapshot();
         }
     }
 
@@ -822,6 +884,220 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             entries);
     }
 
+    private IReadOnlyList<NativeWindowCompatibilityEntry> GetCompatibilitySnapshot()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now < _compatibilitySnapshotExpiresAt)
+        {
+            return _compatibilitySnapshot;
+        }
+
+        HashSet<IntPtr> styledWindows;
+        lock (_styleGate)
+        {
+            styledWindows = _styledWindows.Keys.ToHashSet();
+        }
+
+        var processes = new Dictionary<string, CompatibilityAccumulator>(
+            StringComparer.OrdinalIgnoreCase);
+        _ = EnumWindows((window, state) =>
+        {
+            if (!IsWindowVisible(window) ||
+                GetAncestor(window, GaRoot) != window ||
+                GetWindowTextLength(window) == 0)
+            {
+                return true;
+            }
+
+            _ = GetWindowThreadProcessId(window, out var processId);
+            if (processId == 0 || !TryGetProcessName(processId, out var processName))
+            {
+                return true;
+            }
+
+            if (!processes.TryGetValue(processName, out var accumulator))
+            {
+                accumulator = new CompatibilityAccumulator(
+                    processName,
+                    _rules.Evaluate(processName));
+                processes[processName] = accumulator;
+            }
+
+            accumulator.WindowCount++;
+            if (styledWindows.Contains(window))
+            {
+                accumulator.StyledWindowCount++;
+            }
+
+            var classification = ClassifyWindowForCompatibility(
+                window,
+                processId,
+                accumulator.RuleEvaluation);
+            if (classification.Eligible)
+            {
+                accumulator.EligibleWindowCount++;
+                accumulator.Decision = classification.Decision;
+                accumulator.ReasonCode = classification.ReasonCode;
+            }
+            else if (accumulator.EligibleWindowCount == 0 &&
+                     (!accumulator.HasClassification ||
+                      GetDecisionPriority(classification.Decision) >
+                      GetDecisionPriority(accumulator.Decision)))
+            {
+                accumulator.Decision = classification.Decision;
+                accumulator.ReasonCode = classification.ReasonCode;
+            }
+
+            accumulator.HasClassification = true;
+            return true;
+        }, IntPtr.Zero);
+
+        _compatibilitySnapshot = processes.Values
+            .OrderBy(item => GetCompatibilitySortOrder(item.Decision))
+            .ThenBy(item => item.ProcessName, StringComparer.OrdinalIgnoreCase)
+            .Take(64)
+            .Select(item => new NativeWindowCompatibilityEntry(
+                item.ProcessName,
+                item.WindowCount,
+                item.EligibleWindowCount,
+                item.StyledWindowCount,
+                ToWireValue(item.Decision),
+                item.ReasonCode))
+            .ToArray();
+        _compatibilitySnapshotExpiresAt = now.AddSeconds(1);
+        return _compatibilitySnapshot;
+    }
+
+    private WindowCompatibilityClassification ClassifyWindowForCompatibility(
+        IntPtr window,
+        uint processId,
+        NativeWindowAppearanceRuleEvaluation ruleEvaluation)
+    {
+        if (processId == _ownProcessId)
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Protected,
+                "jarvis-host");
+        }
+
+        if (!ruleEvaluation.PermitsAppearance)
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                ruleEvaluation.Decision,
+                ruleEvaluation.ReasonCode);
+        }
+
+        if (IsExcludedOrElevatedProcess(processId))
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Limited,
+                "integrity-or-access");
+        }
+
+        var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
+        var extendedStyle = GetWindowLongPtr(window, GwlExStyle).ToInt64();
+        if ((style & WsChild) != 0 || (extendedStyle & WsExToolWindow) != 0)
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Limited,
+                "non-application-window");
+        }
+
+        if ((style & WsCaption) != WsCaption)
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Limited,
+                "no-standard-caption");
+        }
+
+        var className = GetWindowClassName(window);
+        if (string.IsNullOrWhiteSpace(className) || ExcludedWindowClasses.Contains(className))
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Protected,
+                "system-window-class");
+        }
+
+        if (IsWindowCloaked(window))
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Limited,
+                "window-cloaked");
+        }
+
+        if (IsFullscreenWindow(window))
+        {
+            return new WindowCompatibilityClassification(
+                false,
+                NativeWindowAppearanceRuleDecision.Limited,
+                "fullscreen");
+        }
+
+        return new WindowCompatibilityClassification(
+            true,
+            ruleEvaluation.Decision,
+            ruleEvaluation.ReasonCode);
+    }
+
+    private static bool TryGetProcessName(uint processId, out string processName)
+    {
+        processName = string.Empty;
+        try
+        {
+            using var process = Process.GetProcessById(checked((int)processId));
+            return NativeWindowAppearanceRuleSet.TryNormalizeProcessName(
+                process.ProcessName,
+                out processName);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private void InvalidateCompatibilitySnapshot()
+    {
+        _compatibilitySnapshotExpiresAt = DateTimeOffset.MinValue;
+    }
+
+    private static int GetDecisionPriority(NativeWindowAppearanceRuleDecision decision) =>
+        decision switch
+        {
+            NativeWindowAppearanceRuleDecision.Protected => 4,
+            NativeWindowAppearanceRuleDecision.Denied => 3,
+            NativeWindowAppearanceRuleDecision.Allowed => 2,
+            NativeWindowAppearanceRuleDecision.Automatic => 1,
+            _ => 0
+        };
+
+    private static int GetCompatibilitySortOrder(NativeWindowAppearanceRuleDecision decision) =>
+        decision switch
+        {
+            NativeWindowAppearanceRuleDecision.Allowed => 0,
+            NativeWindowAppearanceRuleDecision.Automatic => 1,
+            NativeWindowAppearanceRuleDecision.Denied => 2,
+            NativeWindowAppearanceRuleDecision.Limited => 3,
+            _ => 4
+        };
+
+    private static string ToWireValue(NativeWindowAppearanceRuleDecision decision) =>
+        decision switch
+        {
+            NativeWindowAppearanceRuleDecision.Allowed => "allowed",
+            NativeWindowAppearanceRuleDecision.Denied => "denied",
+            NativeWindowAppearanceRuleDecision.Protected => "protected",
+            NativeWindowAppearanceRuleDecision.Limited => "limited",
+            _ => "automatic"
+        };
+
     private bool IsEligibleWindow(IntPtr window, bool requireStandardCaption)
     {
         if (window == IntPtr.Zero || !IsWindow(window) || !IsWindowVisible(window) ||
@@ -866,7 +1142,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         try
         {
             using var process = Process.GetProcessById(checked((int)processId));
-            if (ExcludedProcesses.Contains(process.ProcessName))
+            if (!_rules.Evaluate(process.ProcessName).PermitsAppearance)
             {
                 return true;
             }
@@ -1120,7 +1396,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         StateChanged?.Invoke(state);
     }
 
-    private NativeWindowAppearanceMode? LoadMode()
+    private static NativeWindowAppearanceSettings? LoadSettings()
     {
         try
         {
@@ -1132,9 +1408,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             var settings = JsonSerializer.Deserialize<NativeWindowAppearanceSettings>(
                 File.ReadAllText(SettingsPath),
                 JsonOptions);
-            return settings is not null && TryParseMode(settings.Mode, out var savedMode)
-                ? savedMode
-                : null;
+            return settings;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -1143,27 +1417,41 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         }
     }
 
-    private bool IsModePersistenceReady()
+    private bool IsSettingsPersistenceReady()
     {
         if (!File.Exists(SettingsPath))
         {
             var defaultMode = _windows11
                 ? NativeWindowAppearanceMode.Enhanced
                 : NativeWindowAppearanceMode.Conservative;
-            return _mode == defaultMode;
+            return _mode == defaultMode && _ruleSnapshot.Count == 0;
         }
 
-        return LoadMode() == _mode;
+        var settings = LoadSettings();
+        if (settings is null ||
+            !TryParseMode(settings.Mode, out var savedMode) ||
+            savedMode != _mode)
+        {
+            return false;
+        }
+
+        var savedRules = new NativeWindowAppearanceRuleSet(settings.Rules).GetSnapshot();
+        return savedRules.SequenceEqual(_ruleSnapshot);
     }
 
-    private static void SaveMode(NativeWindowAppearanceMode mode)
+    private void SaveSettings()
     {
         var temporaryPath = SettingsPath + ".tmp";
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             var payload = JsonSerializer.Serialize(
-                new NativeWindowAppearanceSettings(ToWireValue(mode)),
+                new NativeWindowAppearanceSettings
+                {
+                    SchemaVersion = 2,
+                    Mode = ToWireValue(_mode),
+                    Rules = _ruleSnapshot
+                },
                 JsonOptions);
             File.WriteAllText(temporaryPath, payload, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             File.Move(temporaryPath, SettingsPath, overwrite: true);
@@ -1338,7 +1626,52 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         long ProcessStartTimeUtcTicks,
         IReadOnlyDictionary<uint, int> OriginalValues);
 
-    private sealed record NativeWindowAppearanceSettings(string Mode);
+    private sealed class NativeWindowAppearanceSettings
+    {
+        public int SchemaVersion { get; init; }
+
+        public string? Mode { get; init; }
+
+        public IReadOnlyList<NativeWindowAppearanceRule>? Rules { get; init; }
+    }
+
+    private readonly record struct WindowCompatibilityClassification(
+        bool Eligible,
+        NativeWindowAppearanceRuleDecision Decision,
+        string ReasonCode);
+
+    private sealed class CompatibilityAccumulator
+    {
+        public CompatibilityAccumulator(
+            string processName,
+            NativeWindowAppearanceRuleEvaluation ruleEvaluation)
+        {
+            ProcessName = processName;
+            RuleEvaluation = ruleEvaluation;
+            Decision = ruleEvaluation.PermitsAppearance
+                ? NativeWindowAppearanceRuleDecision.Limited
+                : ruleEvaluation.Decision;
+            ReasonCode = ruleEvaluation.PermitsAppearance
+                ? "no-compatible-window"
+                : ruleEvaluation.ReasonCode;
+        }
+
+        public string ProcessName { get; }
+
+        public NativeWindowAppearanceRuleEvaluation RuleEvaluation { get; }
+
+        public int WindowCount { get; set; }
+
+        public int EligibleWindowCount { get; set; }
+
+        public int StyledWindowCount { get; set; }
+
+        public NativeWindowAppearanceRuleDecision Decision { get; set; }
+
+        public string ReasonCode { get; set; }
+
+        public bool HasClassification { get; set; }
+    }
 
     private delegate void WinEventDelegate(
         IntPtr hook,
@@ -1511,7 +1844,17 @@ internal sealed record NativeWindowAppearanceState(
     bool HooksReady,
     bool HostIntegrityVerified,
     bool SafetyHotkeyRegistered,
-    bool RecoveryArmed);
+    bool RecoveryArmed,
+    IReadOnlyList<NativeWindowAppearanceRule> Rules,
+    IReadOnlyList<NativeWindowCompatibilityEntry> CompatibilityMatrix);
+
+internal sealed record NativeWindowCompatibilityEntry(
+    string ProcessName,
+    int WindowCount,
+    int EligibleWindowCount,
+    int StyledWindowCount,
+    string Decision,
+    string ReasonCode);
 
 internal sealed record NativeWindowAppearanceDiagnostic(
     bool Ready,
