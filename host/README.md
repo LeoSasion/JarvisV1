@@ -23,6 +23,14 @@ Win+D or shell transition tries to minimize it, JARVIS restores the desktop
 surface without activation so ordinary application switching cannot expose the
 Explorer desktop underneath it.
 
+When full replacement is healthy, a dedicated low-level keyboard-hook thread
+routes physical Alt+Tab and Alt+Shift+Tab through an independent no-activate
+WebView2 HUD. The hook uses the cached, bounded taskbar snapshot and posts
+renderer work asynchronously; releasing Alt revalidates and activates the
+selected HWND through the existing taskbar service. Native and hybrid modes,
+safe mode, Ctrl+Alt+Tab, injected input, Win+Tab, renderer failure, and empty
+snapshots remain on the Windows switcher.
+
 The native taskbar is restored on normal exit, WebView failure, UI-thread crash,
 watchdog failure, UI hang, and forced host-process termination. On recovery the
 watchdog first hides the verified JARVIS taskbar HWND from outside the host, so a

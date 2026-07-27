@@ -76,19 +76,19 @@ internal sealed class WindowTaskbarService
             return new WindowToggleResult(windowId, "minimized");
         }
 
-        if (IsIconic(window))
-        {
-            _ = ShowWindowAsync(window, SwRestore);
-        }
+        return ActivateResolved(windowId, window);
+    }
 
-        if (!SetForegroundWindow(window))
+    public WindowToggleResult Activate(string windowId)
+    {
+        if (!TryResolveEligibleWindow(windowId, out var window))
         {
             throw new BridgeFaultException(
-                "WINDOW_ACTIVATION_BLOCKED",
-                "Windows did not allow JARVIS to bring the requested window to the foreground.");
+                "WINDOW_NOT_FOUND",
+                "The requested window is no longer available.");
         }
 
-        return new WindowToggleResult(windowId, "activated");
+        return ActivateResolved(windowId, window);
     }
 
     public WindowCloseResult Close(string windowId)
@@ -108,6 +108,23 @@ internal sealed class WindowTaskbarService
         }
 
         return new WindowCloseResult(windowId, "close-requested");
+    }
+
+    private static WindowToggleResult ActivateResolved(string windowId, IntPtr window)
+    {
+        if (IsIconic(window))
+        {
+            _ = ShowWindowAsync(window, SwRestore);
+        }
+
+        if (!SetForegroundWindow(window))
+        {
+            throw new BridgeFaultException(
+                "WINDOW_ACTIVATION_BLOCKED",
+                "Windows did not allow JARVIS to bring the requested window to the foreground.");
+        }
+
+        return new WindowToggleResult(windowId, "activated");
     }
 
     private bool TryCaptureWindow(

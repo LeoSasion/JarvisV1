@@ -36,11 +36,15 @@ public partial class MainWindow : Window
     private WebBridge? _bridge;
     private HwndSource? _windowSource;
     private TaskbarWindow? _taskbarWindow;
+    private WindowSwitcherWindow? _windowSwitcherWindow;
+    private WindowSwitcherController? _windowSwitcherController;
     private CancellationTokenSource? _taskbarRebindCancellation;
     private long _taskbarGeneration;
     private bool _isClosing;
     private bool _diagnosticPanelShown;
+    private bool _diagnosticWindowSwitcherShown;
     private bool _desktopReady;
+    private bool _windowSwitcherEnabled;
 
     public MainWindow()
     {
@@ -53,6 +57,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _taskbarReplacement.ReplacementLost += OnTaskbarReplacementLost;
         _taskbarModeService.RequestedModeChanged += OnRequestedTaskbarModeChanged;
+        _taskbarModeService.StateChanged += OnTaskbarModeStateChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
@@ -214,6 +219,7 @@ public partial class MainWindow : Window
             }
 
             _desktopReady = true;
+            EnsureWindowSwitcher();
             HostLog.Info("Desktop surface is ready; evaluating the requested taskbar mode.");
             QueueTaskbarRebind("desktop-ready", TimeSpan.Zero);
             _ = ShowDiagnosticShellPanelAsync();
@@ -393,6 +399,102 @@ public partial class MainWindow : Window
     {
         _bridge?.PublishDisplayTopology();
         QueueTaskbarRebind("display-settings-changed", TimeSpan.FromMilliseconds(900));
+    }
+
+    private void EnsureWindowSwitcher()
+    {
+        if (_isClosing || _windowSwitcherWindow is not null)
+        {
+            return;
+        }
+
+        _windowSwitcherWindow = new WindowSwitcherWindow(
+            () =>
+            {
+                UpdateWindowSwitcherAvailability();
+                _ = ShowDiagnosticWindowSwitcherAsync();
+            },
+            status =>
+            {
+                HostLog.Warning($"JARVIS window switcher is unavailable: {status}.");
+                SetWindowSwitcherEnabled(false);
+            });
+        _windowSwitcherController = new WindowSwitcherController(
+            Dispatcher,
+            _snapshotFeed,
+            _taskbarService,
+            _windowSwitcherWindow);
+        if (!_windowSwitcherController.Start())
+        {
+            HostLog.Warning("Native Alt+Tab remains active because the JARVIS hook did not start.");
+            _windowSwitcherController.Dispose();
+            _windowSwitcherController = null;
+            _windowSwitcherWindow.CloseFromHost();
+            _windowSwitcherWindow = null;
+            return;
+        }
+
+        // Create the HWND and warm WebView2 while fully transparent. Input is not
+        // intercepted until both this renderer and full taskbar replacement report ready.
+        _windowSwitcherWindow.Show();
+    }
+
+    private void OnTaskbarModeStateChanged(TaskbarModeState state)
+    {
+        _ = state;
+        _ = Dispatcher.BeginInvoke(UpdateWindowSwitcherAvailability);
+    }
+
+    private void UpdateWindowSwitcherAvailability()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var state = _taskbarModeService.GetState();
+        var enabled = _desktopReady &&
+                      _windowSwitcherWindow?.IsReady == true &&
+                      state.EffectiveMode.Equals("full", StringComparison.OrdinalIgnoreCase) &&
+                      !state.SafeMode;
+        SetWindowSwitcherEnabled(enabled);
+    }
+
+    private void SetWindowSwitcherEnabled(bool enabled)
+    {
+        _windowSwitcherController?.SetEnabled(enabled);
+        if (_windowSwitcherEnabled == enabled)
+        {
+            return;
+        }
+
+        _windowSwitcherEnabled = enabled;
+        HostLog.Info(enabled
+            ? "JARVIS Alt+Tab interception is active."
+            : "JARVIS Alt+Tab interception is inactive; Windows keeps the shortcut.");
+    }
+
+    private async Task ShowDiagnosticWindowSwitcherAsync()
+    {
+        if (_diagnosticWindowSwitcherShown ||
+            Environment.GetEnvironmentVariable("JARVIS_WINDOW_SWITCHER_DIAGNOSTIC") != "1" ||
+            _windowSwitcherWindow?.IsReady != true)
+        {
+            return;
+        }
+
+        _diagnosticWindowSwitcherShown = true;
+        await Task.Delay(250);
+        var selection = new WindowSwitcherSelectionMachine();
+        var state = selection.Begin(_snapshotFeed.GetTaskbarSnapshot(), reverse: false);
+        if (state is null)
+        {
+            HostLog.Warning("Window-switcher diagnostics found no eligible application windows.");
+            return;
+        }
+
+        HostLog.Info("Opening persistent JARVIS window-switcher diagnostic surface.");
+        await _windowSwitcherWindow.PresentAsync(state);
     }
 
     private void OnPreviewDragOver(object sender, DragEventArgs e)
@@ -681,6 +783,7 @@ public partial class MainWindow : Window
 
     private void DisableTaskbarReplacement()
     {
+        SetWindowSwitcherEnabled(false);
         _taskbarReplacement.Restore();
         var taskbarWindow = _taskbarWindow;
         _taskbarWindow = null;
@@ -773,11 +876,16 @@ public partial class MainWindow : Window
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _taskbarReplacement.ReplacementLost -= OnTaskbarReplacementLost;
         _taskbarModeService.RequestedModeChanged -= OnRequestedTaskbarModeChanged;
+        _taskbarModeService.StateChanged -= OnTaskbarModeStateChanged;
         _windowSource?.RemoveHook(WindowProcedure);
         _windowSource = null;
         _bridge?.Dispose();
         _safetyHotkey?.Dispose();
         _safetyHotkey = null;
+        _windowSwitcherController?.Dispose();
+        _windowSwitcherController = null;
+        _windowSwitcherWindow?.CloseFromHost();
+        _windowSwitcherWindow = null;
         // Restore third-party DWM values and remove the recovery snapshot before
         // asking the taskbar watchdog to finish its own recovery pass.
         _windowAppearanceService.Dispose();

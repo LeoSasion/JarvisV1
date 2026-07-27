@@ -96,21 +96,24 @@ public partial class App : Application
         const string flyoutArgument = "--taskbar-diagnostic-flyout=";
         var argument = arguments.FirstOrDefault(value =>
             value.StartsWith(flyoutArgument, StringComparison.OrdinalIgnoreCase));
-        if (string.IsNullOrWhiteSpace(argument))
+        if (!string.IsNullOrWhiteSpace(argument))
         {
-            return;
+            var requestedProcess = argument[flyoutArgument.Length..].Trim();
+            if (!string.IsNullOrWhiteSpace(requestedProcess))
+            {
+                Environment.SetEnvironmentVariable(
+                    "JARVIS_TASKBAR_DIAGNOSTIC_FLYOUT_PROCESS",
+                    requestedProcess);
+                HostLog.Info($"Taskbar diagnostic flyout requested for process {requestedProcess}.");
+            }
         }
 
-        var requestedProcess = argument[flyoutArgument.Length..].Trim();
-        if (string.IsNullOrWhiteSpace(requestedProcess))
+        if (arguments.Any(value =>
+                value.Equals("--window-switcher-diagnostic", StringComparison.OrdinalIgnoreCase)))
         {
-            return;
+            Environment.SetEnvironmentVariable("JARVIS_WINDOW_SWITCHER_DIAGNOSTIC", "1");
+            HostLog.Info("Persistent window-switcher diagnostics requested.");
         }
-
-        Environment.SetEnvironmentVariable(
-            "JARVIS_TASKBAR_DIAGNOSTIC_FLYOUT_PROCESS",
-            requestedProcess);
-        HostLog.Info($"Taskbar diagnostic flyout requested for process {requestedProcess}.");
     }
 
     private async Task RunWatchdogAsync(WatchdogTarget target)

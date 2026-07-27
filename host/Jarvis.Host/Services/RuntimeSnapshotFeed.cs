@@ -77,6 +77,21 @@ internal sealed class RuntimeSnapshotFeed : IDisposable
 
     public WindowTaskbarSnapshot GetTaskbarSnapshot() => GetLatestOrCapture().Taskbar;
 
+    public bool TryGetLatestTaskbarSnapshot(out WindowTaskbarSnapshot snapshot)
+    {
+        lock (_stateGate)
+        {
+            if (_latest is null)
+            {
+                snapshot = default!;
+                return false;
+            }
+
+            snapshot = _latest.Taskbar;
+            return true;
+        }
+    }
+
     public RuntimeTaskbarFeedDiagnostics CaptureTaskbarDiagnostics()
     {
         lock (_stateGate)

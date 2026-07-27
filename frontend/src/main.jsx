@@ -12,7 +12,9 @@ document.documentElement.dataset.surface = surface;
 
 const loadSurface = surface === "taskbar"
   ? import("./TaskbarSurface.jsx").then((module) => module.TaskbarSurface)
-  : import("./App.jsx").then((module) => module.App);
+  : surface === "switcher"
+    ? import("./WindowSwitcherSurface.jsx").then((module) => module.WindowSwitcherSurface)
+    : import("./App.jsx").then((module) => module.App);
 
 loadSurface.then((Surface) => {
   createRoot(document.getElementById("root")).render(
