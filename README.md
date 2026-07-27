@@ -7,7 +7,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 ## Current scope
 
 - Windows 10 and Windows 11 Home/Pro desktop environments
-- Native, hybrid, and experimental full-replacement taskbar modes with running-window synchronization and recovery watchdog
+- Full primary-taskbar replacement by default, with optional native and hybrid modes, running-window synchronization, and a recovery watchdog
 - Explorer-owned notification area in hybrid mode, with automatic native fallback
 - Real Windows audio, network, and power state shared by the top bar, taskbar, and Quick Settings
 - Session-only JARVIS System Feed with bounded, deduplicated host events
@@ -69,7 +69,8 @@ Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar vis
 Taskbar modes are stored per user. `native` preserves the complete Windows
 taskbar, `hybrid` yields the notification area to Explorer, and `full` hides the
 primary taskbar behind the watchdog-backed experimental replacement. Any failed
-probe or activation returns to the native taskbar.
+probe or activation returns to the native taskbar. A fresh profile starts in
+`full`; an existing valid user selection is preserved.
 
 Run the non-mutating compatibility readiness probe on each target machine:
 

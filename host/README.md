@@ -18,6 +18,11 @@ waits for the watchdog's ready signal, and lets that watchdog hide and confirm
 `Shell_TrayWnd` before revealing the custom surface. It does not modify the registry, terminate
 Explorer, change the logon UI, or require administrator privileges.
 
+The desktop host is excluded from the Windows taskbar and task switcher. If a
+Win+D or shell transition tries to minimize it, JARVIS restores the desktop
+surface without activation so ordinary application switching cannot expose the
+Explorer desktop underneath it.
+
 The native taskbar is restored on normal exit, WebView failure, UI-thread crash,
 watchdog failure, UI hang, and forced host-process termination. On recovery the
 watchdog first hides the verified JARVIS taskbar HWND from outside the host, so a

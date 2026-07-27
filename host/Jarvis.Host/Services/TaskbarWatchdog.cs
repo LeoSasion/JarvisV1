@@ -8,6 +8,8 @@ namespace Jarvis.Host.Services;
 
 internal static class TaskbarWatchdog
 {
+    private const int VisibilityPollMilliseconds = 50;
+    private const int HostResponseProbeMilliseconds = 500;
     private const string ModeArgument = "--taskbar-watchdog";
     private const string PidArgument = "--host-pid";
     private const string StartTicksArgument = "--host-start-ticks";
@@ -187,9 +189,9 @@ internal static class TaskbarWatchdog
 
             _ = hiddenEvent.Set();
             var unresponsiveChecks = 0;
-            while (!host.HasExited && !restoreEvent.WaitOne(500))
+            var nextResponseProbe = Environment.TickCount64;
+            while (!host.HasExited && !restoreEvent.WaitOne(VisibilityPollMilliseconds))
             {
-                host.Refresh();
                 if (host.HasExited)
                 {
                     break;
@@ -200,12 +202,22 @@ internal static class TaskbarWatchdog
                     break;
                 }
 
+                // Explorer can briefly recreate or reshow Shell_TrayWnd during
+                // foreground-window transitions. Keep that exposure below a
+                // perceptible frame instead of waiting for the health interval.
                 if (NativeTaskbarController.IsPrimaryVisible() && !NativeTaskbarController.HidePrimary())
                 {
                     HostLog.Warning("The watchdog could not hide a recreated primary taskbar.");
                     break;
                 }
 
+                if (Environment.TickCount64 < nextResponseProbe)
+                {
+                    continue;
+                }
+
+                nextResponseProbe = Environment.TickCount64 + HostResponseProbeMilliseconds;
+                host.Refresh();
                 if (host.MainWindowHandle != IntPtr.Zero && !host.Responding)
                 {
                     unresponsiveChecks++;

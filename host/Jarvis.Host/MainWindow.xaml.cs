@@ -15,6 +15,10 @@ namespace Jarvis.Host;
 public partial class MainWindow : Window
 {
     private static readonly int TaskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+    private const int GwlExStyle = -20;
+    private const int SwShowNoActivate = 4;
+    private const long WsExToolWindow = 0x00000080L;
+    private const long WsExAppWindow = 0x00040000L;
 
     private readonly TaskbarReplacementSession _taskbarReplacement = new();
     private readonly TaskbarModeService _taskbarModeService = new();
@@ -60,6 +64,10 @@ public partial class MainWindow : Window
         _ = _safetyHotkey.Register();
         _windowAppearanceService.Start();
         var handle = new WindowInteropHelper(this).Handle;
+        if (handle != IntPtr.Zero && !ApplyDesktopSurfaceStyles(handle))
+        {
+            HostLog.Warning("The desktop host could not be excluded from the Windows task switcher.");
+        }
         _windowSource = handle == IntPtr.Zero ? null : HwndSource.FromHwnd(handle);
         _windowSource?.AddHook(WindowProcedure);
         if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var bounds) ||
@@ -67,6 +75,51 @@ public partial class MainWindow : Window
         {
             HostLog.Warning("The desktop host could not be fitted to the primary monitor bounds.");
         }
+    }
+
+    private static bool ApplyDesktopSurfaceStyles(IntPtr handle)
+    {
+        var currentStyle = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+        var desktopStyle = (currentStyle | WsExToolWindow) & ~WsExAppWindow;
+        if (desktopStyle != currentStyle)
+        {
+            _ = SetWindowLongPtr(handle, GwlExStyle, new IntPtr(desktopStyle));
+        }
+
+        var appliedStyle = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
+        return (appliedStyle & WsExToolWindow) != 0 &&
+               (appliedStyle & WsExAppWindow) == 0;
+    }
+
+    private void OnDesktopWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (_isClosing || WindowState != WindowState.Minimized)
+        {
+            return;
+        }
+
+        // JARVIS is the desktop surface, not a task-switchable application window.
+        // Win+D and shell transitions may try to minimize every top-level window;
+        // restore this one without activation so Explorer's desktop never flashes
+        // between ordinary application-window transitions.
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            if (_isClosing || WindowState != WindowState.Minimized)
+            {
+                return;
+            }
+
+            var handle = new WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+            {
+                _ = ShowWindow(handle, SwShowNoActivate);
+            }
+
+            if (NativeDisplay.TryGetPrimaryMonitorBounds(out var bounds))
+            {
+                _ = NativeDisplay.PositionWindow(this, bounds);
+            }
+        });
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -743,4 +796,28 @@ public partial class MainWindow : Window
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int RegisterWindowMessage(string messageName);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr window, int command);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr64(IntPtr window, int index);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern IntPtr GetWindowLong32(IntPtr window, int index);
+
+    private static IntPtr GetWindowLongPtr(IntPtr window, int index) =>
+        IntPtr.Size == 8 ? GetWindowLongPtr64(window, index) : GetWindowLong32(window, index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr64(IntPtr window, int index, IntPtr newValue);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern IntPtr SetWindowLong32(IntPtr window, int index, IntPtr newValue);
+
+    private static IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr newValue) =>
+        IntPtr.Size == 8
+            ? SetWindowLongPtr64(window, index, newValue)
+            : SetWindowLong32(window, index, newValue);
 }

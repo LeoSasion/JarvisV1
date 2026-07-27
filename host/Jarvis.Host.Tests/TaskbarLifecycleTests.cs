@@ -56,10 +56,10 @@ public sealed class TaskbarLifecycleTests
     }
 
     [Fact]
-    public void InitialTaskbarModeUsesNativeFallbackForInvalidPersistedSettings()
+    public void InitialTaskbarModeDefaultsToFullAndFailsClosedForInvalidSettings()
     {
         Assert.Equal(
-            TaskbarMode.Hybrid,
+            TaskbarMode.Full,
             TaskbarModeService.ResolveInitialMode(null, settingsFileExists: false));
         Assert.Equal(
             TaskbarMode.Native,

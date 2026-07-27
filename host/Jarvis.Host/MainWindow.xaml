@@ -6,6 +6,7 @@
         WindowStyle="None"
         ResizeMode="NoResize"
         WindowStartupLocation="Manual"
+        ShowInTaskbar="False"
         Background="#020711"
         AllowDrop="True"
         PreviewDragOver="OnPreviewDragOver"
@@ -13,6 +14,7 @@
         PreviewKeyDown="OnPreviewKeyDown"
         SourceInitialized="OnSourceInitialized"
         Loaded="OnLoaded"
+        StateChanged="OnDesktopWindowStateChanged"
         Closing="OnClosing">
   <Grid>
     <wv2:WebView2 x:Name="WebView"
