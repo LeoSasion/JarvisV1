@@ -2585,6 +2585,168 @@ button.process-grid:hover {
   background: rgba(82, 27, 23, 0.72);
 }
 
+.explorer-conflict-dialog {
+  width: min(520px, 100%);
+}
+
+.explorer-conflict-note {
+  margin: 8px 20px 0;
+  padding: 9px 11px;
+  border-left: 2px solid #1a91ce;
+  background: rgba(5, 39, 62, 0.66);
+  color: #6ebce4;
+  font: 7.5px/1.4 Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+.explorer-conflict-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 16px 20px 20px;
+}
+
+.explorer-conflict-choices > button {
+  min-height: 78px;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(32, 94, 132, 0.8);
+  background: rgba(2, 17, 29, 0.82);
+  text-align: left;
+}
+
+.explorer-conflict-choices > button:hover:not(:disabled),
+.explorer-conflict-choices > button:focus-visible {
+  outline: 0;
+  border-color: #22b2ef;
+  background: rgba(4, 40, 64, 0.92);
+  box-shadow: 0 0 12px rgba(34, 178, 239, 0.12);
+}
+
+.explorer-conflict-choices > button.is-danger {
+  border-color: rgba(138, 65, 58, 0.8);
+}
+
+.explorer-conflict-choices strong {
+  color: #bce8fa;
+  font: 600 8px/1 Bahnschrift, sans-serif;
+  letter-spacing: 0.1em;
+}
+
+.explorer-conflict-choices span {
+  color: #66889b;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.explorer-transfer-panel {
+  position: absolute;
+  right: 14px;
+  bottom: 42px;
+  z-index: 3;
+  width: min(352px, calc(100% - 28px));
+  padding: 12px 14px;
+  border: 1px solid rgba(28, 128, 183, 0.9);
+  background: rgba(1, 10, 19, 0.97);
+  box-shadow:
+    0 0 0 1px rgba(0, 30, 50, 0.9) inset,
+    0 0 22px rgba(0, 109, 181, 0.18),
+    0 12px 30px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(0 8px, 8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+}
+
+.explorer-transfer-panel.is-success {
+  border-color: rgba(48, 155, 118, 0.88);
+}
+
+.explorer-transfer-panel.is-warning,
+.explorer-transfer-panel.is-error {
+  border-color: rgba(178, 101, 66, 0.9);
+}
+
+.explorer-transfer-panel > header,
+.explorer-transfer-summary,
+.explorer-transfer-panel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.explorer-transfer-panel > header span {
+  color: #5b8299;
+  font: 7px/1 Bahnschrift, sans-serif;
+  letter-spacing: 0.13em;
+}
+
+.explorer-transfer-panel > header strong {
+  color: #58c7f5;
+  font: 600 8px/1 Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.explorer-transfer-summary {
+  margin-top: 11px;
+  color: #b5d4e2;
+  font: 8.5px/1.25 "Segoe UI", sans-serif;
+}
+
+.explorer-transfer-summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-transfer-summary b {
+  color: #d5f4ff;
+  font: 600 11px/1 Consolas, monospace;
+}
+
+.explorer-transfer-progress {
+  height: 3px;
+  margin-top: 9px;
+  overflow: hidden;
+  background: #071d2c;
+}
+
+.explorer-transfer-progress i {
+  display: block;
+  width: var(--transfer-progress);
+  height: 100%;
+  background: linear-gradient(90deg, #0966b8, #27c8ff);
+  box-shadow: 0 0 9px rgba(39, 200, 255, 0.8);
+  transition: width 120ms linear;
+}
+
+.explorer-transfer-panel > footer {
+  margin-top: 10px;
+}
+
+.explorer-transfer-panel > footer small {
+  color: #58788b;
+  font: 7px/1 Consolas, monospace;
+}
+
+.explorer-transfer-panel > footer button {
+  height: 25px;
+  padding-inline: 10px;
+  border: 1px solid rgba(37, 101, 138, 0.78);
+  color: #78b8d7;
+  font: 600 7px/1 Bahnschrift, sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.explorer-transfer-panel > footer button:hover:not(:disabled),
+.explorer-transfer-panel > footer button:focus-visible {
+  outline: 0;
+  border-color: #29b9ed;
+  color: #cff4ff;
+  background: rgba(4, 42, 65, 0.76);
+}
+
 @media (max-width: 1800px) {
   .jarvis-explorer {
     right: clamp(360px, 25vw, 460px);

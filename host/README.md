@@ -180,6 +180,11 @@ It also emits a `system.snapshot` event every second:
 {"event":"system.snapshot","data":{}}
 ```
 
+File copy and move use a non-blocking transfer protocol. The host emits
+`explorer.transferChanged` snapshots while scanning and transferring; cancellation
+removes JARVIS-created partial destinations. Cross-volume move copies and verifies
+the source byte count and file count before source deletion.
+
 The host forwards WebView2's native Escape accelerator to the React document, so
 the command dialog can close without terminating the Windows host.
 
@@ -192,6 +197,14 @@ Supported methods:
 - `system.getSnapshot`
 - `system.getDetails` (on-demand process, hardware identity, graphics adapter, and drive snapshot)
 - `desktop.listEntries`
+- `explorer.browse`
+- `explorer.createFolder`
+- `explorer.rename`
+- `explorer.recycle`
+- `explorer.preflightTransfer` with paths, destination, and `copy|move`
+- `explorer.startTransfer` with an explicit `rename|skip|replace` conflict policy
+- `explorer.cancelTransfer` with an opaque job ID
+- `explorer.getTransfers`
 - `terminal.listProfiles`
 - `terminal.create` with an allowlisted `{ "profileId": "powershell|cmd|wsl", "columns": 120, "rows": 32 }`
 - `terminal.write` with an opaque host-generated session ID and bounded UTF-8 input

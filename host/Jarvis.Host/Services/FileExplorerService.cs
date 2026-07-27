@@ -10,7 +10,7 @@ namespace Jarvis.Host.Services;
 
 internal sealed class FileExplorerService
 {
-    private const int MaxPathLength = 1024;
+    private const int MaxPathLength = 32_767;
     private const int MaxOperationItems = 128;
     private const int MaxEntryNameLength = 255;
     private const int MaxBrowseEntries = 1000;
@@ -241,79 +241,6 @@ internal sealed class FileExplorerService
         }
     }
 
-    public ExplorerOperationResult Transfer(
-        IReadOnlyList<string> requestedPaths,
-        string requestedDestinationPath,
-        string requestedMode)
-    {
-        var mode = requestedMode.ToLowerInvariant();
-        if (mode is not ("copy" or "move"))
-        {
-            throw new BridgeFaultException("INVALID_OPERATION", "Transfer mode must be copy or move.");
-        }
-
-        var destinationPath = NormalizeDirectoryPath(requestedDestinationPath);
-        var sourcePaths = NormalizeOperationPaths(requestedPaths);
-        var completed = new List<ExplorerOperationItem>();
-        var failures = new List<ExplorerOperationFailure>();
-
-        foreach (var sourcePath in sourcePaths)
-        {
-            try
-            {
-                var isDirectory = Directory.Exists(sourcePath);
-                if (isDirectory && IsPathWithin(destinationPath, sourcePath))
-                {
-                    throw new BridgeFaultException(
-                        "INVALID_DESTINATION",
-                        "A folder cannot be copied or moved into itself or one of its descendants.");
-                }
-
-                var sourceParent = Path.GetDirectoryName(sourcePath);
-                if (mode == "move" &&
-                    sourceParent is not null &&
-                    sourceParent.Equals(destinationPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    completed.Add(new ExplorerOperationItem(
-                        sourcePath,
-                        sourcePath,
-                        Path.GetFileName(sourcePath)));
-                    continue;
-                }
-
-                var targetPath = CreateUniqueDestinationPath(
-                    destinationPath,
-                    Path.GetFileName(sourcePath),
-                    isDirectory,
-                    mode == "copy");
-
-                if (mode == "copy")
-                {
-                    CopyEntry(sourcePath, targetPath, isDirectory);
-                }
-                else
-                {
-                    MoveEntry(sourcePath, targetPath, isDirectory);
-                }
-
-                completed.Add(new ExplorerOperationItem(
-                    sourcePath,
-                    targetPath,
-                    Path.GetFileName(targetPath)));
-            }
-            catch (BridgeFaultException ex)
-            {
-                failures.Add(new ExplorerOperationFailure(sourcePath, ex.Code, ex.Message));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                failures.Add(new ExplorerOperationFailure(sourcePath, "TRANSFER_FAILED", ex.Message));
-            }
-        }
-
-        return new ExplorerOperationResult(mode, completed, failures);
-    }
-
     public ExplorerOperationResult Recycle(IReadOnlyList<string> requestedPaths)
     {
         var sourcePaths = NormalizeOperationPaths(requestedPaths);
@@ -355,7 +282,7 @@ internal sealed class FileExplorerService
         return new ExplorerOperationResult("recycle", completed, failures);
     }
 
-    private static string NormalizeDirectoryPath(string? requestedPath)
+    internal static string NormalizeDirectoryPath(string? requestedPath)
     {
         var path = string.IsNullOrWhiteSpace(requestedPath)
             ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -366,14 +293,7 @@ internal sealed class FileExplorerService
             throw new BridgeFaultException("DIRECTORY_NOT_FOUND", "The requested folder does not exist.");
         }
 
-        var attributes = File.GetAttributes(normalized);
-        if (attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            throw new BridgeFaultException(
-                "TARGET_NOT_ALLOWED",
-                "Linked folders are not traversed directly by JARVIS Explorer V1.");
-        }
-
+        EnsureNoReparsePoints(normalized);
         return normalized;
     }
 
@@ -388,18 +308,10 @@ internal sealed class FileExplorerService
             throw new BridgeFaultException("TARGET_NOT_ALLOWED", "Drive roots cannot be modified.");
         }
 
-        var attributes = File.GetAttributes(normalized);
-        if (attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            throw new BridgeFaultException(
-                "TARGET_NOT_ALLOWED",
-                "Linked file-system entries cannot be modified by JARVIS Explorer.");
-        }
-
         return normalized;
     }
 
-    private static IReadOnlyList<string> NormalizeOperationPaths(IReadOnlyList<string> requestedPaths)
+    internal static IReadOnlyList<string> NormalizeOperationPaths(IReadOnlyList<string> requestedPaths)
     {
         if (requestedPaths.Count == 0)
         {
@@ -486,7 +398,7 @@ internal sealed class FileExplorerService
         }
     }
 
-    private static string CreateUniqueDestinationPath(
+    internal static string CreateUniqueDestinationPath(
         string destinationDirectory,
         string sourceName,
         bool isDirectory,
@@ -518,84 +430,7 @@ internal sealed class FileExplorerService
             "JARVIS could not generate a unique destination name.");
     }
 
-    private static void CopyEntry(string sourcePath, string targetPath, bool isDirectory)
-    {
-        try
-        {
-            if (isDirectory)
-            {
-                CopyDirectory(sourcePath, targetPath);
-            }
-            else
-            {
-                File.Copy(sourcePath, targetPath, overwrite: false);
-            }
-        }
-        catch
-        {
-            DeleteCreatedEntry(targetPath);
-            throw;
-        }
-    }
-
-    private static void CopyDirectory(string sourcePath, string targetPath)
-    {
-        var sourceInfo = new DirectoryInfo(sourcePath);
-        if (sourceInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            throw new BridgeFaultException(
-                "TARGET_NOT_ALLOWED",
-                "Linked folders are not copied by JARVIS Explorer.");
-        }
-
-        Directory.CreateDirectory(targetPath);
-        foreach (var file in sourceInfo.EnumerateFiles())
-        {
-            if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            {
-                throw new BridgeFaultException(
-                    "TARGET_NOT_ALLOWED",
-                    $"Linked file-system entry blocked: {file.Name}");
-            }
-
-            file.CopyTo(Path.Combine(targetPath, file.Name), overwrite: false);
-        }
-
-        foreach (var directory in sourceInfo.EnumerateDirectories())
-        {
-            if (directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            {
-                throw new BridgeFaultException(
-                    "TARGET_NOT_ALLOWED",
-                    $"Linked file-system entry blocked: {directory.Name}");
-            }
-
-            CopyDirectory(directory.FullName, Path.Combine(targetPath, directory.Name));
-        }
-    }
-
-    private static void MoveEntry(string sourcePath, string targetPath, bool isDirectory)
-    {
-        var sourceRoot = Path.GetPathRoot(sourcePath);
-        var targetRoot = Path.GetPathRoot(targetPath);
-        if (sourceRoot?.Equals(targetRoot, StringComparison.OrdinalIgnoreCase) != true)
-        {
-            throw new BridgeFaultException(
-                "CROSS_DRIVE_MOVE_NOT_SUPPORTED",
-                "Cross-drive cut and paste is not enabled in this safety milestone. Use copy instead.");
-        }
-
-        if (isDirectory)
-        {
-            Directory.Move(sourcePath, targetPath);
-        }
-        else
-        {
-            File.Move(sourcePath, targetPath);
-        }
-    }
-
-    private static void DeleteCreatedEntry(string path)
+    internal static void DeleteCreatedEntry(string path)
     {
         try
         {
@@ -614,7 +449,7 @@ internal sealed class FileExplorerService
         }
     }
 
-    private static bool IsPathWithin(string candidatePath, string directoryPath)
+    internal static bool IsPathWithin(string candidatePath, string directoryPath)
     {
         var normalizedDirectory = Path.TrimEndingDirectorySeparator(directoryPath) + Path.DirectorySeparatorChar;
         var normalizedCandidate = Path.TrimEndingDirectorySeparator(candidatePath) + Path.DirectorySeparatorChar;
@@ -629,14 +464,7 @@ internal sealed class FileExplorerService
             throw new BridgeFaultException("FILE_NOT_FOUND", "The selected file no longer exists.");
         }
 
-        var attributes = File.GetAttributes(normalized);
-        if (attributes.HasFlag(FileAttributes.ReparsePoint))
-        {
-            throw new BridgeFaultException(
-                "TARGET_NOT_ALLOWED",
-                "Linked file-system entries are not opened directly by JARVIS Explorer V1.");
-        }
-
+        EnsureNoReparsePoints(normalized);
         return normalized;
     }
 
@@ -648,7 +476,36 @@ internal sealed class FileExplorerService
             throw new BridgeFaultException("TARGET_NOT_FOUND", "The selected path no longer exists.");
         }
 
+        EnsureNoReparsePoints(normalized);
         return normalized;
+    }
+
+    private static void EnsureNoReparsePoints(string normalizedPath)
+    {
+        var root = Path.GetPathRoot(normalizedPath);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            throw new BridgeFaultException("INVALID_PATH", "The requested path has no local drive root.");
+        }
+
+        var current = root;
+        foreach (var segment in normalizedPath[root.Length..].Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            if (!File.Exists(current) && !Directory.Exists(current))
+            {
+                break;
+            }
+
+            if (File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new BridgeFaultException(
+                    "TARGET_NOT_ALLOWED",
+                    $"Linked file-system path segment blocked: {segment}");
+            }
+        }
     }
 
     private static string NormalizeLocalPath(string path)
@@ -663,7 +520,7 @@ internal sealed class FileExplorerService
         {
             throw new BridgeFaultException(
                 "INVALID_PATH",
-                "JARVIS Explorer V1 supports fully qualified local Windows paths only.");
+                "JARVIS Explorer supports fully qualified local Windows paths only.");
         }
 
         var normalized = Path.GetFullPath(trimmed);
@@ -846,8 +703,13 @@ internal sealed record ExplorerOperationFailure(string Source, string Code, stri
 internal sealed record ExplorerOperationResult(
     string Operation,
     IReadOnlyList<ExplorerOperationItem> Items,
-    IReadOnlyList<ExplorerOperationFailure> Failures)
+    IReadOnlyList<ExplorerOperationFailure> Failures,
+    IReadOnlyList<ExplorerOperationFailure>? Skipped = null)
 {
     public static ExplorerOperationResult Completed(string operation, params ExplorerOperationItem[] items) =>
-        new(operation, items, Array.Empty<ExplorerOperationFailure>());
+        new(
+            operation,
+            items,
+            Array.Empty<ExplorerOperationFailure>(),
+            Array.Empty<ExplorerOperationFailure>());
 }

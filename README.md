@@ -12,6 +12,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 - Real Windows audio, network, and power state shared by the top bar, taskbar, and Quick Settings
 - Session-only JARVIS System Feed with bounded, deduplicated host events
 - Keyboard-first application search and launcher
+- Cancellable File Explorer copy/move jobs with conflict policies, byte progress, long-path support, and verified cross-volume moves
 - Windows-native system telemetry and on-demand process/hardware inspection
 - Integrated PowerShell, Command Prompt, and WSL sessions through ConPTY
 - Configurable conservative, enhanced, and experimental immersive window styling

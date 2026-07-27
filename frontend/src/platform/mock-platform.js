@@ -451,8 +451,80 @@ export function createMockPlatform() {
     explorerEntriesByPath.delete(path);
   };
 
+  let activeTransfer = null;
+  let transferTimer = null;
+
   const emit = (eventName, data) => {
     eventListeners.get(eventName)?.forEach((listener) => listener(data));
+  };
+
+  const findMockSource = (path) => {
+    const sourceParent = mockParentPath(path);
+    const source = getExplorerEntries(sourceParent).find((entry) => entry.path === path);
+    return { sourceParent, source };
+  };
+
+  const mockTransferConflicts = (paths, destinationPath) => paths.flatMap((path) => {
+    const { source } = findMockSource(path);
+    if (!source) return [];
+    const target = getExplorerEntries(destinationPath)
+      .find((entry) => entry.name.toLocaleLowerCase() === source.name.toLocaleLowerCase());
+    return target ? [{
+      source: path,
+      target: target.path,
+      name: source.name,
+      sourceIsDirectory: source.isDirectory,
+      targetIsDirectory: target.isDirectory,
+    }] : [];
+  });
+
+  const performMockTransfer = (paths, destinationPath, mode, conflictPolicy) => {
+    const items = [];
+    const failures = [];
+    const skipped = [];
+    paths.forEach((path) => {
+      const { sourceParent, source } = findMockSource(path);
+      if (!source) {
+        failures.push({ source: path, code: "TARGET_NOT_FOUND", message: "The selected item no longer exists." });
+        return;
+      }
+      if (mode === "move" && sourceParent === destinationPath) {
+        items.push({ source: path, target: path, name: source.name });
+        return;
+      }
+
+      const existing = getExplorerEntries(destinationPath)
+        .find((entry) => entry.name.toLocaleLowerCase() === source.name.toLocaleLowerCase());
+      if (existing && conflictPolicy === "skip") {
+        skipped.push({ source: path, code: "SKIPPED_CONFLICT", message: "An item with the same name already exists." });
+        return;
+      }
+      if (existing?.path === path && conflictPolicy === "replace") {
+        failures.push({ source: path, code: "INVALID_CONFLICT_POLICY", message: "A source item cannot replace itself." });
+        return;
+      }
+      if (existing && conflictPolicy === "replace") {
+        replaceExplorerEntry(existing.path);
+        if (existing.isDirectory) removeMockTree(existing.path);
+      }
+
+      const target = existing && conflictPolicy === "rename"
+        ? createUniqueMockPath(destinationPath, source, mode === "copy")
+        : mockJoinPath(destinationPath, source.name);
+      const targetEntry = { ...source, path: target, name: mockBaseName(target), modified: new Date().toISOString() };
+      explorerEntriesByPath.set(destinationPath, [...getExplorerEntries(destinationPath), targetEntry]);
+      if (source.isDirectory) cloneMockTree(path, target);
+      if (mode === "move") {
+        replaceExplorerEntry(path);
+        if (source.isDirectory) removeMockTree(path);
+      }
+      items.push({ source: path, target, name: targetEntry.name });
+    });
+    return { operation: mode, items, failures, skipped };
+  };
+
+  const emitMockTransfer = () => {
+    if (activeTransfer) emit("explorer.transferChanged", { ...activeTransfer });
   };
 
   return {
@@ -572,31 +644,112 @@ export function createMockPlatform() {
         }
         return { operation: "rename", items: [{ source: path, target, name }], failures: [] };
       },
-      async transfer(paths, destinationPath, mode) {
-        const items = [];
-        const failures = [];
-        paths.forEach((path) => {
-          const sourceParent = mockParentPath(path);
-          const source = getExplorerEntries(sourceParent).find((entry) => entry.path === path);
-          if (!source) {
-            failures.push({ source: path, code: "TARGET_NOT_FOUND", message: "The selected item no longer exists." });
-            return;
-          }
-          if (mode === "move" && sourceParent === destinationPath) {
-            items.push({ source: path, target: path, name: source.name });
-            return;
-          }
-          const target = createUniqueMockPath(destinationPath, source, mode === "copy");
-          const targetEntry = { ...source, path: target, name: mockBaseName(target), modified: new Date().toISOString() };
-          explorerEntriesByPath.set(destinationPath, [...getExplorerEntries(destinationPath), targetEntry]);
-          if (source.isDirectory) cloneMockTree(path, target);
-          if (mode === "move") {
-            replaceExplorerEntry(path);
-            if (source.isDirectory) removeMockTree(path);
-          }
-          items.push({ source: path, target, name: targetEntry.name });
-        });
-        return { operation: mode, items, failures };
+      async preflightTransfer(paths, destinationPath, mode) {
+        return {
+          mode,
+          destinationPath,
+          itemCount: paths.length,
+          conflicts: mockTransferConflicts(paths, destinationPath),
+          crossesVolumes: paths.some((path) => path.slice(0, 2).toLocaleLowerCase() !== destinationPath.slice(0, 2).toLocaleLowerCase()),
+        };
+      },
+      async startTransfer(paths, destinationPath, mode, conflictPolicy = "rename") {
+        if (activeTransfer && !["completed", "completed-with-errors", "cancelled", "failed"].includes(activeTransfer.status)) {
+          const error = new Error("Another JARVIS file transfer is still active.");
+          error.code = "TRANSFER_BUSY";
+          throw error;
+        }
+
+        const totalBytes = paths.reduce((total, path) => {
+          const { source } = findMockSource(path);
+          return total + Number(source?.sizeBytes ?? 8 * DECIMAL_MB);
+        }, 0);
+        const now = new Date().toISOString();
+        activeTransfer = {
+          jobId: `mock-transfer-${Date.now()}`,
+          mode,
+          conflictPolicy,
+          status: "queued",
+          currentItem: null,
+          totalItems: paths.length,
+          completedItems: 0,
+          failedItems: 0,
+          skippedItems: 0,
+          totalBytes,
+          bytesTransferred: 0,
+          percent: 0,
+          startedAt: now,
+          updatedAt: now,
+          error: null,
+          result: { operation: mode, items: [], failures: [], skipped: [] },
+        };
+        emitMockTransfer();
+
+        transferTimer = window.setTimeout(() => {
+          if (!activeTransfer || activeTransfer.status === "cancelling") return;
+          activeTransfer = { ...activeTransfer, status: "scanning", updatedAt: new Date().toISOString() };
+          emitMockTransfer();
+          let percent = 0;
+          const advance = () => {
+            if (!activeTransfer || activeTransfer.status === "cancelling") return;
+            percent += 20;
+            if (percent < 100) {
+              activeTransfer = {
+                ...activeTransfer,
+                status: "transferring",
+                currentItem: mockBaseName(paths[Math.min(paths.length - 1, Math.floor(percent / 100 * paths.length))] ?? ""),
+                percent,
+                bytesTransferred: Math.round(totalBytes * percent / 100),
+                updatedAt: new Date().toISOString(),
+              };
+              emitMockTransfer();
+              transferTimer = window.setTimeout(advance, 90);
+              return;
+            }
+
+            const result = performMockTransfer(paths, destinationPath, mode, conflictPolicy);
+            activeTransfer = {
+              ...activeTransfer,
+              status: result.failures.length ? "completed-with-errors" : "completed",
+              currentItem: null,
+              completedItems: result.items.length,
+              failedItems: result.failures.length,
+              skippedItems: result.skipped.length,
+              bytesTransferred: totalBytes,
+              percent: 100,
+              updatedAt: new Date().toISOString(),
+              result,
+            };
+            transferTimer = null;
+            emitMockTransfer();
+          };
+          transferTimer = window.setTimeout(advance, 90);
+        }, 80);
+        return { ...activeTransfer };
+      },
+      async cancelTransfer(jobId) {
+        if (!activeTransfer || activeTransfer.jobId !== jobId) {
+          const error = new Error("The requested file transfer is no longer available.");
+          error.code = "TRANSFER_NOT_FOUND";
+          throw error;
+        }
+        if (transferTimer !== null) {
+          window.clearTimeout(transferTimer);
+          transferTimer = null;
+        }
+        activeTransfer = {
+          ...activeTransfer,
+          status: "cancelled",
+          currentItem: null,
+          bytesTransferred: 0,
+          percent: 0,
+          updatedAt: new Date().toISOString(),
+        };
+        emitMockTransfer();
+        return { ...activeTransfer };
+      },
+      async getTransfers() {
+        return { jobs: activeTransfer ? [{ ...activeTransfer }] : [] };
       },
       async recycle(paths) {
         const items = [];

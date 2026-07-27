@@ -24,6 +24,7 @@ internal sealed class WebBridge : IDisposable
     private readonly DesktopService _desktopService;
     private readonly ShellService _shellService;
     private readonly FileExplorerService _fileExplorerService;
+    private readonly FileTransferCoordinator _fileTransferCoordinator = new();
     private readonly TerminalSessionService _terminalSessionService;
     private readonly WindowTaskbarService _taskbarService;
     private readonly NativeWindowAppearanceService _windowAppearanceService;
@@ -99,6 +100,7 @@ internal sealed class WebBridge : IDisposable
         _taskbarModeService.StateChanged += OnTaskbarModeChanged;
         _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
         _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
+        _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
         if (_terminalEnabled)
         {
             _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
@@ -248,13 +250,20 @@ internal sealed class WebBridge : IDisposable
                     GetRequiredPath(parameters),
                     GetRequiredString(parameters, "name")),
                 cancellationToken),
-            "explorer.transfer" => await RunFileOperationAsync(
-                "transfer",
-                () => (object)_fileExplorerService.Transfer(
+            "explorer.preflightTransfer" => await Task.Run(
+                () => (object)_fileTransferCoordinator.Preflight(
                     GetRequiredPaths(parameters),
                     GetRequiredString(parameters, "destinationPath"),
                     GetRequiredString(parameters, "mode")),
                 cancellationToken),
+            "explorer.startTransfer" => _fileTransferCoordinator.Start(
+                GetRequiredPaths(parameters),
+                GetRequiredString(parameters, "destinationPath"),
+                GetRequiredString(parameters, "mode"),
+                GetRequiredString(parameters, "conflictPolicy")),
+            "explorer.cancelTransfer" => _fileTransferCoordinator.Cancel(
+                GetRequiredString(parameters, "jobId")),
+            "explorer.getTransfers" => _fileTransferCoordinator.GetTransfers(),
             "explorer.recycle" => await RunFileOperationAsync(
                 "recycle",
                 () => (object)_fileExplorerService.Recycle(GetRequiredPaths(parameters)),
@@ -532,6 +541,54 @@ internal sealed class WebBridge : IDisposable
         catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
         {
             // A closing renderer can reject the final system-feed update.
+        }
+    }
+
+    private void OnFileTransferChanged(object? sender, ExplorerTransferSnapshot snapshot)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (snapshot.Status is "completed" or "completed-with-errors" or "cancelled" or "failed")
+        {
+            var severity = snapshot.Status switch
+            {
+                "completed" => "ok",
+                "cancelled" => "warning",
+                _ => "error"
+            };
+            var detail = snapshot.Status switch
+            {
+                "completed" => $"{snapshot.CompletedItems} item(s) transferred.",
+                "cancelled" => "The transfer was cancelled and partial output was cleaned up.",
+                _ => $"{snapshot.CompletedItems} completed, {snapshot.FailedItems} failed, {snapshot.SkippedItems} skipped."
+            };
+            _systemFeedService.Add(
+                $"explorer.transfer.{snapshot.Status}",
+                severity,
+                $"File transfer {snapshot.Status.Replace('-', ' ')}",
+                detail,
+                actionId: null,
+                deduplicationKey: $"explorer:transfer:{snapshot.JobId}:{snapshot.Status}");
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "explorer.transferChanged", data = snapshot });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final transfer update.
         }
     }
 
@@ -1133,6 +1190,7 @@ internal sealed class WebBridge : IDisposable
             _taskbarModeService.StateChanged -= OnTaskbarModeChanged;
             _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
             _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
+            _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
             if (_terminalEnabled)
             {
                 _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;
@@ -1140,6 +1198,7 @@ internal sealed class WebBridge : IDisposable
             }
         }
 
+        _fileTransferCoordinator.Dispose();
         _shutdown.Dispose();
     }
 }

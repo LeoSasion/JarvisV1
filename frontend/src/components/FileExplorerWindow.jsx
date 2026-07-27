@@ -40,6 +40,13 @@ import {
 } from "react";
 import { platform } from "../platform/index.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
+import {
+  canReplaceAllConflicts,
+  getTransferSummary,
+  isTransferTerminal,
+  normalizeTransferPreflight,
+  normalizeTransferSnapshot,
+} from "../file-transfer-state.js";
 
 const EMPTY_SNAPSHOT = {
   currentPath: "",
@@ -131,6 +138,7 @@ function normalizeSnapshot(result) {
 function normalizeOperation(result) {
   const items = read(result, "items", "Items") ?? [];
   const failures = read(result, "failures", "Failures") ?? [];
+  const skipped = read(result, "skipped", "Skipped") ?? [];
   return {
     operation: String(read(result, "operation", "Operation") ?? "operation"),
     items: items.map((item) => ({
@@ -142,6 +150,11 @@ function normalizeOperation(result) {
       source: String(read(failure, "source", "Source") ?? ""),
       code: String(read(failure, "code", "Code") ?? "OPERATION_FAILED"),
       message: String(read(failure, "message", "Message") ?? "Windows could not complete the operation."),
+    })),
+    skipped: skipped.map((failure) => ({
+      source: String(read(failure, "source", "Source") ?? ""),
+      code: String(read(failure, "code", "Code") ?? "OPERATION_SKIPPED"),
+      message: String(read(failure, "message", "Message") ?? "The operation was skipped."),
     })),
   };
 }
@@ -225,6 +238,113 @@ function ExplorerCommandDialog({ dialog, busy, onCancel, onConfirm }) {
   );
 }
 
+function ExplorerConflictDialog({ pending, busy, onCancel, onChoose }) {
+  const dialogRef = useRef(null);
+  const primaryRef = useRef(null);
+  const replaceAllowed = canReplaceAllConflicts(pending.preflight);
+  const conflictCount = pending.preflight.conflicts.length;
+  const preview = pending.preflight.conflicts
+    .slice(0, 3)
+    .map((conflict) => conflict.name)
+    .join(", ");
+
+  useDialogFocusTrap(dialogRef, true, {
+    initialFocusRef: primaryRef,
+    onEscape: busy ? null : onCancel,
+  });
+
+  return (
+    <div className="explorer-dialog-layer">
+      <section
+        ref={dialogRef}
+        className="explorer-command-dialog explorer-conflict-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="explorer-conflict-title"
+      >
+        <header>
+          <strong id="explorer-conflict-title">NAME CONFLICT DETECTED</strong>
+          <button type="button" aria-label="Cancel transfer" disabled={busy} onClick={onCancel}><DismissRegular /></button>
+        </header>
+        <p>
+          {conflictCount} of {pending.preflight.itemCount} item{pending.preflight.itemCount === 1 ? "" : "s"} already {pending.preflight.itemCount === 1 ? "exists" : "exist"}
+          in this folder: {preview}{conflictCount > 3 ? ` and ${conflictCount - 3} more` : ""}.
+        </p>
+        {pending.preflight.crossesVolumes && pending.mode === "move" ? (
+          <div className="explorer-conflict-note">
+            CROSS-VOLUME MOVE · JARVIS WILL COPY, VERIFY, THEN DELETE THE SOURCE
+          </div>
+        ) : null}
+        <div className="explorer-conflict-choices">
+          <button ref={primaryRef} type="button" disabled={busy} onClick={() => onChoose("rename")}>
+            <strong>KEEP BOTH</strong>
+            <span>Generate a unique Windows-style name.</span>
+          </button>
+          <button type="button" disabled={busy} onClick={() => onChoose("skip")}>
+            <strong>SKIP CONFLICTS</strong>
+            <span>Transfer only items whose names are free.</span>
+          </button>
+          <button type="button" className="is-danger" disabled={busy || !replaceAllowed} onClick={() => onChoose("replace")}>
+            <strong>REPLACE</strong>
+            <span>{replaceAllowed ? "Protect the existing target with rollback until complete." : "Unavailable when source and target are the same item."}</span>
+          </button>
+        </div>
+        <footer>
+          <button type="button" disabled={busy} onClick={onCancel}>CANCEL TRANSFER</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ExplorerTransferPanel({ transfer, onCancel, onDismiss }) {
+  if (!transfer) return null;
+  const terminal = isTransferTerminal(transfer.status);
+  const tone = transfer.status === "completed"
+    ? "success"
+    : transfer.status === "failed" || transfer.status === "completed-with-errors"
+      ? "error"
+      : transfer.status === "cancelled"
+        ? "warning"
+        : "info";
+
+  return (
+    <section className={`explorer-transfer-panel is-${tone}`} aria-label="File transfer status" aria-live={terminal ? "polite" : "off"}>
+      <header>
+        <span>{transfer.mode === "move" ? "MOVE OPERATION" : "COPY OPERATION"}</span>
+        <strong>{transfer.status.replaceAll("-", " ").toUpperCase()}</strong>
+      </header>
+      <div className="explorer-transfer-summary">
+        <span>{getTransferSummary(transfer)}</span>
+        <b>{Math.round(transfer.percent)}%</b>
+      </div>
+      <div
+        className="explorer-transfer-progress"
+        role="progressbar"
+        aria-label={`${transfer.mode} progress`}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={Math.round(transfer.percent)}
+      >
+        <i style={{ "--transfer-progress": `${transfer.percent}%` }} />
+      </div>
+      <footer>
+        <small>
+          {formatFileSize(transfer.bytesTransferred)} / {formatFileSize(transfer.totalBytes)}
+          {" · "}{transfer.completedItems}/{transfer.totalItems} complete
+        </small>
+        {terminal ? (
+          <button type="button" onClick={onDismiss}>DISMISS</button>
+        ) : (
+          <button type="button" disabled={transfer.status === "cancelling"} onClick={onCancel}>
+            {transfer.status === "cancelling" ? "CANCELLING" : "CANCEL"}
+          </button>
+        )}
+      </footer>
+    </section>
+  );
+}
+
 export function FileExplorerWindow({
   open,
   active,
@@ -237,6 +357,7 @@ export function FileExplorerWindow({
   onToast,
 }) {
   const requestIdRef = useRef(0);
+  const currentPathRef = useRef("");
   const [snapshot, setSnapshot] = useState(EMPTY_SNAPSHOT);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -244,12 +365,16 @@ export function FileExplorerWindow({
   const [selectionAnchor, setSelectionAnchor] = useState(null);
   const [clipboard, setClipboard] = useState(null);
   const [commandDialog, setCommandDialog] = useState(null);
+  const [pendingTransfer, setPendingTransfer] = useState(null);
+  const [transfer, setTransfer] = useState(null);
   const [operationBusy, setOperationBusy] = useState(null);
   const [operationNotice, setOperationNotice] = useState(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState("list");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const handledTerminalTransfersRef = useRef(new Set());
+  const dismissedTransfersRef = useRef(new Set());
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
 
   const browse = useCallback(async (path, options = {}) => {
@@ -263,6 +388,7 @@ export function FileExplorerWindow({
       if (requestId !== requestIdRef.current) return null;
       const availablePaths = new Set(result.entries.map((entry) => entry.path));
       const validSelection = nextSelection.filter((entryPath) => availablePaths.has(entryPath));
+      currentPathRef.current = result.currentPath;
       setSnapshot(result);
       setSelectedPaths(validSelection);
       setSelectionAnchor(validSelection.at(-1) ?? null);
@@ -283,6 +409,7 @@ export function FileExplorerWindow({
     if (!result) return;
     setOperationNotice(null);
     setCommandDialog(null);
+    setPendingTransfer(null);
     setHistory((current) => {
       const prefix = current.slice(0, historyIndex + 1);
       const next = [...prefix, result.currentPath];
@@ -308,6 +435,7 @@ export function FileExplorerWindow({
     setHistory([]);
     setHistoryIndex(-1);
     setSnapshot(EMPTY_SNAPSHOT);
+    currentPathRef.current = "";
     setSelectedPaths([]);
     setSelectionAnchor(null);
     setSearch("");
@@ -325,6 +453,67 @@ export function FileExplorerWindow({
       requestIdRef.current += 1;
     };
   }, [browse, initialPath, open, requestSequence]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    let disposed = false;
+    const applyTransfer = async (rawSnapshot) => {
+      const nextTransfer = normalizeTransferSnapshot(rawSnapshot);
+      if (!nextTransfer || disposed) return;
+      if (isTransferTerminal(nextTransfer.status) &&
+          dismissedTransfersRef.current.has(nextTransfer.jobId)) {
+        return;
+      }
+      setTransfer(nextTransfer);
+      if (!isTransferTerminal(nextTransfer.status) ||
+          handledTerminalTransfersRef.current.has(nextTransfer.jobId)) {
+        return;
+      }
+
+      handledTerminalTransfersRef.current.add(nextTransfer.jobId);
+      const message = getTransferSummary(nextTransfer);
+      const tone = nextTransfer.status === "completed"
+        ? "success"
+        : nextTransfer.status === "cancelled"
+          ? "warning"
+          : "error";
+      setOperationNotice({ tone, message });
+      onToast(message);
+
+      if (nextTransfer.mode === "move") {
+        const completedSources = new Set(nextTransfer.result.items.map((item) => item.source));
+        setClipboard((current) => {
+          if (!current || current.mode !== "move") return current;
+          const remaining = current.paths.filter((path) => !completedSources.has(path));
+          return remaining.length > 0 ? { ...current, paths: remaining } : null;
+        });
+      }
+
+      if (currentPathRef.current) {
+        await browse(currentPathRef.current, {
+          clearSearch: false,
+          selectPaths: nextTransfer.result.items.map((item) => item.target),
+        });
+      }
+    };
+
+    const unsubscribe = platform.events.subscribe("explorer.transferChanged", applyTransfer);
+    platform.explorer.getTransfers?.()
+      .then((result) => {
+        const jobs = read(result, "jobs", "Jobs") ?? [];
+        const activeJob = jobs
+          .map(normalizeTransferSnapshot)
+          .find((job) => job && !isTransferTerminal(job.status));
+        if (activeJob) applyTransfer(activeJob);
+      })
+      .catch(() => {
+        // Older hosts simply start with an empty transfer center.
+      });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [browse, onToast, open]);
 
   const visibleEntries = useMemo(() => {
     if (!deferredSearch) return snapshot.entries;
@@ -405,14 +594,14 @@ export function FileExplorerWindow({
   }, [selectionAnchor, visibleEntries]);
 
   const copySelection = useCallback((mode) => {
-    if (selectedPaths.length === 0) return;
+    if (selectedPaths.length === 0 || (transfer && !isTransferTerminal(transfer.status))) return;
     setClipboard({ mode, paths: [...selectedPaths] });
     setOperationNotice({
       tone: "info",
       message: `${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} ${mode === "copy" ? "copied" : "cut"} to JARVIS clipboard.`,
     });
     onToast(`${mode === "copy" ? "Copied" : "Cut"} ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"}`);
-  }, [onToast, selectedPaths]);
+  }, [onToast, selectedPaths, transfer]);
 
   const runMutation = useCallback(async (label, operation, options = {}) => {
     setOperationBusy(label);
@@ -445,22 +634,77 @@ export function FileExplorerWindow({
     }
   }, [browse, onToast, snapshot.currentPath]);
 
+  const startTransfer = useCallback(async (request, conflictPolicy) => {
+    setOperationBusy("Start transfer");
+    setOperationNotice(null);
+    try {
+      const started = normalizeTransferSnapshot(await platform.explorer.startTransfer(
+        request.paths,
+        request.destinationPath,
+        request.mode,
+        conflictPolicy,
+      ));
+      handledTerminalTransfersRef.current.delete(started.jobId);
+      dismissedTransfersRef.current.delete(started.jobId);
+      setTransfer(started);
+      setPendingTransfer(null);
+      setOperationNotice({
+        tone: "info",
+        message: `${request.mode === "move" ? "Move" : "Copy"} queued · ${request.paths.length} item${request.paths.length === 1 ? "" : "s"}`,
+      });
+    } catch (transferError) {
+      const message = `Transfer failed to start: ${transferError.message}`;
+      setOperationNotice({ tone: "error", message });
+      onToast(message);
+    } finally {
+      setOperationBusy(null);
+    }
+  }, [onToast]);
+
   const pasteClipboard = useCallback(async () => {
-    if (!clipboard?.paths.length || !snapshot.currentPath || operationBusy) return;
-    const result = await runMutation(
-      clipboard.mode === "copy" ? "Copy" : "Move",
-      () => platform.explorer.transfer(clipboard.paths, snapshot.currentPath, clipboard.mode),
-      { successMessage: `${clipboard.paths.length} item${clipboard.paths.length === 1 ? "" : "s"} pasted` },
-    );
-    if (!result || clipboard.mode !== "move") return;
-    const failedSources = new Set(result.failures.map((failure) => failure.source));
-    setClipboard(failedSources.size > 0
-      ? { mode: "move", paths: clipboard.paths.filter((path) => failedSources.has(path)) }
-      : null);
-  }, [clipboard, operationBusy, runMutation, snapshot.currentPath]);
+    if (!clipboard?.paths.length || !snapshot.currentPath || operationBusy ||
+        (transfer && !isTransferTerminal(transfer.status))) return;
+    setOperationBusy("Transfer preflight");
+    setOperationNotice(null);
+    const request = {
+      paths: [...clipboard.paths],
+      destinationPath: snapshot.currentPath,
+      mode: clipboard.mode,
+    };
+    try {
+      const preflight = normalizeTransferPreflight(await platform.explorer.preflightTransfer(
+        request.paths,
+        request.destinationPath,
+        request.mode,
+      ));
+      if (preflight.conflicts.length > 0) {
+        setPendingTransfer({ ...request, preflight });
+        return;
+      }
+      await startTransfer({ ...request, preflight }, "rename");
+    } catch (preflightError) {
+      const message = `Transfer preflight failed: ${preflightError.message}`;
+      setOperationNotice({ tone: "error", message });
+      onToast(message);
+    } finally {
+      setOperationBusy(null);
+    }
+  }, [clipboard, onToast, operationBusy, snapshot.currentPath, startTransfer, transfer]);
+
+  const cancelTransfer = useCallback(async () => {
+    if (!transfer || isTransferTerminal(transfer.status)) return;
+    try {
+      const cancelled = normalizeTransferSnapshot(await platform.explorer.cancelTransfer(transfer.jobId));
+      setTransfer(cancelled);
+    } catch (cancelError) {
+      const message = `Unable to cancel transfer: ${cancelError.message}`;
+      setOperationNotice({ tone: "error", message });
+      onToast(message);
+    }
+  }, [onToast, transfer]);
 
   const openCreateDialog = useCallback(() => {
-    if (!snapshot.currentPath || operationBusy) return;
+    if (!snapshot.currentPath || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
     setCommandDialog({
       id: `create-${Date.now()}`,
       type: "create",
@@ -470,10 +714,10 @@ export function FileExplorerWindow({
       initialValue: "New folder",
       confirmLabel: "CREATE FOLDER",
     });
-  }, [operationBusy, snapshot.currentPath]);
+  }, [operationBusy, snapshot.currentPath, transfer]);
 
   const openRenameDialog = useCallback(() => {
-    if (selectedEntries.length !== 1 || operationBusy) return;
+    if (selectedEntries.length !== 1 || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
     const entry = selectedEntries[0];
     setCommandDialog({
       id: `rename-${entry.path}`,
@@ -485,10 +729,10 @@ export function FileExplorerWindow({
       initialValue: entry.name,
       confirmLabel: "APPLY NAME",
     });
-  }, [operationBusy, selectedEntries]);
+  }, [operationBusy, selectedEntries, transfer]);
 
   const openRecycleDialog = useCallback(() => {
-    if (selectedEntries.length === 0 || operationBusy) return;
+    if (selectedEntries.length === 0 || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
     const preview = selectedEntries.slice(0, 3).map((entry) => entry.name).join(", ");
     const remaining = selectedEntries.length - Math.min(3, selectedEntries.length);
     setCommandDialog({
@@ -500,7 +744,7 @@ export function FileExplorerWindow({
       confirmLabel: "MOVE TO RECYCLE BIN",
       danger: true,
     });
-  }, [operationBusy, selectedEntries]);
+  }, [operationBusy, selectedEntries, transfer]);
 
   const confirmCommand = useCallback(async (value) => {
     if (!commandDialog) return;
@@ -554,7 +798,8 @@ export function FileExplorerWindow({
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        if (commandDialog) setCommandDialog(null);
+        if (pendingTransfer) setPendingTransfer(null);
+        else if (commandDialog) setCommandDialog(null);
         else onClose();
         return;
       }
@@ -563,7 +808,7 @@ export function FileExplorerWindow({
       const isEditing = target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target?.isContentEditable;
-      if (isEditing || commandDialog || operationBusy) return;
+      if (isEditing || commandDialog || pendingTransfer || operationBusy) return;
 
       const key = event.key.toLocaleLowerCase();
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && key === "n") {
@@ -604,6 +849,7 @@ export function FileExplorerWindow({
     openRenameDialog,
     operationBusy,
     pasteClipboard,
+    pendingTransfer,
     visibleEntries,
   ]);
 
@@ -613,7 +859,8 @@ export function FileExplorerWindow({
   const canGoForward = historyIndex >= 0 && historyIndex < history.length - 1;
   const hasSelection = selectedEntries.length > 0;
   const canRename = selectedEntries.length === 1;
-  const canPaste = Boolean(clipboard?.paths.length && snapshot.currentPath);
+  const transferActive = Boolean(transfer && !isTransferTerminal(transfer.status));
+  const canPaste = Boolean(clipboard?.paths.length && snapshot.currentPath && !transferActive);
 
   return (
     <div className="explorer-layer" aria-hidden={false}>
@@ -670,12 +917,12 @@ export function FileExplorerWindow({
         </div>
 
         <div className="explorer-commandbar" role="toolbar" aria-label="File operations">
-          <button type="button" disabled={!snapshot.currentPath || Boolean(operationBusy)} onClick={openCreateDialog}><FolderAddRegular /><span>NEW FOLDER</span><kbd>CTRL+SHIFT+N</kbd></button>
-          <button type="button" disabled={!canRename || Boolean(operationBusy)} onClick={openRenameDialog}><RenameRegular /><span>RENAME</span><kbd>F2</kbd></button>
-          <button type="button" disabled={!hasSelection || Boolean(operationBusy)} onClick={() => copySelection("copy")}><CopyRegular /><span>COPY</span><kbd>CTRL+C</kbd></button>
-          <button type="button" disabled={!hasSelection || Boolean(operationBusy)} onClick={() => copySelection("move")}><CutRegular /><span>CUT</span><kbd>CTRL+X</kbd></button>
+          <button type="button" disabled={!snapshot.currentPath || Boolean(operationBusy) || transferActive} onClick={openCreateDialog}><FolderAddRegular /><span>NEW FOLDER</span><kbd>CTRL+SHIFT+N</kbd></button>
+          <button type="button" disabled={!canRename || Boolean(operationBusy) || transferActive} onClick={openRenameDialog}><RenameRegular /><span>RENAME</span><kbd>F2</kbd></button>
+          <button type="button" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={() => copySelection("copy")}><CopyRegular /><span>COPY</span><kbd>CTRL+C</kbd></button>
+          <button type="button" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={() => copySelection("move")}><CutRegular /><span>CUT</span><kbd>CTRL+X</kbd></button>
           <button type="button" disabled={!canPaste || Boolean(operationBusy)} onClick={pasteClipboard}><ClipboardPasteRegular /><span>PASTE</span><kbd>CTRL+V</kbd></button>
-          <button type="button" className="is-danger" disabled={!hasSelection || Boolean(operationBusy)} onClick={openRecycleDialog}><DeleteRegular /><span>RECYCLE</span><kbd>DEL</kbd></button>
+          <button type="button" className="is-danger" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={openRecycleDialog}><DeleteRegular /><span>RECYCLE</span><kbd>DEL</kbd></button>
           <div className="explorer-clipboard-status" aria-live="polite">
             <span>JARVIS CLIPBOARD</span>
             <strong>{clipboard?.paths.length ? `${clipboard.mode.toUpperCase()} · ${clipboard.paths.length} ITEM${clipboard.paths.length === 1 ? "" : "S"}` : "EMPTY"}</strong>
@@ -803,8 +1050,26 @@ export function FileExplorerWindow({
           {selectedEntries.length > 0 ? <span>{selectedEntries.length} SELECTED · {formatFileSize(selectionSize)}</span> : <span>NO SELECTION</span>}
           {operationNotice ? <strong className={`is-${operationNotice.tone}`}>{operationNotice.message}</strong> : null}
           {!operationNotice && snapshot.warning ? <strong>{snapshot.warning}</strong> : null}
-          <small>{operationBusy ? `${operationBusy.toUpperCase()} IN PROGRESS` : "LOCAL FILESYSTEM · READ / WRITE · RECYCLE SAFE"}</small>
+          <small>{operationBusy ? `${operationBusy.toUpperCase()} IN PROGRESS` : transferActive ? "BACKGROUND TRANSFER ACTIVE · CANCELLATION SAFE" : "LOCAL FILESYSTEM · READ / WRITE · RECYCLE SAFE"}</small>
         </footer>
+
+        <ExplorerTransferPanel
+          transfer={transfer}
+          onCancel={cancelTransfer}
+          onDismiss={() => {
+            if (transfer) dismissedTransfersRef.current.add(transfer.jobId);
+            setTransfer(null);
+          }}
+        />
+
+        {pendingTransfer ? (
+          <ExplorerConflictDialog
+            pending={pendingTransfer}
+            busy={Boolean(operationBusy)}
+            onCancel={() => setPendingTransfer(null)}
+            onChoose={(policy) => startTransfer(pendingTransfer, policy)}
+          />
+        ) : null}
 
         {commandDialog ? (
           <ExplorerCommandDialog

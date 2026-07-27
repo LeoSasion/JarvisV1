@@ -96,11 +96,18 @@ export function createWindowsPlatform(webview) {
       openInWindows: (path) => request("explorer.openInWindows", { path }),
       createFolder: (path, name) => request("explorer.createFolder", { path, name }),
       rename: (path, name) => request("explorer.rename", { path, name }),
-      transfer: (paths, destinationPath, mode) => request(
-        "explorer.transfer",
+      preflightTransfer: (paths, destinationPath, mode) => request(
+        "explorer.preflightTransfer",
         { paths, destinationPath, mode },
-        60_000,
+        30_000,
       ),
+      startTransfer: (paths, destinationPath, mode, conflictPolicy = "rename") => request(
+        "explorer.startTransfer",
+        { paths, destinationPath, mode, conflictPolicy },
+        30_000,
+      ),
+      cancelTransfer: (jobId) => request("explorer.cancelTransfer", { jobId }),
+      getTransfers: () => request("explorer.getTransfers"),
       recycle: (paths) => request("explorer.recycle", { paths }, 60_000),
     },
     terminal: {
