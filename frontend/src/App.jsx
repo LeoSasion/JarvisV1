@@ -207,6 +207,32 @@ export function App() {
     }
   }, [openExplorer, openTerminal, showToast]);
 
+  const openShortcutLocation = useCallback(async (shortcut) => {
+    if (!shortcut.path) return;
+    try {
+      await platform.explorer.openInWindows(shortcut.path);
+      showToast(`已在 Windows 资源管理器中定位 ${shortcut.label}`);
+    } catch (error) {
+      showToast(`无法定位 ${shortcut.label}: ${error.message}`);
+    }
+  }, [showToast]);
+
+  const copyShortcutPath = useCallback(async (shortcut) => {
+    if (!shortcut.path) return;
+    try {
+      await navigator.clipboard.writeText(shortcut.path);
+      showToast("路径已复制");
+    } catch (error) {
+      showToast(`无法复制路径: ${error.message}`);
+    }
+  }, [showToast]);
+
+  const openDesktopSettings = useCallback(() => {
+    setCommandOpen(false);
+    setShellPanel("settings");
+    showToast("JARVIS runtime settings ready");
+  }, [showToast]);
+
   const inspect = useCallback((label) => {
     setInspectorTarget(label);
     setActiveApp("internal:inspector");
@@ -385,6 +411,10 @@ export function App() {
           selectedId={selectedShortcut}
           onSelect={setSelectedShortcut}
           onOpen={openShortcut}
+          onOpenLocation={openShortcutLocation}
+          onCopyPath={copyShortcutPath}
+          onOpenSettings={openDesktopSettings}
+          onNotify={showToast}
         />
         <CoreStage listening={false} onActivate={openCommand} />
         <TelemetryRail

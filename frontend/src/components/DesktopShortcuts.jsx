@@ -10,17 +10,26 @@ import {
   SettingsRegular,
   WindowConsoleRegular,
 } from "@fluentui/react-icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   clampDesktopCoordinate as clamp,
-  DESKTOP_ICON_CELL_HEIGHT as ICON_CELL_HEIGHT,
-  DESKTOP_ICON_CELL_WIDTH as ICON_CELL_WIDTH,
+  getDesktopContextMenuPosition,
   getDesktopFallbackPosition as getFallbackPosition,
+  getDesktopIconMetrics,
+  snapDesktopPosition,
+  sortDesktopEntries,
 } from "../desktop-layout.js";
-import { useDesktopEntries } from "../hooks/usePlatformData.js";
+import {
+  refreshDesktopEntries,
+  useDesktopEntries,
+} from "../hooks/usePlatformData.js";
+import { DesktopContextMenu } from "./DesktopContextMenu.jsx";
 
 const AUTO_ARRANGE_STORAGE_KEY = "jarvis.desktop.auto-arrange.v1";
 const MANUAL_POSITIONS_STORAGE_KEY = "jarvis.desktop.icon-positions.v1";
+const ALIGN_TO_GRID_STORAGE_KEY = "jarvis.desktop.align-to-grid.v1";
+const ICON_SIZE_STORAGE_KEY = "jarvis.desktop.icon-size.v1";
+const SORT_MODE_STORAGE_KEY = "jarvis.desktop.sort-mode.v1";
 
 function readAutoArrangePreference() {
   try {
@@ -39,6 +48,24 @@ function readManualPositions() {
   }
 }
 
+function readBooleanPreference(key, fallback) {
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored === null ? fallback : stored !== "false";
+  } catch {
+    return fallback;
+  }
+}
+
+function readEnumPreference(key, choices, fallback) {
+  try {
+    const stored = window.localStorage.getItem(key);
+    return choices.includes(stored) ? stored : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 const iconMap = {
   desktop: DesktopRegular,
   folder: FolderRegular,
@@ -52,7 +79,15 @@ const iconMap = {
   settings: SettingsRegular,
 };
 
-export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
+export function DesktopShortcuts({
+  selectedId,
+  onSelect,
+  onOpen,
+  onOpenLocation,
+  onCopyPath,
+  onOpenSettings,
+  onNotify,
+}) {
   const { entries } = useDesktopEntries();
   const containerRef = useRef(null);
   const menuRef = useRef(null);
@@ -60,14 +95,35 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
   const dragRef = useRef(null);
   const suppressClickRef = useRef(null);
   const [autoArrange, setAutoArrange] = useState(readAutoArrangePreference);
+  const [alignToGrid, setAlignToGrid] = useState(
+    () => readBooleanPreference(ALIGN_TO_GRID_STORAGE_KEY, true),
+  );
+  const [iconSize, setIconSize] = useState(
+    () => readEnumPreference(ICON_SIZE_STORAGE_KEY, ["small", "medium", "large"], "medium"),
+  );
+  const [sortMode, setSortMode] = useState(
+    () => readEnumPreference(SORT_MODE_STORAGE_KEY, ["none", "name", "type", "source"], "none"),
+  );
   const [manualPositions, setManualPositions] = useState(readManualPositions);
   const [contextMenu, setContextMenu] = useState(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const iconMetrics = useMemo(() => getDesktopIconMetrics(iconSize), [iconSize]);
+  const orderedEntries = useMemo(
+    () => sortDesktopEntries(entries, sortMode),
+    [entries, sortMode],
+  );
 
-  const openContextMenu = useCallback((clientX, clientY) => {
+  const openContextMenu = useCallback((clientX, clientY, kind = "desktop", shortcutId = null) => {
     setContextMenu({
-      x: clamp(clientX, 8, window.innerWidth - 232),
-      y: clamp(clientY, 8, window.innerHeight - 104),
+      ...getDesktopContextMenuPosition({
+        clientX,
+        clientY,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        kind,
+      }),
+      kind,
+      shortcutId,
     });
   }, []);
 
@@ -94,6 +150,16 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
   }, [autoArrange]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(ALIGN_TO_GRID_STORAGE_KEY, String(alignToGrid));
+      window.localStorage.setItem(ICON_SIZE_STORAGE_KEY, iconSize);
+      window.localStorage.setItem(SORT_MODE_STORAGE_KEY, sortMode);
+    } catch {
+      // Desktop preferences remain available for the current session.
+    }
+  }, [alignToGrid, iconSize, sortMode]);
+
+  useEffect(() => {
     if (autoArrange) return;
     const persistTimer = window.setTimeout(() => {
       try {
@@ -107,23 +173,32 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
 
   useEffect(() => {
     if (autoArrange || containerSize.width <= 0 || containerSize.height <= 0) return;
-    const maximumX = containerSize.width - ICON_CELL_WIDTH;
-    const maximumY = containerSize.height - ICON_CELL_HEIGHT;
+    const maximumX = containerSize.width - iconMetrics.cellWidth;
+    const maximumY = containerSize.height - iconMetrics.cellHeight;
     setManualPositions((current) => {
       let changed = false;
       const next = { ...current };
-      entries.forEach((entry, index) => {
-        const position = current[entry.id] ?? getFallbackPosition(index, containerSize.height);
-        const clampedPosition = {
-          x: clamp(position.x, 0, maximumX),
-          y: clamp(position.y, 0, maximumY),
-        };
-        if (position.x !== clampedPosition.x || position.y !== clampedPosition.y) changed = true;
-        next[entry.id] = clampedPosition;
+      orderedEntries.forEach((entry, index) => {
+        const position = current[entry.id]
+          ?? getFallbackPosition(index, containerSize.height, iconMetrics);
+        const nextPosition = alignToGrid
+          ? snapDesktopPosition(position, iconMetrics, containerSize)
+          : {
+              x: clamp(position.x, 0, maximumX),
+              y: clamp(position.y, 0, maximumY),
+            };
+        if (position.x !== nextPosition.x || position.y !== nextPosition.y) changed = true;
+        next[entry.id] = nextPosition;
       });
       return changed ? next : current;
     });
-  }, [autoArrange, containerSize.height, containerSize.width, entries]);
+  }, [
+    alignToGrid,
+    autoArrange,
+    containerSize,
+    iconMetrics,
+    orderedEntries,
+  ]);
 
   useEffect(() => {
     const openDesktopMenu = (event) => {
@@ -160,7 +235,7 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
     if (!container) return;
     const containerRect = container.getBoundingClientRect();
     const nextPositions = {};
-    entries.forEach((entry) => {
+    orderedEntries.forEach((entry) => {
       const shortcut = shortcutRefs.current.get(entry.id);
       if (!shortcut) return;
       const rect = shortcut.getBoundingClientRect();
@@ -170,7 +245,7 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
       };
     });
     setManualPositions(nextPositions);
-  }, [entries]);
+  }, [orderedEntries]);
 
   const toggleAutoArrange = useCallback(() => {
     if (autoArrange) captureArrangedPositions();
@@ -178,12 +253,43 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
     setContextMenu(null);
   }, [autoArrange, captureArrangedPositions]);
 
+  const toggleAlignToGrid = useCallback(() => {
+    const nextAlignToGrid = !alignToGrid;
+    if (nextAlignToGrid && !autoArrange) {
+      setManualPositions((current) => Object.fromEntries(
+        Object.entries(current).map(([id, position]) => [
+          id,
+          snapDesktopPosition(position, iconMetrics, containerSize),
+        ]),
+      ));
+    }
+    setAlignToGrid(nextAlignToGrid);
+    setContextMenu(null);
+  }, [alignToGrid, autoArrange, containerSize, iconMetrics]);
+
+  const setDesktopIconSize = useCallback((size) => {
+    setIconSize(size);
+    setContextMenu(null);
+  }, []);
+
+  const setDesktopSortMode = useCallback((mode) => {
+    setSortMode(mode);
+    setAutoArrange(true);
+    setContextMenu(null);
+  }, []);
+
+  const refreshDesktop = useCallback(async () => {
+    setContextMenu(null);
+    await refreshDesktopEntries();
+    onNotify("桌面已刷新");
+  }, [onNotify]);
+
   const moveShortcut = useCallback((event, shortcutId) => {
     const drag = dragRef.current;
     if (!drag || drag.id !== shortcutId || drag.pointerId !== event.pointerId) return;
     const shortcut = shortcutRefs.current.get(shortcutId);
-    const maximumX = containerSize.width - (shortcut?.offsetWidth ?? ICON_CELL_WIDTH);
-    const maximumY = containerSize.height - (shortcut?.offsetHeight ?? ICON_CELL_HEIGHT);
+    const maximumX = containerSize.width - (shortcut?.offsetWidth ?? iconMetrics.cellWidth);
+    const maximumY = containerSize.height - (shortcut?.offsetHeight ?? iconMetrics.cellHeight);
     const deltaX = event.clientX - drag.pointerX;
     const deltaY = event.clientY - drag.pointerY;
     if (!drag.moved && Math.abs(deltaX) + Math.abs(deltaY) <= 3) return;
@@ -194,22 +300,45 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
       shortcut.style.left = `${drag.currentX}px`;
       shortcut.style.top = `${drag.currentY}px`;
     }
-  }, [containerSize.height, containerSize.width]);
+  }, [containerSize.height, containerSize.width, iconMetrics.cellHeight, iconMetrics.cellWidth]);
 
   const finishShortcutMove = useCallback((event, shortcutId) => {
     const drag = dragRef.current;
     if (!drag || drag.id !== shortcutId || drag.pointerId !== event.pointerId) return;
     if (drag.moved) {
       if (event.type === "pointerup") suppressClickRef.current = shortcutId;
+      const position = alignToGrid
+        ? snapDesktopPosition(
+            { x: drag.currentX, y: drag.currentY },
+            iconMetrics,
+            containerSize,
+          )
+        : { x: drag.currentX, y: drag.currentY };
+      const shortcut = shortcutRefs.current.get(shortcutId);
+      if (shortcut) {
+        shortcut.style.left = `${position.x}px`;
+        shortcut.style.top = `${position.y}px`;
+      }
       setManualPositions((current) => ({
         ...current,
-        [shortcutId]: { x: drag.currentX, y: drag.currentY },
+        [shortcutId]: position,
       }));
     }
     dragRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+  }, [alignToGrid, containerSize, iconMetrics]);
+
+  const selectedContextShortcut = contextMenu?.kind === "item"
+    ? orderedEntries.find((entry) => entry.id === contextMenu.shortcutId) ?? null
+    : null;
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const runItemAction = useCallback((action, shortcut) => {
+    setContextMenu(null);
+    if (shortcut) void action(shortcut);
   }, []);
 
   return (
@@ -218,6 +347,15 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
       className={`desktop-shortcuts ${autoArrange ? "is-auto-arranged" : "is-manual"}`}
       aria-label="Desktop shortcuts"
       data-auto-arrange={autoArrange ? "on" : "off"}
+      data-align-to-grid={alignToGrid ? "on" : "off"}
+      data-icon-size={iconSize}
+      data-sort-mode={sortMode}
+      style={{
+        "--desktop-icon-cell-width": `${iconMetrics.cellWidth}px`,
+        "--desktop-icon-cell-height": `${iconMetrics.cellHeight}px`,
+        "--desktop-icon-size": `${iconMetrics.iconSize}px`,
+        "--desktop-label-size": `${iconMetrics.labelSize}px`,
+      }}
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
@@ -226,11 +364,11 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
         openContextMenu((rect?.left ?? 0) + 24, (rect?.top ?? 0) + 24);
       }}
     >
-      {entries.map((shortcut, index) => {
+      {orderedEntries.map((shortcut, index) => {
         const Icon = iconMap[shortcut.icon] ?? DocumentRegular;
         const selected = selectedId === shortcut.id;
         const manualPosition = manualPositions[shortcut.id]
-          ?? getFallbackPosition(index, containerSize.height);
+          ?? getFallbackPosition(index, containerSize.height, iconMetrics);
         return (
           <button
             key={shortcut.id}
@@ -255,10 +393,16 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
               onSelect(shortcut.id);
             }}
             onDoubleClick={() => onOpen(shortcut)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect(shortcut.id);
+              openContextMenu(event.clientX, event.clientY, "item", shortcut.id);
+            }}
             onPointerDown={(event) => {
               if (autoArrange || event.button !== 0) return;
               const position = manualPositions[shortcut.id]
-                ?? getFallbackPosition(index, containerSize.height);
+                ?? getFallbackPosition(index, containerSize.height, iconMetrics);
               dragRef.current = {
                 id: shortcut.id,
                 pointerId: event.pointerId,
@@ -279,6 +423,19 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
               if (event.key === "Enter") {
                 event.preventDefault();
                 onOpen(shortcut);
+                return;
+              }
+              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                event.preventDefault();
+                event.stopPropagation();
+                const rect = event.currentTarget.getBoundingClientRect();
+                onSelect(shortcut.id);
+                openContextMenu(
+                  rect.left + Math.min(rect.width, 48),
+                  rect.top + Math.min(rect.height, 48),
+                  "item",
+                  shortcut.id,
+                );
               }
             }}
           >
@@ -288,24 +445,28 @@ export function DesktopShortcuts({ selectedId, onSelect, onOpen }) {
         );
       })}
       {contextMenu ? (
-        <section
-          ref={menuRef}
-          className="desktop-context-menu"
-          role="menu"
-          aria-label="Desktop commands"
-          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-        >
-          <header><span>DESKTOP</span><small>ICON LAYOUT</small></header>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={autoArrange}
-            onClick={toggleAutoArrange}
-          >
-            <span className="desktop-menu-check" aria-hidden="true">{autoArrange ? "✓" : ""}</span>
-            <span>自动排列图标</span>
-          </button>
-        </section>
+        <DesktopContextMenu
+          alignToGrid={alignToGrid}
+          autoArrange={autoArrange}
+          iconSize={iconSize}
+          menu={contextMenu}
+          menuRef={menuRef}
+          onClose={closeContextMenu}
+          onCopyPath={(shortcut) => runItemAction(onCopyPath, shortcut)}
+          onOpen={(shortcut) => runItemAction(onOpen, shortcut)}
+          onOpenLocation={(shortcut) => runItemAction(onOpenLocation, shortcut)}
+          onOpenSettings={() => {
+            setContextMenu(null);
+            onOpenSettings();
+          }}
+          onRefresh={refreshDesktop}
+          onSetIconSize={setDesktopIconSize}
+          onSetSortMode={setDesktopSortMode}
+          onToggleAlignToGrid={toggleAlignToGrid}
+          onToggleAutoArrange={toggleAutoArrange}
+          shortcut={selectedContextShortcut}
+          sortMode={sortMode}
+        />
       ) : null}
     </nav>
   );

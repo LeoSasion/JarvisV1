@@ -437,6 +437,8 @@ button.top-cluster:hover:not(:disabled) {
 .desktop-shortcuts {
   --desktop-icon-cell-width: 96px;
   --desktop-icon-cell-height: 88px;
+  --desktop-icon-size: 44px;
+  --desktop-label-size: 13px;
   position: relative;
   grid-column: 1 / 3;
   grid-row: 1;
@@ -474,7 +476,7 @@ button.top-cluster:hover:not(:disabled) {
   min-height: var(--desktop-icon-cell-height);
   overflow: hidden;
   display: grid;
-  grid-template-rows: 48px 30px;
+  grid-template-rows: calc(var(--desktop-icon-size) + 4px) minmax(24px, 30px);
   place-items: center;
   align-content: center;
   gap: 3px;
@@ -502,8 +504,8 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .shortcut-icon {
-  width: 46px;
-  height: 46px;
+  width: calc(var(--desktop-icon-size) + 2px);
+  height: calc(var(--desktop-icon-size) + 2px);
   display: grid;
   place-items: center;
   color: #75d7ff;
@@ -513,8 +515,8 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .shortcut-icon svg {
-  width: 44px;
-  height: 44px;
+  width: var(--desktop-icon-size);
+  height: var(--desktop-icon-size);
   stroke-width: 1.1;
 }
 
@@ -538,7 +540,7 @@ button.top-cluster:hover:not(:disabled) {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   color: #d4dce2;
-  font-size: 13px;
+  font-size: var(--desktop-label-size);
   line-height: 1.2;
   text-align: center;
   text-shadow: 0 1px 2px #000;
@@ -551,17 +553,30 @@ button.top-cluster:hover:not(:disabled) {
 .desktop-context-menu {
   position: fixed;
   z-index: 240;
-  width: 224px;
+  width: 248px;
   padding: 7px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgba(45, 147, 205, 0.82);
-  border-radius: 3px;
-  background: rgba(2, 9, 17, 0.98);
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(12, 38, 58, 0.18), transparent 42%),
+    rgba(2, 9, 17, 0.985);
   box-shadow:
     0 0 0 1px rgba(4, 27, 45, 0.96) inset,
     0 10px 30px rgba(0, 0, 0, 0.48),
-    0 0 16px rgba(0, 132, 238, 0.14);
+    0 0 18px rgba(0, 132, 238, 0.18);
   pointer-events: auto;
+}
+
+.desktop-context-menu::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 16px;
+  width: 54px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #22cfff, transparent);
+  box-shadow: 0 0 8px rgba(34, 207, 255, 0.72);
 }
 
 .desktop-context-menu header {
@@ -569,6 +584,7 @@ button.top-cluster:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 14px;
   padding: 0 9px;
   border-bottom: 1px solid rgba(32, 84, 119, 0.58);
   color: #bcecff;
@@ -577,20 +593,29 @@ button.top-cluster:hover:not(:disabled) {
 }
 
 .desktop-context-menu header small {
+  min-width: 0;
+  overflow: hidden;
   color: #56758d;
   font: 8px/1 "Cascadia Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.desktop-context-menu > button {
+.desktop-menu-root {
+  position: relative;
+  padding-top: 4px;
+}
+
+.desktop-menu-item {
   width: 100%;
-  height: 38px;
-  margin-top: 5px;
+  height: 36px;
   display: grid;
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 24px minmax(0, 1fr) 16px;
   align-items: center;
   gap: 8px;
   padding: 0 9px;
   border: 1px solid transparent;
+  border-radius: 2px;
   background: transparent;
   color: #d4e2ea;
   font-size: 12px;
@@ -598,21 +623,107 @@ button.top-cluster:hover:not(:disabled) {
   cursor: pointer;
 }
 
-.desktop-context-menu > button:hover,
-.desktop-context-menu > button:focus-visible {
+.desktop-menu-item:hover,
+.desktop-menu-item:focus-visible {
+  outline: none;
   border-color: rgba(34, 207, 255, 0.34);
-  background: rgba(7, 35, 55, 0.78);
+  background:
+    linear-gradient(90deg, rgba(0, 132, 238, 0.17), transparent 78%),
+    rgba(7, 35, 55, 0.78);
+  color: #effbff;
 }
 
-.desktop-menu-check {
+.desktop-menu-item:disabled {
+  color: #526674;
+  cursor: not-allowed;
+}
+
+.desktop-menu-item:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+.desktop-menu-item__icon {
   width: 18px;
   height: 18px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(70, 147, 193, 0.66);
+  color: #77bfe7;
+  font: 700 12px/1 "Segoe UI", sans-serif;
+}
+
+.desktop-menu-item__icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.desktop-menu-item__icon.is-checked {
+  border: 1px solid rgba(70, 147, 193, 0.68);
   color: var(--energy-cyan);
   font: 700 12px/1 "Segoe UI", sans-serif;
-  box-shadow: 0 0 6px rgba(34, 207, 255, 0.12) inset;
+  box-shadow:
+    0 0 6px rgba(34, 207, 255, 0.14) inset,
+    0 0 7px rgba(34, 207, 255, 0.12);
+}
+
+.desktop-menu-item__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-menu-item__chevron {
+  width: 14px;
+  height: 14px;
+  color: #638ba6;
+}
+
+.desktop-menu-separator {
+  height: 1px;
+  margin: 4px 9px;
+  background: linear-gradient(90deg, transparent, rgba(45, 112, 153, 0.7), transparent);
+}
+
+.desktop-context-submenu {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: calc(100% + 9px);
+  width: 238px;
+  padding: 6px;
+  border: 1px solid rgba(45, 147, 205, 0.76);
+  border-radius: 5px;
+  background: rgba(2, 9, 17, 0.99);
+  box-shadow:
+    0 0 0 1px rgba(4, 27, 45, 0.96) inset,
+    0 12px 26px rgba(0, 0, 0, 0.44),
+    0 0 14px rgba(0, 132, 238, 0.14);
+}
+
+.desktop-context-submenu.is-sort-submenu {
+  top: 36px;
+}
+
+.desktop-context-menu.is-submenu-left .desktop-context-submenu {
+  right: calc(100% + 9px);
+  left: auto;
+}
+
+.desktop-menu-hint {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 9px;
+  color: #58788e;
+  font: 9px/1.35 "Cascadia Mono", monospace;
+}
+
+.desktop-menu-hint svg {
+  width: 15px;
+  height: 15px;
 }
 
 .core-stage {
@@ -5929,16 +6040,6 @@ button.process-grid:hover {
     padding-right: 10px;
   }
 
-  .shortcut-icon,
-  .shortcut-icon svg {
-    width: 44px;
-    height: 44px;
-  }
-
-  .shortcut-label {
-    font-size: 11px;
-  }
-
   .taskbar {
     grid-template-columns: 76px 212px 472px 1fr auto;
   }
@@ -6000,17 +6101,6 @@ button.process-grid:hover {
 
   .desktop-shortcuts {
     padding-block: 10px;
-  }
-
-  .desktop-shortcut {
-    min-height: 64px;
-    grid-template-rows: 40px 32px;
-  }
-
-  .shortcut-icon,
-  .shortcut-icon svg {
-    width: 38px;
-    height: 38px;
   }
 
   .hud-panel__header {
