@@ -5,7 +5,7 @@ using Jarvis.Host.Bridge;
 
 namespace Jarvis.Host.Services;
 
-internal sealed partial class ShellService
+internal sealed partial class ShellService : IDisposable
 {
     private const int MaxTargetLength = 2048;
 
@@ -35,6 +35,15 @@ internal sealed partial class ShellService
 
     public StartMenuApplicationCatalog ListApplications() =>
         _startMenuApplications.ListApplications();
+
+    public StartMenuApplicationCatalog RefreshApplications() =>
+        _startMenuApplications.RefreshApplications();
+
+    public event EventHandler<StartMenuApplicationCatalog> ApplicationCatalogChanged
+    {
+        add => _startMenuApplications.CatalogChanged += value;
+        remove => _startMenuApplications.CatalogChanged -= value;
+    }
 
     public StartMenuApplicationOpenResult OpenApplication(string applicationId) =>
         _startMenuApplications.OpenApplication(applicationId);
@@ -152,6 +161,8 @@ internal sealed partial class ShellService
 
     [GeneratedRegex(@"\Ams-settings:[A-Za-z0-9?&=._%:/-]*\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MsSettingsUriPattern();
+
+    public void Dispose() => _startMenuApplications.Dispose();
 }
 
 internal sealed record ShellOpenResult(bool Opened, string Target, int? ProcessId);

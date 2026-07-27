@@ -100,6 +100,7 @@ internal sealed class WebBridge : IDisposable
         _taskbarModeService.StateChanged += OnTaskbarModeChanged;
         _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
         _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
+        _shellService.ApplicationCatalogChanged += OnApplicationCatalogChanged;
         _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
         if (_terminalEnabled)
         {
@@ -308,6 +309,9 @@ internal sealed class WebBridge : IDisposable
                 GetRequiredWindowAppearanceMode(parameters)),
             "shell.listApplications" => await Task.Run(
                 () => (object)_shellService.ListApplications(),
+                cancellationToken),
+            "shell.refreshApplications" => await Task.Run(
+                () => (object)_shellService.RefreshApplications(),
                 cancellationToken),
             "shell.openApplication" => _shellService.OpenApplication(
                 GetRequiredString(parameters, "applicationId")),
@@ -541,6 +545,33 @@ internal sealed class WebBridge : IDisposable
         catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
         {
             // A closing renderer can reject the final system-feed update.
+        }
+    }
+
+    private void OnApplicationCatalogChanged(
+        object? sender,
+        StartMenuApplicationCatalog catalog)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "shell.applicationsChanged", data = catalog });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final application-catalog update.
         }
     }
 
@@ -1190,6 +1221,7 @@ internal sealed class WebBridge : IDisposable
             _taskbarModeService.StateChanged -= OnTaskbarModeChanged;
             _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
             _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
+            _shellService.ApplicationCatalogChanged -= OnApplicationCatalogChanged;
             _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
             if (_terminalEnabled)
             {

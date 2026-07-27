@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     private readonly TaskbarReplacementSession _taskbarReplacement = new();
     private readonly TaskbarModeService _taskbarModeService = new();
     private readonly WindowTaskbarService _taskbarService = new();
+    private readonly DesktopService _desktopService = new();
+    private readonly ShellService _shellService;
     private readonly TerminalSessionService _terminalSessionService = new();
     private readonly RuntimeSnapshotFeed _snapshotFeed;
     private readonly AudioEndpointService _audioEndpointService;
@@ -38,6 +40,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _shellService = new ShellService(_desktopService);
         _snapshotFeed = new RuntimeSnapshotFeed(new SystemSnapshotService(), _taskbarService);
         _audioEndpointService = new AudioEndpointService();
         _trayStatusService = new TrayStatusService(_snapshotFeed, _audioEndpointService);
@@ -103,14 +106,12 @@ public partial class MainWindow : Window
                 });
             });
 
-        var desktopService = new DesktopService();
-        var shellService = new ShellService(desktopService);
         _bridge = new WebBridge(
             WebView.CoreWebView2,
             Dispatcher,
             _snapshotFeed,
-            desktopService,
-            shellService,
+            _desktopService,
+            _shellService,
             new FileExplorerService(),
             _terminalSessionService,
             _taskbarService,
@@ -245,6 +246,8 @@ public partial class MainWindow : Window
             notificationAreaBounds,
             _snapshotFeed,
             _taskbarService,
+            _desktopService,
+            _shellService,
             _terminalSessionService,
             _windowAppearanceService,
             _taskbarModeService,
@@ -691,6 +694,7 @@ public partial class MainWindow : Window
         _snapshotFeed.Dispose();
         _audioEndpointService.Dispose();
         _terminalSessionService.Dispose();
+        _shellService.Dispose();
         WebView.Dispose();
     }
 

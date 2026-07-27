@@ -151,6 +151,7 @@ export function createWindowsPlatform(webview) {
     },
     shell: {
       listApplications: () => request("shell.listApplications"),
+      refreshApplications: () => request("shell.refreshApplications", {}, 30_000),
       openApplication: (applicationId) => request("shell.openApplication", { applicationId }),
       open: (value) => request("shell.open", normalizeOpenParams(value)),
     },

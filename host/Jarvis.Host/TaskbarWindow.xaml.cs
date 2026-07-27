@@ -29,6 +29,8 @@ public partial class TaskbarWindow : Window
     private readonly CancellationTokenSource _healthShutdown = new();
     private readonly RuntimeSnapshotFeed _snapshotFeed;
     private readonly WindowTaskbarService _taskbarService;
+    private readonly DesktopService _desktopService;
+    private readonly ShellService _shellService;
     private readonly TerminalSessionService _terminalSessionService;
     private readonly NativeWindowAppearanceService _windowAppearanceService;
     private readonly TaskbarModeService _taskbarModeService;
@@ -54,6 +56,8 @@ public partial class TaskbarWindow : Window
         PixelRect? notificationAreaBounds,
         RuntimeSnapshotFeed snapshotFeed,
         WindowTaskbarService taskbarService,
+        DesktopService desktopService,
+        ShellService shellService,
         TerminalSessionService terminalSessionService,
         NativeWindowAppearanceService windowAppearanceService,
         TaskbarModeService taskbarModeService,
@@ -69,6 +73,8 @@ public partial class TaskbarWindow : Window
         _notificationAreaBounds = notificationAreaBounds;
         _snapshotFeed = snapshotFeed;
         _taskbarService = taskbarService;
+        _desktopService = desktopService;
+        _shellService = shellService;
         _terminalSessionService = terminalSessionService;
         _windowAppearanceService = windowAppearanceService;
         _taskbarModeService = taskbarModeService;
@@ -283,14 +289,12 @@ public partial class TaskbarWindow : Window
                 Dispatcher.BeginInvoke(() => ReportFailure("TASKBAR RENDERER FAILED"));
             });
 
-        var desktopService = new DesktopService();
-        var shellService = new ShellService(desktopService);
         _bridge = new WebBridge(
             WebView.CoreWebView2,
             Dispatcher,
             _snapshotFeed,
-            desktopService,
-            shellService,
+            _desktopService,
+            _shellService,
             new FileExplorerService(),
             _terminalSessionService,
             _taskbarService,

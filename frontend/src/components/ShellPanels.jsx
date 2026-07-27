@@ -1,5 +1,6 @@
 import {
   AlertRegular,
+  ArrowClockwiseRegular,
   ArrowExitRegular,
   CheckmarkCircleRegular,
   DismissRegular,
@@ -16,7 +17,15 @@ import {
   SpeakerOffRegular,
   WindowAppsRegular,
 } from "@fluentui/react-icons";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   getUiAudioSnapshot,
   setUiAudioEnabled,
@@ -26,6 +35,7 @@ import {
 import {
   clearSystemFeed,
   markSystemFeedRead,
+  refreshApplicationCatalog,
   setTrayMuted,
   setTrayVolume,
   setTaskbarMode,
@@ -58,7 +68,9 @@ import {
 import { normalizeSearchText } from "../quick-search.js";
 import {
   buildStartMenuApplications,
+  createStartMenuVirtualRows,
   filterStartMenuApplications,
+  getStartMenuVirtualWindow,
   groupStartMenuApplications,
 } from "../start-menu-model.js";
 import { normalizeProcessName } from "../taskbar-grouping.js";
@@ -183,12 +195,21 @@ function StartMenuApplicationIcon({ application }) {
   return <WindowAppsRegular />;
 }
 
-function StartMenuApplicationRow({ application, isPinned, onOpen, onTogglePin }) {
+function StartMenuApplicationRow({
+  application,
+  applicationIndex = null,
+  isPinned,
+  onNavigate = null,
+  onOpen,
+  onTogglePin,
+}) {
   return (
     <div className={`start-application-row${isPinned ? " is-pinned" : ""}`}>
       <button
         type="button"
         className="start-application-main"
+        data-start-application-index={applicationIndex}
+        onKeyDown={onNavigate}
         onClick={() => onOpen(application)}
         title={`${application.label} · ${getApplicationSourceLabel(application.source)}`}
       >
@@ -212,23 +233,175 @@ function StartMenuApplicationRow({ application, isPinned, onOpen, onTogglePin })
 }
 
 function StartApplicationGroups({ groups, pinnedKeys, onOpen, onTogglePin, emptyLabel }) {
-  if (groups.length === 0) return <p className="shell-empty-state start-app-empty">{emptyLabel}</p>;
-  return groups.map((group) => (
-    <section className="start-application-group" key={group.label} aria-label={`${group.label} applications`}>
-      <div className="start-application-group-label" aria-hidden="true">{group.label}</div>
-      <div className="start-application-group-grid">
-        {group.items.map((application) => (
-          <StartMenuApplicationRow
-            key={application.menuId}
-            application={application}
-            isPinned={pinnedKeys.has(getMenuApplicationPinKey(application))}
-            onOpen={onOpen}
-            onTogglePin={onTogglePin}
-          />
-        ))}
-      </div>
-    </section>
-  ));
+  const viewportRef = useRef(null);
+  const frameRef = useRef(null);
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 320 });
+  const [pendingFocusIndex, setPendingFocusIndex] = useState(null);
+  const layout = useMemo(() => createStartMenuVirtualRows(groups), [groups]);
+  const visibleRows = useMemo(
+    () => getStartMenuVirtualWindow(layout.rows, viewport.scrollTop, viewport.height),
+    [layout.rows, viewport.height, viewport.scrollTop],
+  );
+  const orderedApplications = useMemo(
+    () => groups.flatMap((group) => group.items),
+    [groups],
+  );
+  const applicationIndexById = useMemo(
+    () => new Map(orderedApplications.map((application, index) => [application.menuId, index])),
+    [orderedApplications],
+  );
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return undefined;
+    const updateHeight = () => {
+      setViewport((current) => ({
+        scrollTop: element.scrollTop,
+        height: Math.max(1, element.clientHeight),
+      }));
+    };
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (pendingFocusIndex === null) return;
+    const element = viewportRef.current;
+    const target = element?.querySelector(
+      `[data-start-application-index="${pendingFocusIndex}"]`,
+    );
+    if (!target) return;
+    target.focus();
+    setPendingFocusIndex(null);
+  }, [pendingFocusIndex, visibleRows]);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+  }, []);
+
+  const handleScroll = useCallback((event) => {
+    const element = event.currentTarget;
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      setViewport({
+        scrollTop: element.scrollTop,
+        height: Math.max(1, element.clientHeight),
+      });
+    });
+  }, []);
+
+  const focusApplication = useCallback((index) => {
+    const targetIndex = Math.max(0, Math.min(orderedApplications.length - 1, index));
+    const targetApplication = orderedApplications[targetIndex];
+    const targetRow = layout.rows.find((row) => (
+      row.kind === "applications" &&
+      row.items.some((application) => application.menuId === targetApplication?.menuId)
+    ));
+    const element = viewportRef.current;
+    if (!element || !targetRow) return;
+    const rowBottom = targetRow.top + targetRow.height;
+    if (targetRow.top < element.scrollTop) {
+      element.scrollTop = targetRow.top;
+    } else if (rowBottom > element.scrollTop + element.clientHeight) {
+      element.scrollTop = rowBottom - element.clientHeight;
+    }
+    setViewport({ scrollTop: element.scrollTop, height: Math.max(1, element.clientHeight) });
+    setPendingFocusIndex(targetIndex);
+  }, [layout.rows, orderedApplications]);
+
+  const handleApplicationNavigation = useCallback((event) => {
+    const currentIndex = Number(event.currentTarget.dataset.startApplicationIndex);
+    const currentApplication = orderedApplications[currentIndex];
+    const currentRowIndex = layout.rows.findIndex((row) => (
+      row.kind === "applications" &&
+      row.items.some((application) => application.menuId === currentApplication?.menuId)
+    ));
+    const currentRow = layout.rows[currentRowIndex];
+    const currentColumn = currentRow?.kind === "applications"
+      ? currentRow.items.findIndex((application) => application.menuId === currentApplication?.menuId)
+      : 0;
+    let targetIndex = event.key === "ArrowRight"
+      ? currentIndex + 1
+      : event.key === "ArrowLeft"
+        ? currentIndex - 1
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? orderedApplications.length - 1
+            : null;
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      let rowIndex = currentRowIndex + step;
+      while (rowIndex >= 0 && rowIndex < layout.rows.length) {
+        const row = layout.rows[rowIndex];
+        if (row.kind === "applications") {
+          const targetApplication = row.items[Math.min(currentColumn, row.items.length - 1)];
+          targetIndex = applicationIndexById.get(targetApplication.menuId);
+          break;
+        }
+        rowIndex += step;
+      }
+    }
+
+    if (targetIndex === null) return;
+    event.preventDefault();
+    focusApplication(targetIndex);
+  }, [
+    applicationIndexById,
+    focusApplication,
+    layout.rows,
+    orderedApplications,
+  ]);
+
+  return (
+    <div
+      ref={viewportRef}
+      className="start-all-apps"
+      onScroll={handleScroll}
+      aria-label="All applications"
+    >
+      {groups.length === 0 ? (
+        <p className="shell-empty-state start-app-empty">{emptyLabel}</p>
+      ) : (
+        <div className="start-virtual-space" style={{ height: `${layout.totalHeight}px` }}>
+          {visibleRows.map((row) => (
+            row.kind === "group" ? (
+              <div
+                className="start-virtual-group-row"
+                key={row.key}
+                style={{ transform: `translateY(${row.top}px)`, height: `${row.height}px` }}
+                aria-hidden="true"
+              >
+                <span>{row.label}</span><i />
+              </div>
+            ) : (
+              <div
+                className="start-virtual-application-row"
+                key={row.key}
+                style={{ transform: `translateY(${row.top}px)`, height: `${row.height}px` }}
+              >
+                {row.items.map((application) => (
+                  <StartMenuApplicationRow
+                    key={application.menuId}
+                    application={application}
+                    applicationIndex={applicationIndexById.get(application.menuId)}
+                    isPinned={pinnedKeys.has(getMenuApplicationPinKey(application))}
+                    onNavigate={handleApplicationNavigation}
+                    onOpen={onOpen}
+                    onTogglePin={onTogglePin}
+                  />
+                ))}
+              </div>
+            )
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StartPanel({
@@ -246,7 +419,8 @@ function StartPanel({
   const pinnedApplicationRefs = usePinnedApplicationRefs();
   const [query, setQuery] = useState("");
   const [view, setView] = useState("pinned");
-  const normalizedQuery = normalizeSearchText(query);
+  const deferredQuery = useDeferredValue(query);
+  const normalizedQuery = normalizeSearchText(deferredQuery);
   const menuApplications = useMemo(() => buildStartMenuApplications(
     startApps,
     applicationCatalog.applications,
@@ -314,7 +488,12 @@ function StartPanel({
       ? "INDEXING WINDOWS APPS"
       : applicationCatalog.truncated
         ? `${applicationCatalog.applications.length} APPS · PARTIAL`
-        : `${applicationCatalog.applications.length} WINDOWS APPS`;
+        : applicationCatalog.watching
+          ? `${applicationCatalog.applications.length} APPS · LIVE R${applicationCatalog.revision}`
+          : `${applicationCatalog.applications.length} WINDOWS APPS`;
+  const catalogStatusTitle = applicationCatalog.indexedAtUtc
+    ? `Indexed ${formatFeedTime(applicationCatalog.indexedAtUtc)} · ${applicationCatalog.refreshReason}`
+    : "The Windows application catalog has not finished indexing.";
 
   return (
     <section className="shell-panel start-panel" role="dialog" aria-modal="false" aria-label="JARVIS Start">
@@ -350,10 +529,28 @@ function StartPanel({
         >
           <span>ALL APPS</span><small>{menuApplications.length}</small>
         </button>
-        <span className={applicationCatalog.error ? "is-error" : ""}>{catalogStatus}</span>
+        <span
+          className={applicationCatalog.error ? "is-error" : ""}
+          title={catalogStatusTitle}
+        >
+          {catalogStatus}
+        </span>
+        <button
+          type="button"
+          className="start-catalog-refresh"
+          onClick={() => refreshApplicationCatalog(true)}
+          disabled={applicationCatalog.loading}
+          aria-label="Refresh application catalog"
+          title="Refresh Windows application catalog"
+        >
+          <ArrowClockwiseRegular />
+        </button>
       </div>
 
-      <div className={`start-panel-content is-${contentMode}`} aria-busy={applicationCatalog.loading}>
+      <div
+        className={`start-panel-content is-${contentMode}`}
+        aria-busy={applicationCatalog.loading || query !== deferredQuery}
+      >
         {contentMode === "pinned" ? (
           <>
             <div className="start-section-heading"><span>PINNED</span><small>{pinnedApplications.length} APPS</small></div>
@@ -405,15 +602,13 @@ function StartPanel({
               <span>{contentMode === "search" ? "APPLICATION MATCHES" : "ALL APPLICATIONS"}</span>
               <small>{filteredApplications.length} RESULTS</small>
             </div>
-            <div className="start-all-apps">
-              <StartApplicationGroups
-                groups={applicationGroups}
-                pinnedKeys={pinnedKeys}
-                onOpen={openMenuApplication}
-                onTogglePin={togglePinnedApplication}
-                emptyLabel={applicationCatalog.loading ? "Indexing Windows applications…" : "No matching applications."}
-              />
-            </div>
+            <StartApplicationGroups
+              groups={applicationGroups}
+              pinnedKeys={pinnedKeys}
+              onOpen={openMenuApplication}
+              onTogglePin={togglePinnedApplication}
+              emptyLabel={applicationCatalog.loading ? "Indexing Windows applications…" : "No matching applications."}
+            />
           </>
         )}
 

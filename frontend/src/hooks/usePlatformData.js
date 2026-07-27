@@ -329,6 +329,10 @@ function normalizeApplicationCatalog(result = {}) {
     indexedAtUtc: result.indexedAtUtc ?? result.IndexedAtUtc ?? null,
     sourceCount: Number(result.sourceCount ?? result.SourceCount ?? 0),
     truncated: Boolean(result.truncated ?? result.Truncated),
+    revision: Number(result.revision ?? result.Revision ?? 0),
+    refreshReason: String(result.refreshReason ?? result.RefreshReason ?? "initial"),
+    watching: Boolean(result.watching ?? result.Watching),
+    watchRootCount: Number(result.watchRootCount ?? result.WatchRootCount ?? 0),
     loading: false,
     error: null,
   };
@@ -349,6 +353,10 @@ const applicationCatalogStore = createStore({
   indexedAtUtc: null,
   sourceCount: 0,
   truncated: false,
+  revision: 0,
+  refreshReason: "initial",
+  watching: false,
+  watchRootCount: 0,
   loading: true,
   error: null,
 });
@@ -400,6 +408,8 @@ let desktopLoaded = false;
 let desktopRequest = null;
 let applicationCatalogLoaded = false;
 let applicationCatalogRequest = null;
+let applicationCatalogSubscribers = 0;
+let stopApplicationCatalogEvents = null;
 let lastSystemTimestamp = null;
 let taskbarSubscribers = 0;
 let stopTaskbarEvents = null;
@@ -707,18 +717,45 @@ function subscribeToTaskbar(listener) {
   };
 }
 
-export function refreshApplicationCatalog() {
+function publishApplicationCatalog(rawCatalog) {
+  const catalog = normalizeApplicationCatalog(rawCatalog);
+  const current = applicationCatalogStore.getSnapshot();
+  if (catalog.revision > 0 && catalog.revision < current.revision) return;
+  if (catalog.revision === current.revision &&
+      catalog.indexedAtUtc === current.indexedAtUtc &&
+      !current.loading &&
+      !current.error) {
+    return;
+  }
+
+  applicationCatalogLoaded = true;
+  applicationCatalogStore.set(catalog);
+}
+
+function startApplicationCatalogFeed() {
+  if (!stopApplicationCatalogEvents) {
+    stopApplicationCatalogEvents = platform.events.subscribe(
+      "shell.applicationsChanged",
+      publishApplicationCatalog,
+    );
+  }
+}
+
+export function refreshApplicationCatalog(force = false) {
   if (applicationCatalogRequest) return applicationCatalogRequest;
   applicationCatalogStore.set({
     ...applicationCatalogStore.getSnapshot(),
     loading: true,
     error: null,
   });
-  applicationCatalogRequest = platform.shell.listApplications()
+  const request = force && platform.shell.refreshApplications
+    ? platform.shell.refreshApplications()
+    : platform.shell.listApplications();
+  applicationCatalogRequest = request
     .then((result) => {
       const catalog = normalizeApplicationCatalog(result);
       applicationCatalogLoaded = true;
-      applicationCatalogStore.set(catalog);
+      publishApplicationCatalog(catalog);
       return catalog.applications;
     })
     .catch((error) => {
@@ -737,9 +774,18 @@ export function refreshApplicationCatalog() {
 }
 
 function subscribeToApplicationCatalog(listener) {
+  applicationCatalogSubscribers += 1;
+  startApplicationCatalogFeed();
   const unsubscribe = applicationCatalogStore.subscribe(listener);
   if (!applicationCatalogLoaded) refreshApplicationCatalog();
-  return unsubscribe;
+  return () => {
+    unsubscribe();
+    applicationCatalogSubscribers -= 1;
+    if (applicationCatalogSubscribers === 0 && stopApplicationCatalogEvents) {
+      stopApplicationCatalogEvents();
+      stopApplicationCatalogEvents = null;
+    }
+  };
 }
 
 function subscribeToApplicationCatalogPassively(listener) {

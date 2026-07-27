@@ -407,6 +407,23 @@ export function createMockPlatform() {
     ...mockTaskbarSnapshot,
     windows: mockTaskbarSnapshot.windows.map((window) => ({ ...window })),
   };
+  let applicationCatalogRevision = 1;
+  const mockApplications = [
+    { applicationId: "mock-powershell", label: "PowerShell 7", category: "PowerShell", source: "user", processNames: ["pwsh", "powershell"], iconDataUrl: null },
+    { applicationId: "mock-edge", label: "Microsoft Edge", category: "Applications", source: "common", processNames: ["msedge"], iconDataUrl: null },
+    { applicationId: "mock-github", label: "GitHub Desktop", category: "GitHub, Inc", source: "user", processNames: ["githubdesktop"], iconDataUrl: null },
+    { applicationId: "mock-calculator", label: "Calculator", category: "Windows Apps", source: "packaged", processNames: [], iconDataUrl: null },
+  ];
+  const createMockApplicationCatalog = (refreshReason = "initial") => ({
+    applications: mockApplications,
+    indexedAtUtc: new Date().toISOString(),
+    sourceCount: 3,
+    truncated: false,
+    revision: applicationCatalogRevision,
+    refreshReason,
+    watching: true,
+    watchRootCount: 2,
+  });
   const explorerEntriesByPath = new Map([
     [mockExplorerSnapshot.currentPath, mockExplorerSnapshot.entries.map((entry) => ({ ...entry }))],
     ...mockExplorerSnapshot.entries
@@ -965,17 +982,13 @@ export function createMockPlatform() {
     },
     shell: {
       async listApplications() {
-        return {
-          applications: [
-            { applicationId: "mock-powershell", label: "PowerShell 7", category: "PowerShell", source: "user", processNames: ["pwsh", "powershell"], iconDataUrl: null },
-            { applicationId: "mock-edge", label: "Microsoft Edge", category: "Applications", source: "common", processNames: ["msedge"], iconDataUrl: null },
-            { applicationId: "mock-github", label: "GitHub Desktop", category: "GitHub, Inc", source: "user", processNames: ["githubdesktop"], iconDataUrl: null },
-            { applicationId: "mock-calculator", label: "Calculator", category: "Windows Apps", source: "packaged", processNames: [], iconDataUrl: null },
-          ],
-          indexedAtUtc: new Date().toISOString(),
-          sourceCount: 3,
-          truncated: false,
-        };
+        return createMockApplicationCatalog();
+      },
+      async refreshApplications() {
+        applicationCatalogRevision += 1;
+        const catalog = createMockApplicationCatalog("manual");
+        emit("shell.applicationsChanged", catalog);
+        return catalog;
       },
       async openApplication(applicationId) {
         return { opened: false, mock: true, applicationId };

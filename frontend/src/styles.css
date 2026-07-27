@@ -3836,7 +3836,7 @@ button.process-grid:hover {
 .start-view-switch {
   min-height: 38px;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr) 30px;
   align-items: center;
   gap: 5px;
   margin: 0 14px 7px;
@@ -3896,6 +3896,36 @@ button.process-grid:hover {
   color: #b56b60;
 }
 
+.start-view-switch > .start-catalog-refresh {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-left: 1px solid rgba(28, 79, 111, 0.58);
+  color: #4f8fb4;
+}
+
+.start-view-switch > .start-catalog-refresh::after {
+  display: none;
+}
+
+.start-view-switch > .start-catalog-refresh:hover,
+.start-view-switch > .start-catalog-refresh:focus-visible {
+  outline: none;
+  color: #a8e5ff;
+  background: rgba(7, 38, 59, 0.86);
+}
+
+.start-view-switch > .start-catalog-refresh:disabled {
+  opacity: 0.42;
+}
+
+.start-view-switch > .start-catalog-refresh svg {
+  width: 15px;
+  height: 15px;
+}
+
 .start-panel-content {
   min-height: 210px;
   max-height: min(480px, calc(100vh - var(--taskbar-height) - var(--taskbar-bottom) - 255px));
@@ -3903,6 +3933,13 @@ button.process-grid:hover {
   overflow-y: auto;
   scrollbar-color: rgba(44, 116, 158, 0.72) rgba(2, 13, 22, 0.65);
   scrollbar-width: thin;
+}
+
+.start-panel-content.is-all,
+.start-panel-content.is-search {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .start-section-heading {
@@ -4018,32 +4055,40 @@ button.process-grid:hover {
 }
 
 .start-all-apps {
-  display: grid;
-  gap: 3px;
+  min-height: 110px;
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0 12px 14px;
+  scrollbar-color: rgba(44, 116, 158, 0.72) rgba(2, 13, 22, 0.65);
+  scrollbar-width: thin;
 }
 
-.start-application-group {
+.start-virtual-space {
+  position: relative;
+  min-width: 0;
+}
+
+.start-virtual-group-row,
+.start-virtual-application-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.start-virtual-group-row {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
-  gap: 6px;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(18, 54, 78, 0.54);
-  content-visibility: auto;
-  contain-intrinsic-size: 118px;
+  align-items: center;
+  gap: 8px;
 }
 
-.start-application-group:last-child {
-  border-bottom: 0;
-}
-
-.start-application-group-label {
+.start-virtual-group-row > span {
   width: 25px;
   height: 25px;
   display: grid;
   place-items: center;
-  position: sticky;
-  top: 4px;
   border: 1px solid rgba(29, 104, 151, 0.66);
   color: #79cfff;
   background: rgba(3, 19, 31, 0.96);
@@ -4051,11 +4096,16 @@ button.process-grid:hover {
   font: 600 9px/1 Bahnschrift, sans-serif;
 }
 
-.start-application-group-grid {
-  min-width: 0;
+.start-virtual-group-row > i {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(34, 134, 193, 0.56), rgba(20, 65, 94, 0.18));
+}
+
+.start-virtual-application-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
+  align-items: start;
 }
 
 .start-application-row {

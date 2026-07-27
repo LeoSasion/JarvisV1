@@ -2,35 +2,81 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Jarvis.Host.Bridge;
+using Jarvis.Host.Infrastructure;
 
 namespace Jarvis.Host.Services;
 
-internal sealed class StartMenuApplicationService
+internal sealed class StartMenuApplicationService : IDisposable
 {
     private const int MaxApplications = 1_024;
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan WatchDebounce = TimeSpan.FromMilliseconds(350);
 
     private readonly object _gate = new();
     private readonly PackagedApplicationService _packagedApplications = new();
+    private readonly Func<IReadOnlyList<PackagedApplication>> _packagedApplicationProvider;
+    private readonly IReadOnlyList<StartMenuRoot> _roots;
     private readonly Dictionary<string, ApplicationLaunchTarget> _launchTargets = new(StringComparer.Ordinal);
+    private readonly List<FileSystemWatcher> _watchers = [];
+    private readonly Timer _watchTimer;
     private StartMenuApplicationCatalog? _cachedCatalog;
     private DateTimeOffset _cachedAtUtc;
+    private long _revision;
+    private bool _cacheDirty = true;
+    private bool _disposed;
+
+    public StartMenuApplicationService()
+        : this(GetStartMenuRoots(), packagedApplicationProvider: null, WatchDebounce)
+    {
+    }
+
+    internal StartMenuApplicationService(
+        IReadOnlyList<StartMenuRoot> roots,
+        Func<IReadOnlyList<PackagedApplication>>? packagedApplicationProvider,
+        TimeSpan watchDebounce)
+    {
+        _roots = roots
+            .Where(root => !string.IsNullOrWhiteSpace(root.Path) && Directory.Exists(root.Path))
+            .Select(root => root with { Path = NormalizeRoot(root.Path) })
+            .DistinctBy(root => root.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        _packagedApplicationProvider = packagedApplicationProvider ?? _packagedApplications.ListApplications;
+        _watchTimer = new Timer(OnWatchTimerElapsed);
+        StartWatching();
+    }
+
+    public event EventHandler<StartMenuApplicationCatalog>? CatalogChanged;
 
     public StartMenuApplicationCatalog ListApplications()
     {
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             var now = DateTimeOffset.UtcNow;
-            if (_cachedCatalog is not null && now - _cachedAtUtc < CacheLifetime)
+            if (_cachedCatalog is not null &&
+                !_cacheDirty &&
+                now - _cachedAtUtc < CacheLifetime)
             {
                 return _cachedCatalog;
             }
 
-            var catalog = BuildCatalog(now);
-            _cachedCatalog = catalog;
-            _cachedAtUtc = now;
-            return catalog;
+            return RebuildCatalogUnsafe(
+                now,
+                _cachedCatalog is null ? "initial" : _cacheDirty ? "filesystem-change" : "cache-expired");
         }
+    }
+
+    public StartMenuApplicationCatalog RefreshApplications()
+    {
+        StartMenuApplicationCatalog catalog;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            catalog = RebuildCatalogUnsafe(DateTimeOffset.UtcNow, "manual");
+        }
+
+        Publish(catalog);
+        return catalog;
     }
 
     public StartMenuApplicationOpenResult OpenApplication(string applicationId)
@@ -122,7 +168,6 @@ internal sealed class StartMenuApplicationService
 
     private StartMenuApplicationCatalog BuildCatalog(DateTimeOffset indexedAtUtc)
     {
-        var roots = GetStartMenuRoots();
         var applications = new List<StartMenuApplication>();
         var applicationLabels = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
         var nextTargets = new Dictionary<string, ApplicationLaunchTarget>(StringComparer.Ordinal);
@@ -139,7 +184,7 @@ internal sealed class StartMenuApplicationService
             MaxRecursionDepth = 12
         };
 
-        foreach (var root in roots)
+        foreach (var root in _roots)
         {
             IEnumerable<string> shortcuts;
             try
@@ -210,7 +255,7 @@ internal sealed class StartMenuApplicationService
         {
             try
             {
-                var packagedApplications = _packagedApplications.ListApplications();
+                var packagedApplications = _packagedApplicationProvider();
                 packagedSourceAvailable = true;
                 foreach (var packagedApplication in packagedApplications)
                 {
@@ -268,18 +313,151 @@ internal sealed class StartMenuApplicationService
         return new StartMenuApplicationCatalog(
             applications,
             indexedAtUtc,
-            roots.Count + (packagedSourceAvailable ? 1 : 0),
-            truncated);
+            _roots.Count + (packagedSourceAvailable ? 1 : 0),
+            truncated,
+            _revision + 1,
+            "pending",
+            _watchers.Count > 0,
+            _watchers.Count);
     }
 
     private void Invalidate()
     {
         lock (_gate)
         {
-            _cachedCatalog = null;
-            _cachedAtUtc = default;
-            _launchTargets.Clear();
+            _cacheDirty = true;
         }
+    }
+
+    private StartMenuApplicationCatalog RebuildCatalogUnsafe(
+        DateTimeOffset indexedAtUtc,
+        string refreshReason)
+    {
+        var catalog = BuildCatalog(indexedAtUtc);
+        _revision = catalog.Revision;
+        catalog = catalog with { RefreshReason = refreshReason };
+        _cachedCatalog = catalog;
+        _cachedAtUtc = indexedAtUtc;
+        _cacheDirty = false;
+        return catalog;
+    }
+
+    private void StartWatching()
+    {
+        foreach (var root in _roots)
+        {
+            try
+            {
+                var watcher = new FileSystemWatcher(root.Path)
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName |
+                                   NotifyFilters.DirectoryName |
+                                   NotifyFilters.LastWrite |
+                                   NotifyFilters.CreationTime,
+                    Filter = "*",
+                    EnableRaisingEvents = true
+                };
+                watcher.Created += OnWatchedRootChanged;
+                watcher.Changed += OnWatchedRootChanged;
+                watcher.Deleted += OnWatchedRootChanged;
+                watcher.Renamed += OnWatchedRootChanged;
+                watcher.Error += OnWatcherError;
+                _watchers.Add(watcher);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                HostLog.Warning($"Start menu root watcher could not monitor {root.Path}: {ex.Message}");
+            }
+        }
+    }
+
+    private void OnWatchedRootChanged(object sender, FileSystemEventArgs args)
+    {
+        if (!ShouldRefreshForPath(args.FullPath))
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _cacheDirty = true;
+            _watchTimer.Change(WatchDebounce, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs args)
+    {
+        HostLog.Warning($"Start menu root watcher reported an error: {args.GetException().Message}");
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _cacheDirty = true;
+            _watchTimer.Change(WatchDebounce, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void OnWatchTimerElapsed(object? state)
+    {
+        StartMenuApplicationCatalog? catalog = null;
+        try
+        {
+            lock (_gate)
+            {
+                if (_disposed || !_cacheDirty)
+                {
+                    return;
+                }
+
+                catalog = RebuildCatalogUnsafe(DateTimeOffset.UtcNow, "filesystem-change");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or COMException)
+        {
+            HostLog.Warning($"Start menu catalog refresh failed; the previous snapshot remains active: {ex.Message}");
+        }
+
+        if (catalog is not null)
+        {
+            Publish(catalog);
+        }
+    }
+
+    private void Publish(StartMenuApplicationCatalog catalog)
+    {
+        var subscribers = CatalogChanged;
+        if (subscribers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler<StartMenuApplicationCatalog> subscriber in subscribers.GetInvocationList())
+        {
+            try
+            {
+                subscriber(this, catalog);
+            }
+            catch (Exception ex)
+            {
+                HostLog.Error("A Start menu catalog subscriber rejected a snapshot.", ex);
+            }
+        }
+    }
+
+    private static bool ShouldRefreshForPath(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return string.IsNullOrEmpty(extension) ||
+               extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<StartMenuRoot> GetStartMenuRoots()
@@ -361,8 +539,6 @@ internal sealed class StartMenuApplicationService
             .FirstOrDefault() ?? "Applications";
     }
 
-    private sealed record StartMenuRoot(string Path, string Source);
-
     private sealed record ApplicationLaunchTarget(ApplicationLaunchKind Kind, string Value);
 
     private enum ApplicationLaunchKind
@@ -370,7 +546,39 @@ internal sealed class StartMenuApplicationService
         Shortcut,
         Packaged
     }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _watchTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            foreach (var watcher in _watchers)
+            {
+                watcher.EnableRaisingEvents = false;
+                watcher.Created -= OnWatchedRootChanged;
+                watcher.Changed -= OnWatchedRootChanged;
+                watcher.Deleted -= OnWatchedRootChanged;
+                watcher.Renamed -= OnWatchedRootChanged;
+                watcher.Error -= OnWatcherError;
+                watcher.Dispose();
+            }
+
+            _watchers.Clear();
+            _launchTargets.Clear();
+            _cachedCatalog = null;
+        }
+
+        _watchTimer.Dispose();
+    }
 }
+
+internal sealed record StartMenuRoot(string Path, string Source);
 
 internal sealed record StartMenuApplication(
     string ApplicationId,
@@ -384,7 +592,11 @@ internal sealed record StartMenuApplicationCatalog(
     IReadOnlyList<StartMenuApplication> Applications,
     DateTimeOffset IndexedAtUtc,
     int SourceCount,
-    bool Truncated);
+    bool Truncated,
+    long Revision,
+    string RefreshReason,
+    bool Watching,
+    int WatchRootCount);
 
 internal sealed record StartMenuApplicationOpenResult(
     bool Opened,
