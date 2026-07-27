@@ -13,6 +13,10 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 - Session-only JARVIS System Feed with bounded, deduplicated host events
 - Keyboard-first application search and launcher
 - Cancellable File Explorer copy/move jobs with conflict policies, byte progress, long-path support, and verified cross-volume moves
+- Live desktop-folder synchronization, Windows-style multi-selection, native clipboard file operations, and recycle-safe desktop commands
+- Drag-and-drop between the JARVIS desktop and File Explorer, plus validated file drops from Windows onto either surface
+- Primary-monitor desktop ownership with per-monitor DPI telemetry while secondary Windows taskbars remain available
+- Truthful Windows notification-history readiness reporting; history remains disabled until a signed MSIX identity and user consent are available
 - Windows-native system telemetry and on-demand process/hardware inspection
 - Integrated PowerShell, Command Prompt, and WSL sessions through ConPTY
 - Configurable conservative, enhanced, and experimental immersive window styling
@@ -66,6 +70,16 @@ Taskbar modes are stored per user. `native` preserves the complete Windows
 taskbar, `hybrid` yields the notification area to Explorer, and `full` hides the
 primary taskbar behind the watchdog-backed experimental replacement. Any failed
 probe or activation returns to the native taskbar.
+
+Run the non-mutating compatibility readiness probe on each target machine:
+
+```powershell
+.\scripts\test-windows-compatibility.ps1
+```
+
+The probe checks the Windows build, x64 architecture, display topology, and
+WebView2 registration. A successful run prepares a machine for testing; it
+does not replace real Windows 10 hardware validation.
 
 ## License
 

@@ -503,6 +503,36 @@ button.top-cluster:hover:not(:disabled) {
   box-shadow: 0 0 12px rgba(0, 132, 238, 0.12) inset;
 }
 
+.desktop-shortcut.is-cut .shortcut-icon,
+.desktop-shortcut.is-cut .shortcut-label {
+  opacity: 0.48;
+}
+
+.desktop-shortcut:active {
+  border-color: rgba(125, 220, 255, 0.56);
+}
+
+.desktop-shortcut[draggable="true"],
+.explorer-entry[draggable="true"] {
+  cursor: grab;
+}
+
+.desktop-shortcut[draggable="true"]:active,
+.explorer-entry[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.desktop-selection-marquee {
+  position: absolute;
+  z-index: 12;
+  border: 1px solid rgba(93, 202, 255, 0.72);
+  background: rgba(0, 132, 238, 0.13);
+  box-shadow:
+    0 0 10px rgba(34, 207, 255, 0.16) inset,
+    0 0 8px rgba(0, 132, 238, 0.18);
+  pointer-events: none;
+}
+
 .shortcut-icon {
   width: calc(var(--desktop-icon-size) + 2px);
   height: calc(var(--desktop-icon-size) + 2px);
@@ -724,6 +754,115 @@ button.top-cluster:hover:not(:disabled) {
 .desktop-menu-hint svg {
   width: 15px;
   height: 15px;
+}
+
+.desktop-operation-backdrop {
+  position: fixed;
+  z-index: 260;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 3, 8, 0.58);
+  pointer-events: auto;
+}
+
+.desktop-operation-dialog {
+  width: min(420px, calc(100vw - 48px));
+  padding: 14px;
+  border: 1px solid rgba(45, 147, 205, 0.82);
+  border-radius: 5px;
+  background:
+    linear-gradient(135deg, rgba(18, 55, 78, 0.22), transparent 48%),
+    rgba(2, 9, 17, 0.995);
+  color: #dceaf0;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.66), 0 0 22px rgba(0, 132, 238, 0.18);
+}
+
+.desktop-operation-dialog header {
+  display: grid;
+  gap: 7px;
+  padding: 3px 3px 14px;
+  border-bottom: 1px solid rgba(40, 101, 139, 0.5);
+}
+
+.desktop-operation-dialog header span,
+.desktop-operation-dialog label > span {
+  color: #5185a6;
+  font: 9px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.14em;
+}
+
+.desktop-operation-dialog header strong {
+  color: #dff6ff;
+  font: 500 18px/1.2 Bahnschrift, sans-serif;
+}
+
+.desktop-operation-dialog p {
+  margin: 16px 3px 8px;
+  color: #95aeba;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.desktop-operation-dialog label {
+  display: grid;
+  gap: 8px;
+  margin: 16px 3px 8px;
+}
+
+.desktop-operation-dialog input {
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid rgba(48, 123, 170, 0.72);
+  border-radius: 2px;
+  outline: none;
+  background: rgba(0, 5, 12, 0.88);
+  color: #eafaff;
+}
+
+.desktop-operation-dialog input:focus {
+  border-color: #22cfff;
+  box-shadow: 0 0 10px rgba(34, 207, 255, 0.18);
+}
+
+.desktop-operation-error {
+  margin: 9px 3px;
+  color: #ff8b78;
+  font-size: 11px;
+}
+
+.desktop-operation-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.desktop-operation-dialog footer button {
+  min-width: 98px;
+  height: 34px;
+  border: 1px solid rgba(63, 118, 151, 0.64);
+  border-radius: 2px;
+  background: rgba(5, 22, 34, 0.8);
+  color: #adc4d0;
+  cursor: pointer;
+}
+
+.desktop-operation-dialog footer button.is-primary {
+  border-color: rgba(34, 207, 255, 0.7);
+  background: rgba(0, 105, 173, 0.32);
+  color: #e2f8ff;
+}
+
+.desktop-operation-dialog footer button.is-danger {
+  border-color: rgba(231, 73, 49, 0.72);
+  background: rgba(107, 25, 17, 0.3);
+  color: #ff9c8d;
+}
+
+.desktop-operation-dialog footer button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .core-stage {
@@ -6755,6 +6894,200 @@ button.process-grid:hover {
 
   .terminal-new-tab span {
     display: none;
+  }
+}
+
+.windows-history-status {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 113, 151, 0.54);
+  background: rgba(2, 14, 24, 0.82);
+}
+
+.windows-history-status > span:first-child {
+  display: grid;
+  place-items: center;
+  color: #69bce8;
+}
+
+.windows-history-status > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.windows-history-status strong,
+.windows-history-status small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.windows-history-status strong {
+  color: #d6edf5;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.windows-history-status small {
+  color: #708b9b;
+  font-size: 9px;
+}
+
+.windows-history-status code {
+  color: #dca951;
+  font-size: 8px;
+}
+
+.windows-history-status.is-ready code {
+  color: #8fd17e;
+}
+
+.native-integration-settings {
+  margin: 12px;
+  border: 1px solid rgba(41, 102, 139, 0.62);
+  background: rgba(1, 10, 18, 0.72);
+}
+
+.native-integration-settings > header {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(41, 99, 134, 0.52);
+}
+
+.native-integration-settings > header > span:first-child {
+  display: grid;
+  place-items: center;
+  color: #67c7f1;
+}
+
+.native-integration-settings > header > span:nth-child(2) {
+  display: grid;
+  gap: 4px;
+}
+
+.native-integration-settings > header strong {
+  color: #daf3fc;
+  font: 500 11px/1 Bahnschrift, sans-serif;
+  letter-spacing: 0.1em;
+}
+
+.native-integration-settings > header small {
+  color: #5f7f91;
+  font: 8px/1 "Cascadia Mono", monospace;
+}
+
+.native-integration-settings button {
+  min-height: 30px;
+  border: 1px solid rgba(54, 125, 165, 0.62);
+  background: rgba(5, 27, 42, 0.76);
+  color: #9edaf4;
+  font: 8px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.native-integration-settings button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.native-integration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding: 10px;
+}
+
+.native-integration-grid article {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(36, 84, 114, 0.52);
+  background: rgba(2, 13, 22, 0.78);
+}
+
+.native-integration-grid article > small {
+  color: #5986a0;
+  font: 8px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.12em;
+}
+
+.native-integration-grid article > strong {
+  display: block;
+  margin-top: 7px;
+  color: #cfefff;
+  font: 500 15px/1 Bahnschrift, sans-serif;
+}
+
+.native-integration-grid article > p {
+  min-height: 38px;
+  margin: 8px 0;
+  color: #77909e;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.native-integration-grid dl {
+  display: grid;
+  gap: 4px;
+  margin: 9px 0;
+}
+
+.native-integration-grid dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #7695a7;
+  font: 8px/1.3 "Cascadia Mono", monospace;
+}
+
+.native-integration-grid dd {
+  margin: 0;
+  color: #a8cad9;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.native-integration-grid article > button {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.display-monitor-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.display-monitor-list > span {
+  display: grid;
+  gap: 2px;
+  padding: 5px 7px;
+  border: 1px solid rgba(40, 93, 124, 0.58);
+  color: #7097aa;
+}
+
+.display-monitor-list > span.is-primary {
+  border-color: rgba(34, 207, 255, 0.52);
+  color: #bdeeff;
+}
+
+.display-monitor-list b,
+.display-monitor-list small {
+  font: 7px/1.2 "Cascadia Mono", monospace;
+}
+
+@media (max-width: 1120px) {
+  .native-integration-grid {
+    grid-template-columns: 1fr;
   }
 }
 

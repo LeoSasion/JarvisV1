@@ -1,0 +1,8 @@
+<!--
+  Merge this capability into the signed MSIX Package.appxmanifest only when the
+  notification-history adapter is enabled. An unpackaged build must not claim
+  this capability.
+-->
+<Capabilities xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3">
+  <uap3:Capability Name="userNotificationListener" />
+</Capabilities>

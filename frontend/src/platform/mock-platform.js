@@ -155,10 +155,22 @@ const mockTargets = {
   settings: "ms-settings:",
 };
 
+const mockDesktopPaths = {
+  projects: "C:\\Users\\Pilot\\Desktop\\Projects",
+  atlas: "C:\\Users\\Pilot\\Desktop\\Atlas Drive.lnk",
+  downloads: "C:\\Users\\Pilot\\Desktop\\Downloads.lnk",
+  terminal: "C:\\Users\\Pilot\\Desktop\\Terminal.lnk",
+  documents: "C:\\Users\\Pilot\\Desktop\\Documents.lnk",
+  code: "C:\\Users\\Pilot\\Desktop\\Code.lnk",
+  notes: "C:\\Users\\Pilot\\Desktop\\Notes.txt",
+  settings: "C:\\Users\\Pilot\\Desktop\\Settings.lnk",
+};
+
 export const mockDesktopEntries = shortcuts.map((shortcut) => ({
   ...shortcut,
   name: shortcut.label,
   target: mockTargets[shortcut.id] ?? shortcut.label,
+  path: mockDesktopPaths[shortcut.id] ?? null,
   source: "mock",
   kind: shortcut.icon === "folder" ? "directory" : "shortcut",
 }));
@@ -481,6 +493,13 @@ export function createMockPlatform() {
     windows: mockTaskbarSnapshot.windows.map((window) => ({ ...window })),
   };
   let applicationCatalogRevision = 1;
+  let desktopRevision = 1;
+  let mockClipboard = {
+    paths: [],
+    mode: "copy",
+    source: "empty",
+    changedAtUtc: new Date().toISOString(),
+  };
   const mockApplications = [
     { applicationId: "mock-powershell", label: "PowerShell 7", category: "PowerShell", source: "user", processNames: ["pwsh", "powershell"], iconDataUrl: null },
     { applicationId: "mock-edge", label: "Microsoft Edge", category: "Applications", source: "common", processNames: ["msedge"], iconDataUrl: null },
@@ -499,12 +518,55 @@ export function createMockPlatform() {
   });
   const explorerEntriesByPath = new Map([
     [mockExplorerSnapshot.currentPath, mockExplorerSnapshot.entries.map((entry) => ({ ...entry }))],
+    ["C:\\Users\\Pilot\\Desktop", mockDesktopEntries
+      .filter((entry) => entry.path)
+      .map((entry) => mockEntry(
+        entry.path.split("\\").at(-1),
+        entry.path,
+        entry.kind === "directory",
+      ))],
+    ["C:\\Users\\Pilot\\Desktop\\Projects", []],
     ...mockExplorerSnapshot.entries
       .filter((entry) => entry.isDirectory)
       .map((entry) => [entry.path, []]),
   ]);
+  const mockDesktopPath = "C:\\Users\\Pilot\\Desktop";
+  const desktopEntryTemplates = new Map(
+    mockDesktopEntries.filter((entry) => entry.path).map((entry) => [entry.path, entry]),
+  );
 
   const getExplorerEntries = (path) => explorerEntriesByPath.get(path) ?? [];
+
+  const getMockDesktopSnapshot = () => ({
+    entries: [
+      ...mockDesktopEntries.filter((entry) => !entry.path),
+      ...getExplorerEntries(mockDesktopPath).map((item) => {
+        const template = desktopEntryTemplates.get(item.path);
+        return {
+          ...(template ?? {}),
+          id: template?.id ?? item.path,
+          label: item.name.replace(/\.lnk$/i, ""),
+          name: template?.name ?? item.name,
+          path: item.path,
+          target: template?.target ?? item.path,
+          source: "mock",
+          kind: item.isDirectory ? "directory" : template?.kind ?? "file",
+          icon: template?.icon ?? (item.isDirectory ? "folder" : "document"),
+        };
+      }),
+    ],
+    userDesktopPath: mockDesktopPath,
+    publicDesktopPath: "C:\\Users\\Public\\Desktop",
+    revision: desktopRevision,
+    changedAtUtc: new Date().toISOString(),
+    watching: true,
+    watchRootCount: 2,
+  });
+
+  const emitMockDesktopChanged = () => {
+    desktopRevision += 1;
+    emit("desktop.entriesChanged", getMockDesktopSnapshot());
+  };
 
   const replaceExplorerEntry = (path, replacement = null) => {
     const parentPath = mockParentPath(path);
@@ -680,11 +742,83 @@ export function createMockPlatform() {
     },
     desktop: {
       async listEntries() {
-        return {
-          entries: mockDesktopEntries,
-          userDesktopPath: null,
-          publicDesktopPath: null,
+        return getMockDesktopSnapshot();
+      },
+    },
+    clipboard: {
+      async read() {
+        return { ...mockClipboard, paths: [...mockClipboard.paths] };
+      },
+      async write(paths, mode = "copy") {
+        mockClipboard = {
+          paths: [...paths],
+          mode: mode === "move" ? "move" : "copy",
+          source: "jarvis",
+          changedAtUtc: new Date().toISOString(),
         };
+        return { ...mockClipboard, paths: [...mockClipboard.paths] };
+      },
+      async clear() {
+        mockClipboard = {
+          paths: [],
+          mode: "copy",
+          source: "empty",
+          changedAtUtc: new Date().toISOString(),
+        };
+        return { ...mockClipboard, paths: [] };
+      },
+    },
+    display: {
+      async getTopology() {
+        return {
+          monitors: [
+            {
+              id: "\\\\.\\DISPLAY1",
+              deviceName: "\\\\.\\DISPLAY1",
+              isPrimary: true,
+              bounds: { x: 0, y: 0, width: 2560, height: 1440 },
+              workArea: { x: 0, y: 0, width: 2560, height: 1366 },
+              dpiX: 120,
+              dpiY: 120,
+              scalePercent: 125,
+            },
+            {
+              id: "\\\\.\\DISPLAY2",
+              deviceName: "\\\\.\\DISPLAY2",
+              isPrimary: false,
+              bounds: { x: 2560, y: 180, width: 1920, height: 1080 },
+              workArea: { x: 2560, y: 180, width: 1920, height: 1040 },
+              dpiX: 96,
+              dpiY: 96,
+              scalePercent: 100,
+            },
+          ],
+          virtualBounds: { x: 0, y: 0, width: 4480, height: 1440 },
+          primaryMonitorId: "\\\\.\\DISPLAY1",
+          osBuild: 26200,
+          windows10Compatible: true,
+          desktopSurfacePolicy: "primary-only",
+          secondaryTaskbarsPreserved: true,
+          capturedAtUtc: new Date().toISOString(),
+        };
+      },
+    },
+    notifications: {
+      async getState() {
+        return {
+          apiAvailable: true,
+          packaged: false,
+          packageIdentity: null,
+          accessStatus: "requires-package-identity",
+          historyAvailable: false,
+          canRequestAccess: false,
+          reason: "Notification history requires a signed MSIX package identity and user permission.",
+          items: [],
+          checkedAtUtc: new Date().toISOString(),
+        };
+      },
+      async requestAccess() {
+        return this.getState();
       },
     },
     explorer: {
@@ -704,6 +838,9 @@ export function createMockPlatform() {
       async openInWindows(path) {
         return { opened: false, mock: true, target: path, mode: "windows-explorer" };
       },
+      async showProperties(path) {
+        return { opened: false, mock: true, target: path, mode: "properties" };
+      },
       async createFolder(path, name) {
         const target = mockJoinPath(path, name);
         if (getExplorerEntries(path).some((entry) => entry.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
@@ -714,6 +851,7 @@ export function createMockPlatform() {
         const entry = mockEntry(name, target, true);
         explorerEntriesByPath.set(path, [...getExplorerEntries(path), entry]);
         explorerEntriesByPath.set(target, []);
+        if (path === mockDesktopPath) emitMockDesktopChanged();
         return { operation: "create-folder", items: [{ source: path, target, name }], failures: [] };
       },
       async rename(path, name) {
@@ -732,6 +870,7 @@ export function createMockPlatform() {
           cloneMockTree(path, target);
           removeMockTree(path);
         }
+        if (parentPath === mockDesktopPath) emitMockDesktopChanged();
         return { operation: "rename", items: [{ source: path, target, name }], failures: [] };
       },
       async preflightTransfer(paths, destinationPath, mode) {
@@ -798,6 +937,10 @@ export function createMockPlatform() {
             }
 
             const result = performMockTransfer(paths, destinationPath, mode, conflictPolicy);
+            if (destinationPath === mockDesktopPath ||
+                (mode === "move" && paths.some((path) => mockParentPath(path) === mockDesktopPath))) {
+              emitMockDesktopChanged();
+            }
             activeTransfer = {
               ...activeTransfer,
               status: result.failures.length ? "completed-with-errors" : "completed",
@@ -851,6 +994,9 @@ export function createMockPlatform() {
           if (source.isDirectory) removeMockTree(path);
           items.push({ source: path, target: path, name: source.name });
         });
+        if (paths.some((path) => mockParentPath(path) === mockDesktopPath)) {
+          emitMockDesktopChanged();
+        }
         return { operation: "recycle", items, failures: [] };
       },
     },

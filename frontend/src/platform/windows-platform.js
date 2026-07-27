@@ -90,10 +90,23 @@ export function createWindowsPlatform(webview) {
     desktop: {
       listEntries: () => request("desktop.listEntries"),
     },
+    clipboard: {
+      read: () => request("clipboard.read"),
+      write: (paths, mode) => request("clipboard.write", { paths, mode }),
+      clear: () => request("clipboard.clear"),
+    },
+    display: {
+      getTopology: () => request("display.getTopology"),
+    },
+    notifications: {
+      getState: () => request("notifications.getState"),
+      requestAccess: () => request("notifications.requestAccess"),
+    },
     explorer: {
       browse: (path = null) => request("explorer.browse", { path }),
       openFile: (path) => request("explorer.openFile", { path }),
       openInWindows: (path) => request("explorer.openInWindows", { path }),
+      showProperties: (path) => request("explorer.showProperties", { path }),
       createFolder: (path, name) => request("explorer.createFolder", { path, name }),
       rename: (path, name) => request("explorer.rename", { path, name }),
       preflightTransfer: (paths, destinationPath, mode) => request(

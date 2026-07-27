@@ -3,10 +3,16 @@ import {
   ArrowClockwiseRegular,
   ArrowSortRegular,
   ChevronRightRegular,
+  ClipboardPasteRegular,
   CopyRegular,
+  CutRegular,
+  DeleteRegular,
+  FolderAddRegular,
   FolderOpenRegular,
   GridRegular,
+  InfoRegular,
   OpenRegular,
+  RenameRegular,
   SettingsRegular,
 } from "@fluentui/react-icons";
 import { useEffect, useState } from "react";
@@ -53,17 +59,26 @@ export function DesktopContextMenu({
   menu,
   menuRef,
   onClose,
+  onCopy,
   onCopyPath,
+  onCut,
+  onDelete,
+  onNewFolder,
   onOpen,
   onOpenLocation,
   onOpenSettings,
+  onPaste,
+  onProperties,
   onRefresh,
+  onRename,
   onSetIconSize,
   onSetSortMode,
   onToggleAlignToGrid,
   onToggleAutoArrange,
   shortcut,
+  selectionCount,
   sortMode,
+  canPaste,
 }) {
   const [activeSubmenu, setActiveSubmenu] = useState(null);
 
@@ -134,31 +149,65 @@ export function DesktopContextMenu({
     >
       <header>
         <span>{menu.kind === "item" ? "DESKTOP ITEM" : "DESKTOP"}</span>
-        <small>{menu.kind === "item" ? shortcut?.label : "WORKSPACE"}</small>
+        <small>{menu.kind === "item"
+          ? selectionCount > 1 ? `${selectionCount} ITEMS` : shortcut?.label
+          : "WORKSPACE"}</small>
       </header>
 
       <div className="desktop-menu-root" role="menu">
         {menu.kind === "item" ? (
           <>
-            <MenuItem icon={OpenRegular} onClick={() => onOpen(shortcut)}>打开</MenuItem>
+            <MenuItem
+              icon={OpenRegular}
+              disabled={selectionCount !== 1}
+              onClick={() => onOpen(shortcut)}
+            >
+              打开
+            </MenuItem>
             <MenuItem
               icon={FolderOpenRegular}
-              disabled={!shortcut?.path}
+              disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onOpenLocation(shortcut)}
             >
               打开文件所在位置
             </MenuItem>
             <MenuSeparator />
+            <MenuItem icon={CutRegular} disabled={!shortcut?.path} onClick={onCut}>剪切</MenuItem>
+            <MenuItem icon={CopyRegular} disabled={!shortcut?.path} onClick={onCopy}>复制</MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={RenameRegular}
+              disabled={selectionCount !== 1 || !shortcut?.path}
+              onClick={() => onRename(shortcut)}
+            >
+              重命名
+            </MenuItem>
+            <MenuItem icon={DeleteRegular} disabled={!shortcut?.path} onClick={onDelete}>
+              删除
+            </MenuItem>
+            <MenuSeparator />
             <MenuItem
               icon={CopyRegular}
-              disabled={!shortcut?.path}
+              disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onCopyPath(shortcut)}
             >
               复制路径
             </MenuItem>
+            <MenuItem
+              icon={InfoRegular}
+              disabled={selectionCount !== 1 || !shortcut?.path}
+              onClick={() => onProperties(shortcut)}
+            >
+              属性
+            </MenuItem>
           </>
         ) : (
           <>
+            <MenuItem icon={FolderAddRegular} onClick={onNewFolder}>新建文件夹</MenuItem>
+            <MenuItem icon={ClipboardPasteRegular} disabled={!canPaste} onClick={onPaste}>
+              粘贴
+            </MenuItem>
+            <MenuSeparator />
             <MenuItem
               icon={AppsListDetailRegular}
               submenu={{

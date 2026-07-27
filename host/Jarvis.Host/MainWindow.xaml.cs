@@ -338,7 +338,49 @@ public partial class MainWindow : Window
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
+        _bridge?.PublishDisplayTopology();
         QueueTaskbarRebind("display-settings-changed", TimeSpan.FromMilliseconds(900));
+    }
+
+    private void OnPreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void OnPreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] droppedPaths)
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        try
+        {
+            var paths = FileExplorerService.NormalizeOperationPaths(droppedPaths);
+            var position = e.GetPosition(WebView);
+            _bridge?.PublishExternalFileDrop(paths, position.X, position.Y);
+            e.Effects = DragDropEffects.Copy;
+        }
+        catch (BridgeFaultException ex)
+        {
+            HostLog.Warning($"Rejected external file drop: {ex.Message}");
+            e.Effects = DragDropEffects.None;
+        }
+
+        e.Handled = true;
     }
 
     private void OnRequestedTaskbarModeChanged()
@@ -695,6 +737,7 @@ public partial class MainWindow : Window
         _audioEndpointService.Dispose();
         _terminalSessionService.Dispose();
         _shellService.Dispose();
+        _desktopService.Dispose();
         WebView.Dispose();
     }
 

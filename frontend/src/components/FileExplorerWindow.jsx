@@ -47,6 +47,12 @@ import {
   normalizeTransferPreflight,
   normalizeTransferSnapshot,
 } from "../file-transfer-state.js";
+import {
+  getFileDropMode,
+  hasFileDrag,
+  parseFileDrag,
+  writeFileDrag,
+} from "../file-drag-model.js";
 
 const EMPTY_SNAPSHOT = {
   currentPath: "",
@@ -456,6 +462,25 @@ export function FileExplorerWindow({
 
   useEffect(() => {
     if (!open) return undefined;
+    let cancelled = false;
+    platform.clipboard.read()
+      .then((state) => {
+        if (cancelled) return;
+        const paths = Array.isArray(state?.paths) ? state.paths : [];
+        setClipboard(paths.length > 0
+          ? { paths, mode: state?.mode === "move" ? "move" : "copy" }
+          : null);
+      })
+      .catch(() => {
+        if (!cancelled) setClipboard(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
     let disposed = false;
     const applyTransfer = async (rawSnapshot) => {
       const nextTransfer = normalizeTransferSnapshot(rawSnapshot);
@@ -482,11 +507,18 @@ export function FileExplorerWindow({
 
       if (nextTransfer.mode === "move") {
         const completedSources = new Set(nextTransfer.result.items.map((item) => item.source));
-        setClipboard((current) => {
-          if (!current || current.mode !== "move") return current;
-          const remaining = current.paths.filter((path) => !completedSources.has(path));
-          return remaining.length > 0 ? { ...current, paths: remaining } : null;
-        });
+        const clipboardState = await platform.clipboard.read().catch(() => null);
+        const remainingMovePaths = clipboardState?.mode === "move"
+          ? (clipboardState.paths ?? []).filter((path) => !completedSources.has(path))
+          : [];
+        setClipboard(remainingMovePaths.length > 0
+          ? { mode: "move", paths: remainingMovePaths }
+          : null);
+        if (remainingMovePaths.length > 0) {
+          await platform.clipboard.write(remainingMovePaths, "move");
+        } else {
+          await platform.clipboard.clear();
+        }
       }
 
       if (currentPathRef.current) {
@@ -593,14 +625,22 @@ export function FileExplorerWindow({
     setSelectionAnchor(entry.path);
   }, [selectionAnchor, visibleEntries]);
 
-  const copySelection = useCallback((mode) => {
+  const copySelection = useCallback(async (mode) => {
     if (selectedPaths.length === 0 || (transfer && !isTransferTerminal(transfer.status))) return;
-    setClipboard({ mode, paths: [...selectedPaths] });
-    setOperationNotice({
-      tone: "info",
-      message: `${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} ${mode === "copy" ? "copied" : "cut"} to JARVIS clipboard.`,
-    });
-    onToast(`${mode === "copy" ? "Copied" : "Cut"} ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"}`);
+    const nextClipboard = { mode, paths: [...selectedPaths] };
+    try {
+      await platform.clipboard.write(nextClipboard.paths, mode);
+      setClipboard(nextClipboard);
+      setOperationNotice({
+        tone: "info",
+        message: `${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} ${mode === "copy" ? "copied" : "cut"} to Windows clipboard.`,
+      });
+      onToast(`${mode === "copy" ? "Copied" : "Cut"} ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"}`);
+    } catch (clipboardError) {
+      const message = `Windows clipboard unavailable: ${clipboardError.message}`;
+      setOperationNotice({ tone: "error", message });
+      onToast(message);
+    }
   }, [onToast, selectedPaths, transfer]);
 
   const runMutation = useCallback(async (label, operation, options = {}) => {
@@ -661,15 +701,15 @@ export function FileExplorerWindow({
     }
   }, [onToast]);
 
-  const pasteClipboard = useCallback(async () => {
-    if (!clipboard?.paths.length || !snapshot.currentPath || operationBusy ||
+  const queueTransfer = useCallback(async (paths, destinationPath, mode) => {
+    if (!paths?.length || !destinationPath || operationBusy ||
         (transfer && !isTransferTerminal(transfer.status))) return;
     setOperationBusy("Transfer preflight");
     setOperationNotice(null);
     const request = {
-      paths: [...clipboard.paths],
-      destinationPath: snapshot.currentPath,
-      mode: clipboard.mode,
+      paths: [...paths],
+      destinationPath,
+      mode,
     };
     try {
       const preflight = normalizeTransferPreflight(await platform.explorer.preflightTransfer(
@@ -689,7 +729,48 @@ export function FileExplorerWindow({
     } finally {
       setOperationBusy(null);
     }
-  }, [clipboard, onToast, operationBusy, snapshot.currentPath, startTransfer, transfer]);
+  }, [onToast, operationBusy, startTransfer, transfer]);
+
+  const pasteClipboard = useCallback(async () => {
+    try {
+      const state = await platform.clipboard.read();
+      const paths = Array.isArray(state?.paths) ? state.paths : [];
+      const mode = state?.mode === "move" ? "move" : "copy";
+      setClipboard(paths.length > 0 ? { paths, mode } : null);
+      await queueTransfer(paths, snapshot.currentPath, mode);
+    } catch (clipboardError) {
+      const message = `Unable to read Windows clipboard: ${clipboardError.message}`;
+      setOperationNotice({ tone: "error", message });
+      onToast(message);
+    }
+  }, [onToast, queueTransfer, snapshot.currentPath]);
+
+  const allowFileDrop = useCallback((event) => {
+    if (!hasFileDrag(event.dataTransfer) ||
+        operationBusy ||
+        (transfer && !isTransferTerminal(transfer.status))) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = getFileDropMode(event);
+  }, [operationBusy, transfer]);
+
+  const dropFiles = useCallback((event, destinationPath = snapshot.currentPath) => {
+    const payload = parseFileDrag(event.dataTransfer);
+    if (!payload || !destinationPath) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void queueTransfer(payload.paths, destinationPath, getFileDropMode(event));
+  }, [queueTransfer, snapshot.currentPath]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return platform.events.subscribe("desktop.externalDrop", (payload) => {
+      if (!Number.isFinite(payload?.clientX) || !Number.isFinite(payload?.clientY)) return;
+      const target = document.elementFromPoint(payload.clientX, payload.clientY);
+      if (!target?.closest(".jarvis-explorer")) return;
+      const paths = Array.isArray(payload.paths) ? payload.paths : [];
+      void queueTransfer(paths, snapshot.currentPath, "copy");
+    });
+  }, [open, queueTransfer, snapshot.currentPath]);
 
   const cancelTransfer = useCallback(async () => {
     if (!transfer || isTransferTerminal(transfer.status)) return;
@@ -924,7 +1005,7 @@ export function FileExplorerWindow({
           <button type="button" disabled={!canPaste || Boolean(operationBusy)} onClick={pasteClipboard}><ClipboardPasteRegular /><span>PASTE</span><kbd>CTRL+V</kbd></button>
           <button type="button" className="is-danger" disabled={!hasSelection || Boolean(operationBusy) || transferActive} onClick={openRecycleDialog}><DeleteRegular /><span>RECYCLE</span><kbd>DEL</kbd></button>
           <div className="explorer-clipboard-status" aria-live="polite">
-            <span>JARVIS CLIPBOARD</span>
+            <span>WINDOWS CLIPBOARD</span>
             <strong>{clipboard?.paths.length ? `${clipboard.mode.toUpperCase()} · ${clipboard.paths.length} ITEM${clipboard.paths.length === 1 ? "" : "S"}` : "EMPTY"}</strong>
           </div>
         </div>
@@ -963,6 +1044,8 @@ export function FileExplorerWindow({
 
             <div
               className="explorer-file-viewport"
+              onDragOver={allowFileDrop}
+              onDrop={(event) => dropFiles(event)}
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   setSelectedPaths([]);
@@ -983,8 +1066,19 @@ export function FileExplorerWindow({
                     className={`explorer-entry ${selected ? "is-selected" : ""} ${clipboardPathSet.has(entry.path) ? "is-cut" : ""}`}
                     title={entry.path}
                     aria-pressed={selected}
+                    draggable
                     onClick={(event) => selectEntry(entry, event)}
                     onDoubleClick={() => openEntry(entry)}
+                    onDragStart={(event) => {
+                      const paths = selected && selectedPaths.length > 0
+                        ? selectedPaths
+                        : [entry.path];
+                      writeFileDrag(event.dataTransfer, paths, "explorer");
+                    }}
+                    onDragOver={entry.isDirectory ? allowFileDrop : undefined}
+                    onDrop={entry.isDirectory
+                      ? (event) => dropFiles(event, entry.path)
+                      : undefined}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") openEntry(entry);
                     }}

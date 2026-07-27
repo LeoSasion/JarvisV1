@@ -36,13 +36,18 @@ import {
   clearSystemFeed,
   markSystemFeedRead,
   refreshApplicationCatalog,
+  refreshDisplayTopology,
+  refreshNotificationHistory,
   removeWindowAppearanceRule,
+  requestNotificationHistoryAccess,
   setTrayMuted,
   setTrayVolume,
   setTaskbarMode,
   setWindowAppearanceMode,
   setWindowAppearanceRule,
   useApplicationCatalog,
+  useDisplayTopology,
+  useNotificationHistory,
   useSystemSnapshot,
   useSystemFeed,
   useTaskbarModeState,
@@ -742,6 +747,7 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
 
 function NotificationsPanel({ onClose, onLaunch }) {
   const feed = useSystemFeed();
+  const notificationHistory = useNotificationHistory();
   const actionTargets = {
     "open-network-settings": { label: "Network settings", target: "ms-settings:network-status" },
     "open-sound-settings": { label: "Sound settings", target: "ms-settings:sound" },
@@ -752,6 +758,18 @@ function NotificationsPanel({ onClose, onLaunch }) {
   return (
     <section className="shell-panel shell-notifications-panel" role="dialog" aria-modal="false" aria-label="JARVIS system feed">
       <PanelHeader eyebrow="CURRENT SESSION · MAX 50 EVENTS" title="JARVIS SYSTEM FEED" onClose={onClose} />
+      <div className={`windows-history-status is-${notificationHistory.historyAvailable ? "ready" : "limited"}`}>
+        <span><WindowAppsRegular /></span>
+        <span>
+          <strong>WINDOWS NOTIFICATION HISTORY</strong>
+          <small>{notificationHistory.historyAvailable
+            ? `${notificationHistory.items.length} Windows notifications available`
+            : notificationHistory.reason ?? "Checking Windows notification access…"}</small>
+        </span>
+        <code>{notificationHistory.loading
+          ? "CHECKING"
+          : notificationHistory.accessStatus.toUpperCase()}</code>
+      </div>
       <div className="shell-notification-list">
         {feed.loading ? <p className="system-feed-empty">Connecting to the JARVIS event stream…</p> : null}
         {feed.error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{feed.error}</p> : null}
@@ -906,6 +924,8 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
 
       <InterfacePreferences onToast={onToast} />
 
+      <NativeIntegrationSettings onToast={onToast} />
+
       <div className="runtime-path-card">
         <small>ACTIVE EXECUTABLE</small>
         <code title={runtime?.executablePath}>{runtime?.executablePath ?? "Resolving native runtime…"}</code>
@@ -947,6 +967,94 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
         <span>{runtime?.safeMode ? "SAFE MODE · NATIVE TASKBAR KEPT" : platform.isNative ? "NATIVE WINDOWS HOST" : "BROWSER PREVIEW"}</span>
         <strong>{startupEnabled ? "AUTO START ARMED" : startupNeedsRepair ? "STARTUP REPAIR REQUIRED" : "MANUAL START"}</strong>
       </footer>
+    </section>
+  );
+}
+
+function NativeIntegrationSettings({ onToast }) {
+  const displays = useDisplayTopology();
+  const notifications = useNotificationHistory();
+  const [requesting, setRequesting] = useState(false);
+
+  const requestAccess = async () => {
+    if (requesting) return;
+    setRequesting(true);
+    try {
+      const state = await requestNotificationHistoryAccess();
+      onToast?.(state.historyAvailable
+        ? "Windows 通知历史已连接"
+        : state.reason ?? "Windows 通知历史仍不可用");
+    } catch (nextError) {
+      onToast?.(`通知权限检查失败 · ${nextError.message}`);
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  return (
+    <section className="native-integration-settings" aria-label="Windows integration readiness">
+      <header>
+        <span><PlugConnectedRegular /></span>
+        <span>
+          <strong>WINDOWS INTEGRATION</strong>
+          <small>R10 / R11 · 权限与显示器拓扑</small>
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            void refreshDisplayTopology();
+            void refreshNotificationHistory();
+          }}
+        >
+          REFRESH
+        </button>
+      </header>
+
+      <div className="native-integration-grid">
+        <article>
+          <small>NOTIFICATION HISTORY</small>
+          <strong>{notifications.historyAvailable ? "CONNECTED" : "FEASIBILITY GATE"}</strong>
+          <p>{notifications.reason ?? "Windows notification history is available."}</p>
+          <dl>
+            <div><dt>API</dt><dd>{notifications.apiAvailable ? "AVAILABLE" : "UNAVAILABLE"}</dd></div>
+            <div><dt>IDENTITY</dt><dd>{notifications.packaged ? "MSIX" : "UNPACKAGED"}</dd></div>
+            <div><dt>ACCESS</dt><dd>{notifications.accessStatus}</dd></div>
+          </dl>
+          <button
+            type="button"
+            disabled={!notifications.canRequestAccess || requesting}
+            onClick={requestAccess}
+          >
+            {requesting ? "REQUESTING…" : notifications.canRequestAccess
+              ? "REQUEST ACCESS"
+              : notifications.packaged ? "ADAPTER NOT ENABLED" : "SIGNED MSIX REQUIRED"}
+          </button>
+        </article>
+
+        <article>
+          <small>DISPLAY TOPOLOGY</small>
+          <strong>{displays.monitors.length} MONITOR{displays.monitors.length === 1 ? "" : "S"}</strong>
+          <p>
+            主桌面仅覆盖主显示器；副屏原生任务栏保持可用。
+          </p>
+          <dl>
+            <div><dt>OS BUILD</dt><dd>{displays.osBuild || "—"}</dd></div>
+            <div><dt>WIN10 BASELINE</dt><dd>{displays.windows10Compatible ? "READY" : "UNSUPPORTED"}</dd></div>
+            <div><dt>POLICY</dt><dd>{displays.desktopSurfacePolicy}</dd></div>
+          </dl>
+          <div className="display-monitor-list">
+            {displays.monitors.map((monitor) => (
+              <span key={monitor.id} className={monitor.isPrimary ? "is-primary" : ""}>
+                <b>{monitor.isPrimary ? "PRIMARY" : monitor.deviceName.replace("\\\\.\\", "")}</b>
+                <small>{monitor.bounds.width}×{monitor.bounds.height} · {monitor.scalePercent}%</small>
+              </span>
+            ))}
+          </div>
+        </article>
+      </div>
+
+      {displays.error ? <p className="runtime-settings-error"><AlertRegular />{displays.error}</p> : null}
+      {notifications.error ? <p className="runtime-settings-error"><AlertRegular />{notifications.error}</p> : null}
     </section>
   );
 }

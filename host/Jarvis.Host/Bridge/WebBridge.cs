@@ -32,6 +32,8 @@ internal sealed class WebBridge : IDisposable
     private readonly TrayStatusService _trayStatusService;
     private readonly SystemFeedService _systemFeedService;
     private readonly RuntimeDiagnosticsService _runtimeDiagnosticsService;
+    private readonly WindowsNotificationHistoryService _notificationHistoryService = new();
+    private readonly DesktopClipboardService _clipboardService = new();
     private readonly Action _requestExit;
     private readonly Action<string?> _showDesktop;
     private readonly Action<TaskbarFlyoutRequest>? _showTaskbarFlyout;
@@ -101,6 +103,7 @@ internal sealed class WebBridge : IDisposable
         _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
         _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
         _shellService.ApplicationCatalogChanged += OnApplicationCatalogChanged;
+        _desktopService.EntriesChanged += OnDesktopEntriesChanged;
         _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
         if (_terminalEnabled)
         {
@@ -141,6 +144,11 @@ internal sealed class WebBridge : IDisposable
         {
             @event = "feed.snapshot",
             data = _systemFeedService.GetSnapshot()
+        });
+        Post(new
+        {
+            @event = "desktop.entriesChanged",
+            data = _desktopService.ListEntries()
         });
 
         return Task.CompletedTask;
@@ -234,11 +242,20 @@ internal sealed class WebBridge : IDisposable
             "desktop.listEntries" => await Task.Run(
                 () => (object)_desktopService.ListEntries(),
                 cancellationToken),
+            "display.getTopology" => await Task.Run(
+                () => (object)NativeDisplay.CaptureTopology(),
+                cancellationToken),
+            "clipboard.read" => _clipboardService.Read(),
+            "clipboard.write" => _clipboardService.Write(
+                GetRequiredPaths(parameters),
+                GetRequiredString(parameters, "mode")),
+            "clipboard.clear" => _clipboardService.Clear(),
             "explorer.browse" => await Task.Run(
                 () => (object)_fileExplorerService.Browse(GetOptionalPath(parameters)),
                 cancellationToken),
             "explorer.openFile" => _fileExplorerService.OpenFile(GetRequiredPath(parameters)),
             "explorer.openInWindows" => _fileExplorerService.OpenInWindows(GetRequiredPath(parameters)),
+            "explorer.showProperties" => _fileExplorerService.ShowProperties(GetRequiredPath(parameters)),
             "explorer.createFolder" => await RunFileOperationAsync(
                 "create-folder",
                 () => (object)_fileExplorerService.CreateFolder(
@@ -304,6 +321,8 @@ internal sealed class WebBridge : IDisposable
             "feed.getSnapshot" => _systemFeedService.GetSnapshot(),
             "feed.markAllRead" => _systemFeedService.MarkAllRead(),
             "feed.clear" => _systemFeedService.Clear(),
+            "notifications.getState" => _notificationHistoryService.GetState(),
+            "notifications.requestAccess" => _notificationHistoryService.RequestAccess(),
             "windowAppearance.getState" => _windowAppearanceService.GetState(),
             "windowAppearance.setMode" => _windowAppearanceService.SetMode(
                 GetRequiredWindowAppearanceMode(parameters)),
@@ -550,6 +569,61 @@ internal sealed class WebBridge : IDisposable
         }
     }
 
+    public void PublishDisplayTopology()
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var topology = NativeDisplay.CaptureTopology();
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "display.changed", data = topology });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final display-topology update.
+        }
+    }
+
+    public void PublishExternalFileDrop(IReadOnlyList<string> paths, double clientX, double clientY)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested || paths.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new
+                        {
+                            @event = "desktop.externalDrop",
+                            data = new { paths, source = "windows", clientX, clientY }
+                        });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final external-drop event.
+        }
+    }
+
     private void OnApplicationCatalogChanged(
         object? sender,
         StartMenuApplicationCatalog catalog)
@@ -574,6 +648,31 @@ internal sealed class WebBridge : IDisposable
         catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
         {
             // A closing renderer can reject the final application-catalog update.
+        }
+    }
+
+    private void OnDesktopEntriesChanged(object? sender, DesktopEntriesResult snapshot)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = "desktop.entriesChanged", data = snapshot });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing renderer can reject the final desktop watcher update.
         }
     }
 
@@ -1276,6 +1375,7 @@ internal sealed class WebBridge : IDisposable
             _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
             _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
             _shellService.ApplicationCatalogChanged -= OnApplicationCatalogChanged;
+            _desktopService.EntriesChanged -= OnDesktopEntriesChanged;
             _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
             if (_terminalEnabled)
             {

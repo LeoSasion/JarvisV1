@@ -171,6 +171,28 @@ internal sealed class FileExplorerService
         }
     }
 
+    public ExplorerOpenResult ShowProperties(string requestedPath)
+    {
+        var path = NormalizeExistingPath(requestedPath);
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+                Verb = "properties",
+                WindowStyle = ProcessWindowStyle.Normal
+            });
+            return new ExplorerOpenResult(true, path, process?.Id, "properties");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            throw new BridgeFaultException(
+                "PROPERTIES_FAILED",
+                $"Windows could not show the selected item properties: {ex.Message}");
+        }
+    }
+
     public ExplorerOperationResult CreateFolder(string requestedParentPath, string requestedName)
     {
         var parentPath = NormalizeDirectoryPath(requestedParentPath);

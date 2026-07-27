@@ -367,6 +367,78 @@ function normalizeApplicationCatalog(result = {}) {
   };
 }
 
+function normalizeDesktopSnapshot(rawSnapshot, fallbackEntries = mockDesktopEntries) {
+  const snapshot = rawSnapshot && typeof rawSnapshot === "object" ? rawSnapshot : {};
+  return {
+    entries: normalizeDesktopEntries(snapshot, fallbackEntries),
+    userDesktopPath: snapshot.userDesktopPath ?? snapshot.UserDesktopPath ?? null,
+    publicDesktopPath: snapshot.publicDesktopPath ?? snapshot.PublicDesktopPath ?? null,
+    revision: Number(snapshot.revision ?? snapshot.Revision ?? 0),
+    changedAtUtc: snapshot.changedAtUtc ?? snapshot.ChangedAtUtc ?? null,
+    watching: Boolean(snapshot.watching ?? snapshot.Watching),
+    watchRootCount: Number(snapshot.watchRootCount ?? snapshot.WatchRootCount ?? 0),
+    loading: false,
+    error: null,
+  };
+}
+
+function normalizeRectangle(rawRectangle = {}) {
+  return {
+    x: Number(rawRectangle.x ?? rawRectangle.X ?? rawRectangle.left ?? rawRectangle.Left ?? 0),
+    y: Number(rawRectangle.y ?? rawRectangle.Y ?? rawRectangle.top ?? rawRectangle.Top ?? 0),
+    width: Number(rawRectangle.width ?? rawRectangle.Width ?? 0),
+    height: Number(rawRectangle.height ?? rawRectangle.Height ?? 0),
+  };
+}
+
+function normalizeDisplayTopology(rawTopology = {}) {
+  const rawMonitors = rawTopology.monitors ?? rawTopology.Monitors ?? [];
+  return {
+    monitors: Array.isArray(rawMonitors) ? rawMonitors.map((monitor) => ({
+      id: String(monitor.id ?? monitor.Id ?? monitor.deviceName ?? monitor.DeviceName ?? ""),
+      deviceName: String(monitor.deviceName ?? monitor.DeviceName ?? ""),
+      isPrimary: Boolean(monitor.isPrimary ?? monitor.IsPrimary),
+      bounds: normalizeRectangle(monitor.bounds ?? monitor.Bounds),
+      workArea: normalizeRectangle(monitor.workArea ?? monitor.WorkArea),
+      dpiX: Number(monitor.dpiX ?? monitor.DpiX ?? 96),
+      dpiY: Number(monitor.dpiY ?? monitor.DpiY ?? 96),
+      scalePercent: Number(monitor.scalePercent ?? monitor.ScalePercent ?? 100),
+    })) : [],
+    virtualBounds: normalizeRectangle(rawTopology.virtualBounds ?? rawTopology.VirtualBounds),
+    primaryMonitorId: rawTopology.primaryMonitorId ?? rawTopology.PrimaryMonitorId ?? null,
+    osBuild: Number(rawTopology.osBuild ?? rawTopology.OsBuild ?? 0),
+    windows10Compatible: Boolean(
+      rawTopology.windows10Compatible ?? rawTopology.Windows10Compatible,
+    ),
+    desktopSurfacePolicy: String(
+      rawTopology.desktopSurfacePolicy ?? rawTopology.DesktopSurfacePolicy ?? "primary-only",
+    ),
+    secondaryTaskbarsPreserved: Boolean(
+      rawTopology.secondaryTaskbarsPreserved ?? rawTopology.SecondaryTaskbarsPreserved,
+    ),
+    capturedAtUtc: rawTopology.capturedAtUtc ?? rawTopology.CapturedAtUtc ?? null,
+    loading: false,
+    error: null,
+  };
+}
+
+function normalizeNotificationHistoryState(rawState = {}) {
+  const rawItems = rawState.items ?? rawState.Items ?? [];
+  return {
+    apiAvailable: Boolean(rawState.apiAvailable ?? rawState.ApiAvailable),
+    packaged: Boolean(rawState.packaged ?? rawState.Packaged),
+    packageIdentity: rawState.packageIdentity ?? rawState.PackageIdentity ?? null,
+    accessStatus: String(rawState.accessStatus ?? rawState.AccessStatus ?? "unknown"),
+    historyAvailable: Boolean(rawState.historyAvailable ?? rawState.HistoryAvailable),
+    canRequestAccess: Boolean(rawState.canRequestAccess ?? rawState.CanRequestAccess),
+    reason: rawState.reason ?? rawState.Reason ?? null,
+    items: Array.isArray(rawItems) ? rawItems : [],
+    checkedAtUtc: rawState.checkedAtUtc ?? rawState.CheckedAtUtc ?? null,
+    loading: false,
+    error: null,
+  };
+}
+
 const fallbackProjector = createSystemSnapshotProjector();
 const initialSystemSnapshot = fallbackProjector(mockSystemSnapshot);
 const systemStore = createStore(initialSystemSnapshot);
@@ -374,6 +446,12 @@ const systemStatusStore = createStore(selectSystemTrayStatus(initialSystemSnapsh
 const clockStore = createStore(mockClock);
 const desktopStore = createStore({
   entries: normalizeDesktopEntries(mockDesktopEntries),
+  userDesktopPath: null,
+  publicDesktopPath: null,
+  revision: 0,
+  changedAtUtc: null,
+  watching: false,
+  watchRootCount: 0,
   loading: platform.isNative,
   error: null,
 });
@@ -431,12 +509,20 @@ const systemFeedStore = createStore({
   loading: true,
   error: null,
 });
+const displayTopologyStore = createStore(normalizeDisplayTopology({}));
+const notificationHistoryStore = createStore(normalizeNotificationHistoryState({}));
 
 const nativeProjector = createSystemSnapshotProjector();
 let systemSubscribers = 0;
 let stopSystemEvents = null;
 let desktopLoaded = false;
 let desktopRequest = null;
+let desktopSubscribers = 0;
+let stopDesktopEvents = null;
+let displayTopologySubscribers = 0;
+let stopDisplayTopologyEvents = null;
+let displayTopologyRequest = null;
+let notificationHistoryRequest = null;
 let applicationCatalogLoaded = false;
 let applicationCatalogRequest = null;
 let applicationCatalogSubscribers = 0;
@@ -828,10 +914,10 @@ export function refreshDesktopEntries() {
   desktopStore.set({ ...desktopStore.getSnapshot(), loading: platform.isNative, error: null });
   desktopRequest = platform.desktop.listEntries()
     .then((result) => {
-      const entries = normalizeDesktopEntries(result, mockDesktopEntries);
+      const nextState = normalizeDesktopSnapshot(result, mockDesktopEntries);
       desktopLoaded = true;
-      desktopStore.set({ entries, loading: false, error: null });
-      return entries;
+      desktopStore.set(nextState);
+      return nextState.entries;
     })
     .catch((error) => {
       desktopLoaded = true;
@@ -842,6 +928,120 @@ export function refreshDesktopEntries() {
       desktopRequest = null;
     });
   return desktopRequest;
+}
+
+function publishDesktopSnapshot(rawSnapshot) {
+  const nextState = normalizeDesktopSnapshot(rawSnapshot, desktopStore.getSnapshot().entries);
+  const currentRevision = desktopStore.getSnapshot().revision;
+  if (nextState.revision > 0 && currentRevision > nextState.revision) return;
+  desktopLoaded = true;
+  desktopStore.set(nextState);
+}
+
+function startDesktopFeed() {
+  if (!stopDesktopEvents) {
+    stopDesktopEvents = platform.events.subscribe("desktop.entriesChanged", publishDesktopSnapshot);
+  }
+}
+
+function publishDisplayTopology(rawTopology) {
+  displayTopologyStore.set(normalizeDisplayTopology(rawTopology));
+}
+
+function reportDisplayTopologyError(error) {
+  displayTopologyStore.set({
+    ...displayTopologyStore.getSnapshot(),
+    loading: false,
+    error: error?.message ?? "Windows display topology is unavailable.",
+  });
+}
+
+export function refreshDisplayTopology() {
+  if (displayTopologyRequest) return displayTopologyRequest;
+  displayTopologyStore.set({
+    ...displayTopologyStore.getSnapshot(),
+    loading: true,
+    error: null,
+  });
+  displayTopologyRequest = platform.display.getTopology()
+    .then((result) => {
+      publishDisplayTopology(result);
+      return displayTopologyStore.getSnapshot();
+    })
+    .catch((error) => {
+      reportDisplayTopologyError(error);
+      return displayTopologyStore.getSnapshot();
+    })
+    .finally(() => {
+      displayTopologyRequest = null;
+    });
+  return displayTopologyRequest;
+}
+
+function subscribeToDisplayTopology(listener) {
+  displayTopologySubscribers += 1;
+  if (!stopDisplayTopologyEvents) {
+    stopDisplayTopologyEvents = platform.events.subscribe(
+      "display.changed",
+      publishDisplayTopology,
+    );
+  }
+  const unsubscribe = displayTopologyStore.subscribe(listener);
+  if (!displayTopologyStore.getSnapshot().capturedAtUtc) refreshDisplayTopology();
+  return () => {
+    unsubscribe();
+    displayTopologySubscribers -= 1;
+    if (displayTopologySubscribers === 0 && stopDisplayTopologyEvents) {
+      stopDisplayTopologyEvents();
+      stopDisplayTopologyEvents = null;
+    }
+  };
+}
+
+function publishNotificationHistory(rawState) {
+  notificationHistoryStore.set(normalizeNotificationHistoryState(rawState));
+}
+
+function reportNotificationHistoryError(error) {
+  notificationHistoryStore.set({
+    ...notificationHistoryStore.getSnapshot(),
+    loading: false,
+    error: error?.message ?? "Windows notification history is unavailable.",
+  });
+}
+
+export function refreshNotificationHistory() {
+  if (notificationHistoryRequest) return notificationHistoryRequest;
+  notificationHistoryStore.set({
+    ...notificationHistoryStore.getSnapshot(),
+    loading: true,
+    error: null,
+  });
+  notificationHistoryRequest = platform.notifications.getState()
+    .then((result) => {
+      publishNotificationHistory(result);
+      return notificationHistoryStore.getSnapshot();
+    })
+    .catch((error) => {
+      reportNotificationHistoryError(error);
+      return notificationHistoryStore.getSnapshot();
+    })
+    .finally(() => {
+      notificationHistoryRequest = null;
+    });
+  return notificationHistoryRequest;
+}
+
+export async function requestNotificationHistoryAccess() {
+  const result = await platform.notifications.requestAccess();
+  publishNotificationHistory(result);
+  return notificationHistoryStore.getSnapshot();
+}
+
+function subscribeToNotificationHistory(listener) {
+  const unsubscribe = notificationHistoryStore.subscribe(listener);
+  if (!notificationHistoryStore.getSnapshot().checkedAtUtc) refreshNotificationHistory();
+  return unsubscribe;
 }
 
 export async function setWindowAppearanceMode(mode) {
@@ -948,9 +1148,18 @@ export async function clearSystemFeed() {
 }
 
 function subscribeToDesktop(listener) {
+  desktopSubscribers += 1;
+  startDesktopFeed();
   const unsubscribe = desktopStore.subscribe(listener);
   if (!desktopLoaded) refreshDesktopEntries();
-  return unsubscribe;
+  return () => {
+    unsubscribe();
+    desktopSubscribers -= 1;
+    if (desktopSubscribers === 0 && stopDesktopEvents) {
+      stopDesktopEvents();
+      stopDesktopEvents = null;
+    }
+  };
 }
 
 export function useSystemSnapshot() {
@@ -966,6 +1175,22 @@ export function useDesktopEntries() {
     subscribeToDesktop,
     desktopStore.getSnapshot,
     desktopStore.getSnapshot,
+  );
+}
+
+export function useDisplayTopology() {
+  return useSyncExternalStore(
+    subscribeToDisplayTopology,
+    displayTopologyStore.getSnapshot,
+    displayTopologyStore.getSnapshot,
+  );
+}
+
+export function useNotificationHistory() {
+  return useSyncExternalStore(
+    subscribeToNotificationHistory,
+    notificationHistoryStore.getSnapshot,
+    notificationHistoryStore.getSnapshot,
   );
 }
 

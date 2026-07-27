@@ -2,8 +2,25 @@ using System.IO;
 
 namespace Jarvis.Host.Services;
 
-internal sealed class DesktopService
+internal sealed class DesktopService : IDisposable
 {
+    private static readonly TimeSpan WatchDebounce = TimeSpan.FromMilliseconds(280);
+
+    private readonly object _gate = new();
+    private readonly List<FileSystemWatcher> _watchers = [];
+    private readonly Timer _watchTimer;
+    private long _revision = 1;
+    private DateTimeOffset _changedAtUtc = DateTimeOffset.UtcNow;
+    private bool _disposed;
+
+    public DesktopService()
+    {
+        _watchTimer = new Timer(_ => PublishChanges(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        ConfigureWatchers();
+    }
+
+    public event EventHandler<DesktopEntriesResult>? EntriesChanged;
+
     public bool IsListedEntry(string fullPath)
     {
         return ListEntries().Entries.Any(
@@ -12,6 +29,16 @@ internal sealed class DesktopService
 
     public DesktopEntriesResult ListEntries()
     {
+        long revision;
+        DateTimeOffset changedAtUtc;
+        int watchRootCount;
+        lock (_gate)
+        {
+            revision = Interlocked.Read(ref _revision);
+            changedAtUtc = _changedAtUtc;
+            watchRootCount = _watchers.Count;
+        }
+
         var userDesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
         var publicDesktopPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory);
         var entries = new List<DesktopEntry>();
@@ -29,7 +56,85 @@ internal sealed class DesktopService
                 .ThenBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase)
                 .ToArray(),
             userDesktopPath,
-            publicDesktopPath);
+            publicDesktopPath,
+            revision,
+            changedAtUtc,
+            watchRootCount > 0,
+            watchRootCount);
+    }
+
+    private void ConfigureWatchers()
+    {
+        var roots = new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory)
+        }
+        .Where(path => !string.IsNullOrWhiteSpace(path) && Directory.Exists(path))
+        .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var root in roots)
+        {
+            try
+            {
+                var watcher = new FileSystemWatcher(root)
+                {
+                    IncludeSubdirectories = false,
+                    NotifyFilter =
+                        NotifyFilters.FileName |
+                        NotifyFilters.DirectoryName |
+                        NotifyFilters.Attributes |
+                        NotifyFilters.LastWrite,
+                    EnableRaisingEvents = true
+                };
+                watcher.Created += OnDesktopChanged;
+                watcher.Deleted += OnDesktopChanged;
+                watcher.Changed += OnDesktopChanged;
+                watcher.Renamed += OnDesktopRenamed;
+                watcher.Error += OnWatcherError;
+                _watchers.Add(watcher);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                // A redirected or protected desktop remains available through explicit refresh.
+            }
+        }
+    }
+
+    private void OnDesktopChanged(object sender, FileSystemEventArgs e) => ScheduleRefresh();
+
+    private void OnDesktopRenamed(object sender, RenamedEventArgs e) => ScheduleRefresh();
+
+    private void OnWatcherError(object sender, ErrorEventArgs e) => ScheduleRefresh();
+
+    private void ScheduleRefresh()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _watchTimer.Change(WatchDebounce, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void PublishChanges()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _changedAtUtc = DateTimeOffset.UtcNow;
+            Interlocked.Increment(ref _revision);
+        }
+
+        EntriesChanged?.Invoke(this, ListEntries());
     }
 
     private static void AddEntries(List<DesktopEntry> entries, string desktopPath, string source)
@@ -99,12 +204,43 @@ internal sealed class DesktopService
 
         return extension.Equals(".url", StringComparison.OrdinalIgnoreCase) ? "url" : "file";
     }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _watchTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        }
+
+        foreach (var watcher in _watchers)
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Created -= OnDesktopChanged;
+            watcher.Deleted -= OnDesktopChanged;
+            watcher.Changed -= OnDesktopChanged;
+            watcher.Renamed -= OnDesktopRenamed;
+            watcher.Error -= OnWatcherError;
+            watcher.Dispose();
+        }
+        _watchers.Clear();
+        _watchTimer.Dispose();
+    }
 }
 
 internal sealed record DesktopEntriesResult(
     IReadOnlyList<DesktopEntry> Entries,
     string UserDesktopPath,
-    string PublicDesktopPath);
+    string PublicDesktopPath,
+    long Revision,
+    DateTimeOffset ChangedAtUtc,
+    bool Watching,
+    int WatchRootCount);
 
 internal sealed record DesktopEntry(
     string Name,
