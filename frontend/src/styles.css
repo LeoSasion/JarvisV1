@@ -5352,9 +5352,51 @@ button.process-grid:hover {
 .runtime-settings-panel > .shell-panel-header {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 4;
   background: rgba(1, 9, 17, 0.98);
   box-shadow: 0 1px rgba(0, 132, 238, 0.12);
+}
+
+.runtime-settings-nav {
+  position: sticky;
+  top: 62px;
+  z-index: 3;
+  min-height: 38px;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(29, 86, 122, 0.7);
+  background: rgba(1, 9, 17, 0.96);
+  box-shadow: 0 8px 18px rgba(0, 4, 10, 0.48);
+  scrollbar-width: none;
+}
+
+.runtime-settings-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.runtime-settings-nav button {
+  flex: 0 0 auto;
+  min-width: 68px;
+  padding: 0 10px;
+  border-bottom: 1px solid transparent;
+  color: #58798f;
+  font: 8px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.1em;
+}
+
+.runtime-settings-nav button:hover,
+.runtime-settings-nav button[aria-current="location"] {
+  color: #c5efff;
+  border-bottom-color: var(--energy-cyan);
+  background: linear-gradient(180deg, transparent, rgba(17, 102, 152, 0.17));
+  text-shadow: 0 0 8px rgba(33, 191, 255, 0.54);
+}
+
+.runtime-settings-section-anchor {
+  scroll-margin-top: 110px;
 }
 
 .runtime-identity {
@@ -6718,6 +6760,13 @@ button.process-grid:hover {
 .command-result-copy strong {
   color: #b8c8d3;
   font: 500 13px/1.1 "Segoe UI", sans-serif;
+}
+
+.command-result-copy mark {
+  padding: 0;
+  color: #dff8ff;
+  background: transparent;
+  text-shadow: 0 0 7px rgba(33, 191, 255, 0.72);
 }
 
 .command-result-copy small {

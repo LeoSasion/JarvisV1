@@ -8,6 +8,7 @@ import {
 } from "@fluentui/react-icons";
 import {
   useDeferredValue,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -17,9 +18,14 @@ import {
   useDesktopEntries,
   useTaskbarSnapshot,
 } from "../hooks/usePlatformData.js";
-import { createQuickSearchIndex, searchQuickIndex } from "../quick-search.js";
+import {
+  createQuickSearchIndex,
+  searchQuickIndex,
+  segmentSearchMatch,
+} from "../quick-search.js";
 import { quickLaunchItems, quickSettingItems } from "../quick-search-catalog.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
+import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
 
 function QuickSearchIcon({ result }) {
   if (result.iconDataUrl) {
@@ -34,6 +40,18 @@ function QuickSearchIcon({ result }) {
   if (result.kind === "window" || result.kind === "installed-app") return <WindowAppsRegular />;
   if (result.entry?.kind === "directory") return <FolderRegular />;
   return <DocumentRegular />;
+}
+
+function QuickSearchLabel({ label, query }) {
+  return segmentSearchMatch(label, query).map((segment, index) => (
+    segment.match
+      ? <mark key={`${segment.text}-${index}`}>{segment.text}</mark>
+      : <span key={`${segment.text}-${index}`}>{segment.text}</span>
+  ));
+}
+
+function getQuickSearchOptionId(resultId) {
+  return `quick-search-${encodeURIComponent(resultId)}`;
 }
 
 export function CommandOverlay({
@@ -52,16 +70,23 @@ export function CommandOverlay({
   const applicationCatalog = useApplicationCatalog();
   const desktop = useDesktopEntries();
   const taskbar = useTaskbarSnapshot();
+  const recentApplicationIds = useRecentApplicationIds();
 
   useDialogFocusTrap(dialogRef, open, { initialFocusRef: inputRef, onEscape: onClose });
 
   const searchIndex = useMemo(() => createQuickSearchIndex({
     launchItems: quickLaunchItems,
     installedApplications: applicationCatalog.applications,
+    recentApplicationIds,
     settingItems: quickSettingItems,
     windows: taskbar.windows,
     desktopEntries: desktop.entries,
-  }), [applicationCatalog.applications, desktop.entries, taskbar.windows]);
+  }), [
+    applicationCatalog.applications,
+    desktop.entries,
+    recentApplicationIds,
+    taskbar.windows,
+  ]);
 
   const results = useMemo(
     () => searchQuickIndex(searchIndex, deferredValue),
@@ -71,6 +96,21 @@ export function CommandOverlay({
     ? Math.min(activeIndex, results.length - 1)
     : 0;
   const selectedResult = results[selectedIndex] ?? null;
+  const selectedOptionId = selectedResult
+    ? getQuickSearchOptionId(selectedResult.resultId)
+    : undefined;
+  const resultStatus = applicationCatalog.error
+    ? "START MENU UNAVAILABLE"
+    : applicationCatalog.loading
+      ? "INDEXING START MENU"
+      : desktop.loading
+        ? "INDEXING DESKTOP"
+        : `${results.length} RESULTS`;
+
+  useEffect(() => {
+    if (!open || !selectedOptionId) return;
+    document.getElementById(selectedOptionId)?.scrollIntoView({ block: "nearest" });
+  }, [open, selectedOptionId]);
 
   if (!open) return null;
 
@@ -127,16 +167,22 @@ export function CommandOverlay({
             ref={inputRef}
             value={value}
             onChange={(event) => {
-              setValue(event.target.value);
+              setValue(event.target.value.slice(0, 160));
               setActiveIndex(0);
             }}
             onKeyDown={handleInputKeyDown}
             placeholder="Search apps, windows, desktop items, and settings"
             aria-label="Quick search"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-haspopup="listbox"
             aria-controls="jarvis-quick-search-results"
-            aria-activedescendant={selectedResult ? `quick-search-${selectedResult.resultId}` : undefined}
+            aria-describedby="jarvis-quick-search-status"
+            aria-activedescendant={selectedOptionId}
             autoComplete="off"
             spellCheck="false"
+            maxLength={160}
             disabled={busy}
           />
           <button type="submit" className="run-command" aria-label="Open selected result" disabled={!selectedResult || busy}><ArrowRightRegular /></button>
@@ -144,19 +190,21 @@ export function CommandOverlay({
 
         <div className="command-results-heading">
           <span>{value.trim() ? "BEST MATCHES" : "QUICK ACCESS"}</span>
-          <small>{applicationCatalog.error
-            ? "START MENU UNAVAILABLE"
-            : applicationCatalog.loading
-            ? "INDEXING START MENU"
-            : desktop.loading
-              ? "INDEXING DESKTOP"
-              : `${results.length} RESULTS`}</small>
+          <small id="jarvis-quick-search-status" aria-live="polite" aria-atomic="true">
+            {resultStatus}
+          </small>
         </div>
 
-        <div id="jarvis-quick-search-results" className="command-results" role="listbox" aria-label="Quick search results">
+        <div
+          id="jarvis-quick-search-results"
+          className="command-results"
+          role="listbox"
+          aria-label="Quick search results"
+          aria-busy={applicationCatalog.loading || desktop.loading}
+        >
           {results.length > 0 ? results.map((result, index) => (
             <button
-              id={`quick-search-${result.resultId}`}
+              id={getQuickSearchOptionId(result.resultId)}
               key={result.resultId}
               type="button"
               role="option"
@@ -168,7 +216,7 @@ export function CommandOverlay({
             >
               <span className="command-result-icon" aria-hidden="true"><QuickSearchIcon result={result} /></span>
               <span className="command-result-copy">
-                <strong>{result.label}</strong>
+                <strong><QuickSearchLabel label={result.label} query={deferredValue} /></strong>
                 <small>{result.detail}</small>
               </span>
               <span className="command-result-category">{result.category}</span>

@@ -9,6 +9,64 @@ export function normalizeSearchText(value) {
     .trim();
 }
 
+export function segmentSearchMatch(value, query) {
+  const source = String(value ?? "");
+  const normalizedSource = source.normalize("NFKC").toLocaleLowerCase();
+  if (!source || normalizedSource.length !== source.length) {
+    return [{ text: source, match: false }];
+  }
+
+  const tokens = String(query ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .split(SEARCH_SEPARATORS)
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+  if (tokens.length === 0) {
+    return [{ text: source, match: false }];
+  }
+
+  const ranges = [];
+  for (const token of tokens) {
+    let fromIndex = 0;
+    while (fromIndex < normalizedSource.length && ranges.length < 32) {
+      const index = normalizedSource.indexOf(token, fromIndex);
+      if (index < 0) break;
+      ranges.push([index, index + token.length]);
+      fromIndex = index + token.length;
+    }
+    if (ranges.length >= 32) break;
+  }
+  if (ranges.length === 0) {
+    return [{ text: source, match: false }];
+  }
+
+  ranges.sort((left, right) => left[0] - right[0] || right[1] - left[1]);
+  const merged = [];
+  ranges.forEach(([start, end]) => {
+    const previous = merged.at(-1);
+    if (previous && start <= previous[1]) {
+      previous[1] = Math.max(previous[1], end);
+    } else {
+      merged.push([start, end]);
+    }
+  });
+
+  const segments = [];
+  let offset = 0;
+  merged.forEach(([start, end]) => {
+    if (start > offset) {
+      segments.push({ text: source.slice(offset, start), match: false });
+    }
+    segments.push({ text: source.slice(start, end), match: true });
+    offset = end;
+  });
+  if (offset < source.length) {
+    segments.push({ text: source.slice(offset), match: false });
+  }
+  return segments;
+}
+
 function getSubsequenceScore(text, query) {
   if (!query || query.length < 2) return 0;
   let queryIndex = 0;
@@ -28,7 +86,7 @@ function getSubsequenceScore(text, query) {
 }
 
 function scoreSearchItem(item, normalizedQuery) {
-  if (!normalizedQuery) return item.priority;
+  if (!normalizedQuery) return item.emptyPriority ?? item.priority;
 
   const label = item.normalizedLabel;
   const detail = item.normalizedDetail;
@@ -64,12 +122,23 @@ function prepareSearchItem(item) {
 export function createQuickSearchIndex({
   launchItems,
   installedApplications = [],
+  recentApplicationIds = [],
   settingItems,
   windows,
   desktopEntries,
 }) {
   const indexed = [];
   const applicationLabels = new Set();
+  const recentApplicationRanks = new Map();
+
+  for (const applicationId of Array.isArray(recentApplicationIds) ? recentApplicationIds : []) {
+    if (recentApplicationRanks.size >= 12) break;
+    if (typeof applicationId !== "string" ||
+        !applicationId ||
+        applicationId.length > 64 ||
+        recentApplicationRanks.has(applicationId)) continue;
+    recentApplicationRanks.set(applicationId, recentApplicationRanks.size);
+  }
 
   launchItems.forEach((item) => {
     applicationLabels.add(normalizeSearchText(item.label));
@@ -87,6 +156,8 @@ export function createQuickSearchIndex({
     if (!normalizedLabel || applicationLabels.has(normalizedLabel)) return;
     applicationLabels.add(normalizedLabel);
     const isPackagedApplication = application.source === "packaged";
+    const priority = 86 - Math.min(index, 48);
+    const recentRank = recentApplicationRanks.get(application.applicationId);
     indexed.push(prepareSearchItem({
       resultId: `installed-app:${application.applicationId}`,
       kind: "installed-app",
@@ -96,7 +167,10 @@ export function createQuickSearchIndex({
       keywords: `${application.category} ${application.source} installed application app 开始菜单 已安装 应用 ${isPackagedApplication ? "Microsoft Store UWP packaged Windows 商店" : ""}`,
       iconDataUrl: application.iconDataUrl ?? null,
       application,
-      priority: 86 - Math.min(index, 48),
+      priority,
+      emptyPriority: recentRank === undefined
+        ? priority
+        : 180 - Math.min(recentRank, 11) * 6,
     }));
   });
 

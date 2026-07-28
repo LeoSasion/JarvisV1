@@ -929,12 +929,23 @@ function QuickSearchShortcutSetting({ onToast }) {
   );
 }
 
+const runtimeSettingsSections = Object.freeze([
+  { id: "settings-general", label: "GENERAL" },
+  { id: "settings-taskbar", label: "TASKBAR" },
+  { id: "settings-windows", label: "WINDOWS" },
+  { id: "settings-interface", label: "INTERFACE" },
+  { id: "settings-integration", label: "INTEGRATION" },
+  { id: "settings-recovery", label: "RECOVERY" },
+]);
+
 function RuntimeSettingsPanel({ onClose, onToast }) {
+  const panelRef = useRef(null);
   const [runtime, setRuntime] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [diagnostics, setDiagnostics] = useState(null);
   const [diagnosticStatus, setDiagnosticStatus] = useState("idle");
+  const [activeSection, setActiveSection] = useState(runtimeSettingsSections[0].id);
 
   useEffect(() => {
     let active = true;
@@ -974,6 +985,30 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
   const startupEnabled = Boolean(runtime?.startupEnabled && runtime?.startupCommandCurrent);
   const startupNeedsRepair = Boolean(runtime?.startupEnabled && !runtime?.startupCommandCurrent);
   const recoveryReady = Boolean(runtime?.recoveryReady);
+  const handleSettingsScroll = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const threshold = panel.getBoundingClientRect().top + 112;
+    let nextSection = runtimeSettingsSections[0].id;
+    runtimeSettingsSections.forEach(({ id }) => {
+      const section = document.getElementById(id);
+      if (section && section.getBoundingClientRect().top <= threshold) {
+        nextSection = id;
+      }
+    });
+    setActiveSection((current) => current === nextSection ? current : nextSection);
+  }, []);
+  const jumpToSection = (sectionId) => {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    setActiveSection(sectionId);
+    section.scrollIntoView({
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      block: "start",
+    });
+  };
 
   const runDiagnostics = async () => {
     if (diagnosticStatus === "running") return;
@@ -993,99 +1028,139 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
   };
 
   return (
-    <section className="shell-panel runtime-settings-panel" role="dialog" aria-modal="false" aria-label="JARVIS settings">
+    <section
+      ref={panelRef}
+      className="shell-panel runtime-settings-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label="JARVIS settings"
+      onScroll={handleSettingsScroll}
+    >
       <PanelHeader eyebrow="CURRENT USER · NO ADMIN REQUIRED" title="JARVIS SETTINGS" onClose={onClose} />
 
-      <div className="runtime-identity">
-        <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
-        <span>
-          <small>RUNTIME CHANNEL</small>
-          <strong>{runtime?.productName ?? "JARVIS Night Shell"}</strong>
-          <code>VERSION {runtime?.version ?? "—"} · {runtime?.buildConfiguration ?? "LOADING"}</code>
-          <small className="runtime-environment">
-            {runtime?.installationMode ?? "DETECTING"} · WEBVIEW2 {runtime?.webView2Version ?? "—"}
-          </small>
-        </span>
-      </div>
-
-      <div className="runtime-setting-list">
-        <div className="runtime-setting-row">
-          <span className="runtime-setting-icon"><PowerRegular /></span>
-          <span className="runtime-setting-copy">
-            <strong>START WITH WINDOWS</strong>
-            <small>{startupNeedsRepair
-              ? "The saved startup path belongs to an older JARVIS build."
-              : "Launch JARVIS after the current Windows user signs in."}</small>
-          </span>
+      <nav className="runtime-settings-nav" aria-label="Settings sections">
+        {runtimeSettingsSections.map((section) => (
           <button
+            key={section.id}
             type="button"
-            className={`runtime-switch ${startupEnabled ? "is-on" : ""} ${startupNeedsRepair ? "needs-repair" : ""}`}
-            role="switch"
-            aria-checked={startupEnabled}
-            disabled={!runtime || status === "saving"}
-            onClick={updateStartup}
+            aria-current={activeSection === section.id ? "location" : undefined}
+            onClick={() => jumpToSection(section.id)}
           >
-            <span />
-            <strong>{status === "saving" ? "SAVING" : startupNeedsRepair ? "REPAIR" : startupEnabled ? "ON" : "OFF"}</strong>
+            {section.label}
           </button>
-        </div>
+        ))}
+      </nav>
 
-        <QuickSearchShortcutSetting onToast={onToast} />
-
-        <div className="runtime-setting-row is-readonly">
-          <span className="runtime-setting-icon"><ShieldRegular /></span>
-          <span className="runtime-setting-copy">
-            <strong>WINDOWS RECOVERY PATH</strong>
-            <small>Explorer stays running and the native taskbar is restored on exit or failure.</small>
-          </span>
-          <span className={recoveryReady ? "runtime-state-ok" : "runtime-state-attention"}>
-            {recoveryReady ? <CheckmarkCircleRegular /> : <AlertRegular />}
-            {recoveryReady ? "ARMED" : "CHECK"}
-          </span>
-        </div>
-      </div>
-
-      <TaskbarModeSettings onToast={onToast} />
-
-      <WindowAppearanceSettings onToast={onToast} />
-
-      <InterfacePreferences onToast={onToast} />
-
-      <NativeIntegrationSettings onToast={onToast} />
-
-      <div className="runtime-path-card">
-        <small>ACTIVE EXECUTABLE</small>
-        <code title={runtime?.executablePath}>{runtime?.executablePath ?? "Resolving native runtime…"}</code>
-      </div>
-
-      <section className="runtime-diagnostics" aria-label="Release and recovery diagnostics">
-        <header>
+      <section
+        id="settings-general"
+        className="runtime-settings-section-anchor"
+        aria-label="General runtime settings"
+      >
+        <div className="runtime-identity">
+          <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
           <span>
-            <small>RELEASE &amp; RECOVERY</small>
-            <strong>{diagnostics?.overallStatus ?? "NOT CHECKED"}</strong>
+            <small>RUNTIME CHANNEL</small>
+            <strong>{runtime?.productName ?? "JARVIS Night Shell"}</strong>
+            <code>VERSION {runtime?.version ?? "—"} · {runtime?.buildConfiguration ?? "LOADING"}</code>
+            <small className="runtime-environment">
+              {runtime?.installationMode ?? "DETECTING"} · WEBVIEW2 {runtime?.webView2Version ?? "—"}
+            </small>
           </span>
-          <button
-            type="button"
-            disabled={!runtime || diagnosticStatus === "running"}
-            onClick={runDiagnostics}
-          >
-            {diagnosticStatus === "running" ? "VERIFYING…" : diagnostics ? "RUN AGAIN" : "RUN CHECK"}
-          </button>
-        </header>
+        </div>
 
-        {diagnostics ? (
-          <div className="runtime-diagnostic-results">
-            {diagnostics.checks.map((check) => (
-              <div key={check.id} className={`is-${check.status.toLowerCase()}`}>
-                <span>{check.status === "READY" ? <CheckmarkCircleRegular /> : <AlertRegular />}</span>
-                <span><strong>{check.label}</strong><small>{check.detail}</small></span>
-                <code>{check.status}</code>
-              </div>
-            ))}
+        <div className="runtime-setting-list">
+          <div className="runtime-setting-row">
+            <span className="runtime-setting-icon"><PowerRegular /></span>
+            <span className="runtime-setting-copy">
+              <strong>START WITH WINDOWS</strong>
+              <small>{startupNeedsRepair
+                ? "The saved startup path belongs to an older JARVIS build."
+                : "Launch JARVIS after the current Windows user signs in."}</small>
+            </span>
+            <button
+              type="button"
+              className={`runtime-switch ${startupEnabled ? "is-on" : ""} ${startupNeedsRepair ? "needs-repair" : ""}`}
+              role="switch"
+              aria-checked={startupEnabled}
+              disabled={!runtime || status === "saving"}
+              onClick={updateStartup}
+            >
+              <span />
+              <strong>{status === "saving" ? "SAVING" : startupNeedsRepair ? "REPAIR" : startupEnabled ? "ON" : "OFF"}</strong>
+            </button>
           </div>
-        ) : (
-          <p>On demand only. Verifies Windows recovery, the global safe-exit path, native window guards, runtime, startup, installer records, and package hashes.</p>
-        )}
+
+          <QuickSearchShortcutSetting onToast={onToast} />
+
+          <div className="runtime-setting-row is-readonly">
+            <span className="runtime-setting-icon"><ShieldRegular /></span>
+            <span className="runtime-setting-copy">
+              <strong>WINDOWS RECOVERY PATH</strong>
+              <small>Explorer stays running and the native taskbar is restored on exit or failure.</small>
+            </span>
+            <span className={recoveryReady ? "runtime-state-ok" : "runtime-state-attention"}>
+              {recoveryReady ? <CheckmarkCircleRegular /> : <AlertRegular />}
+              {recoveryReady ? "ARMED" : "CHECK"}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div id="settings-taskbar" className="runtime-settings-section-anchor">
+        <TaskbarModeSettings onToast={onToast} />
+      </div>
+
+      <div id="settings-windows" className="runtime-settings-section-anchor">
+        <WindowAppearanceSettings onToast={onToast} />
+      </div>
+
+      <div id="settings-interface" className="runtime-settings-section-anchor">
+        <InterfacePreferences onToast={onToast} />
+      </div>
+
+      <div id="settings-integration" className="runtime-settings-section-anchor">
+        <NativeIntegrationSettings onToast={onToast} />
+      </div>
+
+      <section
+        id="settings-recovery"
+        className="runtime-settings-section-anchor"
+        aria-label="Recovery diagnostics"
+      >
+        <div className="runtime-path-card">
+          <small>ACTIVE EXECUTABLE</small>
+          <code title={runtime?.executablePath}>{runtime?.executablePath ?? "Resolving native runtime…"}</code>
+        </div>
+
+        <section className="runtime-diagnostics" aria-label="Release and recovery diagnostics">
+          <header>
+            <span>
+              <small>RELEASE &amp; RECOVERY</small>
+              <strong>{diagnostics?.overallStatus ?? "NOT CHECKED"}</strong>
+            </span>
+            <button
+              type="button"
+              disabled={!runtime || diagnosticStatus === "running"}
+              onClick={runDiagnostics}
+            >
+              {diagnosticStatus === "running" ? "VERIFYING…" : diagnostics ? "RUN AGAIN" : "RUN CHECK"}
+            </button>
+          </header>
+
+          {diagnostics ? (
+            <div className="runtime-diagnostic-results">
+              {diagnostics.checks.map((check) => (
+                <div key={check.id} className={`is-${check.status.toLowerCase()}`}>
+                  <span>{check.status === "READY" ? <CheckmarkCircleRegular /> : <AlertRegular />}</span>
+                  <span><strong>{check.label}</strong><small>{check.detail}</small></span>
+                  <code>{check.status}</code>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p>On demand only. Verifies Windows recovery, the global safe-exit path, native window guards, runtime, startup, installer records, and package hashes.</p>
+          )}
+        </section>
       </section>
 
       {error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{error}</p> : null}

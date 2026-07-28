@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getGlobalQuickSearchAction } from "../src/global-quick-search-model.js";
-import { createQuickSearchIndex, normalizeSearchText, searchQuickIndex } from "../src/quick-search.js";
+import {
+  createQuickSearchIndex,
+  normalizeSearchText,
+  searchQuickIndex,
+  segmentSearchMatch,
+} from "../src/quick-search.js";
 
 const catalog = {
   launchItems: [
@@ -52,6 +57,21 @@ test("quick search normalizes full-width text and keeps every result set bounded
   assert.equal(results[0].label, "Notepad");
 });
 
+test("search match segments preserve labels and merge overlapping query tokens", () => {
+  assert.deepEqual(segmentSearchMatch("Microsoft Edge", "edge micro"), [
+    { text: "Micro", match: true },
+    { text: "soft ", match: false },
+    { text: "Edge", match: true },
+  ]);
+  assert.deepEqual(segmentSearchMatch("设计资料", "资料"), [
+    { text: "设计", match: false },
+    { text: "资料", match: true },
+  ]);
+  assert.deepEqual(segmentSearchMatch("Power Tools", "missing"), [
+    { text: "Power Tools", match: false },
+  ]);
+});
+
 test("quick search spans installed apps, windows, desktop entries, and settings", () => {
   const index = createQuickSearchIndex(catalog);
 
@@ -59,6 +79,31 @@ test("quick search spans installed apps, windows, desktop entries, and settings"
   assert.equal(searchQuickIndex(index, "release notes")[0].kind, "window");
   assert.equal(searchQuickIndex(index, "设计资料")[0].kind, "desktop");
   assert.equal(searchQuickIndex(index, "network settings")[0].kind, "setting");
+});
+
+test("empty Quick Access prioritizes bounded recent applications without changing explicit matches", () => {
+  const index = createQuickSearchIndex({
+    ...catalog,
+    installedApplications: [
+      catalog.installedApplications[0],
+      {
+        applicationId: "opaque-edge",
+        label: "Microsoft Edge",
+        category: "Applications",
+        source: "packaged",
+      },
+    ],
+    recentApplicationIds: [
+      "",
+      "x".repeat(65),
+      "opaque-edge",
+      "opaque-edge",
+      ...Array.from({ length: 20 }, (_, index) => `overflow-${index}`),
+    ],
+  });
+
+  assert.equal(searchQuickIndex(index, "")[0].application.applicationId, "opaque-edge");
+  assert.equal(searchQuickIndex(index, "file explorer")[0].label, "File Explorer");
 });
 
 test("global actions preserve opaque capabilities and JARVIS-owned panels", () => {
