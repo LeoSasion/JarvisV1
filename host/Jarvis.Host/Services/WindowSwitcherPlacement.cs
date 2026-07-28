@@ -1,13 +1,12 @@
 namespace Jarvis.Host.Services;
 
-internal static class QuickSearchPlacement
+internal static class WindowSwitcherPlacement
 {
-    private const int LogicalHorizontalMargin = 120;
-    private const int LogicalVerticalMargin = 180;
-    private const int LogicalMinimumWidth = 640;
-    private const int LogicalMinimumHeight = 420;
-    private const int LogicalMaximumWidth = 960;
-    private const int LogicalMaximumHeight = 700;
+    private const int LogicalHorizontalMargin = 160;
+    private const int LogicalMinimumWidth = 720;
+    private const int LogicalMinimumHeight = 300;
+    private const int LogicalMaximumWidth = 1120;
+    private const int LogicalMaximumHeight = 390;
 
     public static bool TryCalculate(
         PixelRect workArea,
@@ -22,9 +21,6 @@ internal static class QuickSearchPlacement
 
         var horizontalMargin = DisplayPixelScale.LogicalToPhysical(
             LogicalHorizontalMargin,
-            scalePercent);
-        var verticalMargin = DisplayPixelScale.LogicalToPhysical(
-            LogicalVerticalMargin,
             scalePercent);
         var minimumWidth = DisplayPixelScale.LogicalToPhysical(
             LogicalMinimumWidth,
@@ -50,7 +46,7 @@ internal static class QuickSearchPlacement
             minimumWidth,
             Math.Min(maximumWidth, workArea.Width));
         var height = Math.Clamp(
-            workArea.Height - verticalMargin,
+            workArea.Height / 3,
             minimumHeight,
             Math.Min(maximumHeight, workArea.Height));
         var left = workArea.Left + (workArea.Width - width) / 2;
@@ -68,3 +64,10 @@ internal static class QuickSearchPlacement
                windowBounds.Bottom <= workArea.Bottom;
     }
 }
+
+internal readonly record struct WindowSwitcherPlacementDiagnostic(
+    string DeviceName,
+    bool UsedPrimaryFallback,
+    int ScalePercent,
+    PixelRect WorkArea,
+    PixelRect WindowBounds);

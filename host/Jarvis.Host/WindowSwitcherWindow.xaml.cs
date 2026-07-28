@@ -22,8 +22,10 @@ public partial class WindowSwitcherWindow : Window
     private readonly Action _ready;
     private readonly Action<string> _failed;
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly WindowSwitcherPresentationEpoch _presentationEpoch = new();
 
     private HwndSource? _windowSource;
+    private WindowSwitcherPlacementDiagnostic? _placementDiagnostic;
     private bool _allowClose;
     private bool _isClosing;
     private bool _readyReported;
@@ -45,22 +47,26 @@ public partial class WindowSwitcherWindow : Window
             return;
         }
 
+        var presentationEpoch = _presentationEpoch.Begin();
         try
         {
             var payload = JsonSerializer.Serialize(state);
             await WebView.CoreWebView2.ExecuteScriptAsync(
                 $"window.dispatchEvent(new CustomEvent('jarvis:window-switcher-state', " +
                 $"{{ detail: {payload} }}));");
-            if (_isClosing)
+            if (_isClosing ||
+                !_presentationEpoch.IsCurrent(presentationEpoch))
             {
                 return;
             }
 
             PositionAndReveal();
         }
-        catch (InvalidOperationException) when (_isClosing)
+        catch (Exception) when (
+            _isClosing ||
+            !_presentationEpoch.IsCurrent(presentationEpoch))
         {
-            // The switcher may be dismissed while a renderer update is in flight.
+            // A dismissed or superseded renderer update no longer owns the HUD.
         }
         catch (Exception ex)
         {
@@ -76,6 +82,8 @@ public partial class WindowSwitcherWindow : Window
             return;
         }
 
+        _presentationEpoch.Invalidate();
+        _placementDiagnostic = null;
         Opacity = 0;
         Hide();
     }
@@ -193,16 +201,45 @@ public partial class WindowSwitcherWindow : Window
 
     private void PositionAndReveal()
     {
-        if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var monitorBounds))
+        var foreground = GetForegroundWindow();
+        var usedPrimaryFallback = !NativeDisplay.TryGetMonitorForWindow(
+            foreground,
+            out var targetMonitor);
+        if (usedPrimaryFallback &&
+            !NativeDisplay.TryGetPrimaryMonitor(out targetMonitor))
         {
-            ReportFailure("PRIMARY DISPLAY UNAVAILABLE");
+            ReportFailure("DISPLAY WORK AREA UNAVAILABLE");
             return;
         }
 
-        var width = Math.Clamp(monitorBounds.Width - 160, 720, 1120);
-        var height = Math.Clamp(monitorBounds.Height / 3, 300, 390);
-        var left = monitorBounds.Left + (monitorBounds.Width - width) / 2;
-        var top = monitorBounds.Top + (monitorBounds.Height - height) / 2;
+        if (!WindowSwitcherPlacement.TryCalculate(
+                targetMonitor.WorkArea,
+                targetMonitor.ScalePercent,
+                out var windowBounds))
+        {
+            ReportFailure("DISPLAY WORK AREA UNSUPPORTED");
+            return;
+        }
+
+        var diagnostic = new WindowSwitcherPlacementDiagnostic(
+            targetMonitor.DeviceName,
+            usedPrimaryFallback,
+            targetMonitor.ScalePercent,
+            targetMonitor.WorkArea,
+            windowBounds);
+        if (_placementDiagnostic != diagnostic)
+        {
+            _placementDiagnostic = diagnostic;
+            HostLog.Info(
+                $"Window switcher placement: " +
+                $"source={(usedPrimaryFallback ? "primary-fallback" : "foreground")} " +
+                $"monitor={targetMonitor.DeviceName} " +
+                $"primary={targetMonitor.IsPrimary} " +
+                $"scale={targetMonitor.ScalePercent}% " +
+                $"workArea={FormatRect(targetMonitor.WorkArea)} " +
+                $"window={FormatRect(windowBounds)}.");
+        }
+
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero)
         {
@@ -214,7 +251,14 @@ public partial class WindowSwitcherWindow : Window
         // while still transparent, then make the native pixel rectangle final so
         // high-DPI monitors cannot shift the HUD away from the computed center.
         Show();
-        if (!SetWindowPos(handle, HwndTopmost, left, top, width, height, SwpNoActivate))
+        if (!SetWindowPos(
+                handle,
+                HwndTopmost,
+                windowBounds.Left,
+                windowBounds.Top,
+                windowBounds.Width,
+                windowBounds.Height,
+                SwpNoActivate))
         {
             ReportFailure("POSITIONING FAILED");
             return;
@@ -222,6 +266,10 @@ public partial class WindowSwitcherWindow : Window
 
         Opacity = 1;
     }
+
+    private static string FormatRect(PixelRect rectangle) =>
+        $"{rectangle.Left},{rectangle.Top}," +
+        $"{rectangle.Width}x{rectangle.Height}";
 
     private void ReportFailure(string status)
     {
@@ -263,6 +311,7 @@ public partial class WindowSwitcherWindow : Window
         }
 
         _isClosing = true;
+        _presentationEpoch.Invalidate();
         Volatile.Write(ref _readyState, 0);
         _shutdown.Cancel();
         _windowSource?.RemoveHook(WindowProcedure);
@@ -290,6 +339,9 @@ public partial class WindowSwitcherWindow : Window
         IntPtr.Size == 8
             ? SetWindowLongPtr64(window, index, newValue)
             : SetWindowLong32(window, index, newValue);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
