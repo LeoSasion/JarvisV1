@@ -7,31 +7,40 @@ internal static class NativeDisplay
 {
     private const uint MonitorInfoPrimary = 1;
     private const uint MonitorDefaultToPrimary = 1;
+    private const uint MonitorDefaultToNearest = 2;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpNoZOrder = 0x0004;
 
     public static bool TryGetPrimaryMonitorBounds(out PixelRect bounds)
     {
+        if (!TryGetPrimaryMonitor(out var target))
+        {
+            bounds = default;
+            return false;
+        }
+
+        bounds = target.Bounds;
+        return true;
+    }
+
+    public static bool TryGetPrimaryMonitor(out DisplayMonitorTarget target)
+    {
         var monitor = MonitorFromPoint(default, MonitorDefaultToPrimary);
-        if (monitor == IntPtr.Zero)
+        return TryGetMonitorTarget(monitor, out target);
+    }
+
+    public static bool TryGetMonitorForWindow(
+        IntPtr window,
+        out DisplayMonitorTarget target)
+    {
+        if (window == IntPtr.Zero)
         {
-            bounds = default;
+            target = default!;
             return false;
         }
 
-        var info = MonitorInfo.Create();
-        if (!GetMonitorInfo(monitor, ref info))
-        {
-            bounds = default;
-            return false;
-        }
-
-        bounds = new PixelRect(
-            info.Monitor.Left,
-            info.Monitor.Top,
-            info.Monitor.Right,
-            info.Monitor.Bottom);
-        return bounds.Width > 0 && bounds.Height > 0;
+        var monitor = MonitorFromWindow(window, MonitorDefaultToNearest);
+        return TryGetMonitorTarget(monitor, out target);
     }
 
     public static bool PositionWindow(System.Windows.Window window, PixelRect bounds)
@@ -129,12 +138,60 @@ internal static class NativeDisplay
         }
     }
 
+    private static bool TryGetMonitorTarget(
+        IntPtr monitor,
+        out DisplayMonitorTarget target)
+    {
+        if (monitor == IntPtr.Zero)
+        {
+            target = default!;
+            return false;
+        }
+
+        var info = MonitorInfoEx.Create();
+        if (!GetMonitorInfoEx(monitor, ref info))
+        {
+            target = default!;
+            return false;
+        }
+
+        var bounds = new PixelRect(
+            info.Monitor.Left,
+            info.Monitor.Top,
+            info.Monitor.Right,
+            info.Monitor.Bottom);
+        var workArea = new PixelRect(
+            info.WorkArea.Left,
+            info.WorkArea.Top,
+            info.WorkArea.Right,
+            info.WorkArea.Bottom);
+        if (bounds.Width <= 0 ||
+            bounds.Height <= 0 ||
+            workArea.Width <= 0 ||
+            workArea.Height <= 0)
+        {
+            target = default!;
+            return false;
+        }
+
+        var dpi = GetMonitorDpi(monitor);
+        var deviceName = string.IsNullOrWhiteSpace(info.DeviceName)
+            ? "DISPLAY"
+            : info.DeviceName;
+        target = new DisplayMonitorTarget(
+            deviceName,
+            (info.Flags & MonitorInfoPrimary) != 0,
+            bounds,
+            workArea,
+            (int)Math.Round(dpi / 96d * 100));
+        return true;
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -182,20 +239,6 @@ internal static class NativeDisplay
         public int Bottom;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct MonitorInfo
-    {
-        public uint Size;
-        public NativeRect Monitor;
-        public NativeRect WorkArea;
-        public uint Flags;
-
-        public static MonitorInfo Create() => new()
-        {
-            Size = (uint)Marshal.SizeOf<MonitorInfo>()
-        };
-    }
-
     private delegate bool MonitorEnumProc(
         IntPtr monitor,
         IntPtr deviceContext,
@@ -235,6 +278,13 @@ internal sealed record DisplayMonitorSnapshot(
     PixelRect WorkArea,
     uint DpiX,
     uint DpiY,
+    int ScalePercent);
+
+internal sealed record DisplayMonitorTarget(
+    string DeviceName,
+    bool IsPrimary,
+    PixelRect Bounds,
+    PixelRect WorkArea,
     int ScalePercent);
 
 internal sealed record DisplayTopologySnapshot(

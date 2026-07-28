@@ -120,17 +120,12 @@ public partial class QuickSearchWindow : Window
 
     private async Task PresentAsync()
     {
-        if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var monitorBounds) ||
-            WebView.CoreWebView2 is null)
+        if (WebView.CoreWebView2 is null)
         {
-            ReportFailure("PRIMARY DISPLAY OR RENDERER UNAVAILABLE");
+            ReportFailure("RENDERER UNAVAILABLE");
             return;
         }
 
-        var width = Math.Clamp(monitorBounds.Width - 120, 720, 960);
-        var height = Math.Clamp(monitorBounds.Height - 180, 500, 700);
-        var left = monitorBounds.Left + (monitorBounds.Width - width) / 2;
-        var top = monitorBounds.Top + (monitorBounds.Height - height) / 2;
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == IntPtr.Zero)
         {
@@ -140,9 +135,54 @@ public partial class QuickSearchWindow : Window
 
         var foreground = GetForegroundWindow();
         _previousForegroundWindow = foreground != handle ? foreground : IntPtr.Zero;
+        var usedPrimaryFallback = !NativeDisplay.TryGetMonitorForWindow(
+            _previousForegroundWindow,
+            out var targetMonitor);
+        if (usedPrimaryFallback &&
+            !NativeDisplay.TryGetPrimaryMonitor(out targetMonitor))
+        {
+            ReportFailure("DISPLAY WORK AREA UNAVAILABLE");
+            return;
+        }
+
+        if (!QuickSearchPlacement.TryCalculate(
+                targetMonitor.WorkArea,
+                targetMonitor.ScalePercent,
+                out var windowBounds))
+        {
+            ReportFailure("DISPLAY WORK AREA UNSUPPORTED");
+            return;
+        }
+
+        HostLog.Info(
+            $"Global Quick Search placement: " +
+            $"source={(usedPrimaryFallback ? "primary-fallback" : "foreground")} " +
+            $"monitor={targetMonitor.DeviceName} " +
+            $"primary={targetMonitor.IsPrimary} " +
+            $"scale={targetMonitor.ScalePercent}% " +
+            $"workArea={FormatRect(targetMonitor.WorkArea)} " +
+            $"window={FormatRect(windowBounds)}.");
+        if (usedPrimaryFallback)
+        {
+            _systemFeedService.Add(
+                "quick-search.monitor-fallback",
+                "warning",
+                "Quick Search used the primary display",
+                "The foreground application monitor was unavailable; the local search HUD used the primary monitor.",
+                actionId: null,
+                deduplicationKey: "quick-search.monitor-fallback");
+        }
+
         IsHitTestVisible = true;
         Show();
-        if (!SetWindowPos(handle, HwndTopmost, left, top, width, height, 0))
+        if (!SetWindowPos(
+                handle,
+                HwndTopmost,
+                windowBounds.Left,
+                windowBounds.Top,
+                windowBounds.Width,
+                windowBounds.Height,
+                0))
         {
             ReportFailure("POSITIONING FAILED");
             return;
@@ -164,6 +204,10 @@ public partial class QuickSearchWindow : Window
             ReportFailure("SESSION START FAILED");
         }
     }
+
+    private static string FormatRect(PixelRect rectangle) =>
+        $"{rectangle.Left},{rectangle.Top}," +
+        $"{rectangle.Width}x{rectangle.Height}";
 
     private void RestorePreviousForegroundWindow()
     {
