@@ -1,0 +1,49 @@
+<Window x:Class="Jarvis.Host.QuickSearchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="JARVIS Global Quick Search"
+        Width="920"
+        Height="640"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Background="#01040A"
+        Opacity="0"
+        IsHitTestVisible="False"
+        SourceInitialized="OnSourceInitialized"
+        Loaded="OnLoaded"
+        Deactivated="OnDeactivated"
+        PreviewKeyDown="OnPreviewKeyDown"
+        Closing="OnClosing">
+  <Grid>
+    <wv2:WebView2 x:Name="WebView"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Stretch"
+                  DefaultBackgroundColor="#01040A" />
+
+    <Border x:Name="LoadingOverlay"
+            Background="#01040A"
+            IsHitTestVisible="False">
+      <StackPanel HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+        <TextBlock Text="GLOBAL QUICK SEARCH"
+                   Foreground="#A8E9FF"
+                   FontFamily="Bahnschrift"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   HorizontalAlignment="Center" />
+        <TextBlock x:Name="StatusText"
+                   Text="INITIALIZING"
+                   Margin="0,8,0,0"
+                   Foreground="#527B96"
+                   FontFamily="Consolas"
+                   FontSize="9"
+                   HorizontalAlignment="Center" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

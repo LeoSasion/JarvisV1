@@ -804,6 +804,131 @@ function NotificationsPanel({ onClose, onLaunch }) {
   );
 }
 
+function QuickSearchShortcutSetting({ onToast }) {
+  const [shortcutState, setShortcutState] = useState(null);
+  const [status, setStatus] = useState("loading");
+  const [error, setError] = useState("");
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    platform.quickSearchShortcut.getState()
+      .then((result) => {
+        if (!mountedRef.current) return;
+        setShortcutState(result);
+        setStatus("ready");
+      })
+      .catch((nextError) => {
+        if (!mountedRef.current) return;
+        setError(nextError.message);
+        setStatus("error");
+      });
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (shortcutState?.status !== "starting" || status === "error") return undefined;
+    let requestPending = false;
+    const timer = window.setInterval(async () => {
+      if (requestPending) return;
+      requestPending = true;
+      try {
+        const result = await platform.quickSearchShortcut.getState();
+        if (!mountedRef.current) return;
+        setShortcutState(result);
+        setStatus("ready");
+      } catch (nextError) {
+        if (!mountedRef.current) return;
+        setError(nextError.message);
+        setStatus("error");
+      } finally {
+        requestPending = false;
+      }
+    }, 350);
+    return () => window.clearInterval(timer);
+  }, [shortcutState?.status, status]);
+
+  const savePreference = async (enabled, retry = false) => {
+    if (status === "saving") return;
+    setStatus("saving");
+    setError("");
+    try {
+      const result = await platform.quickSearchShortcut.setEnabled(enabled);
+      if (!mountedRef.current) return;
+      setShortcutState(result);
+      setStatus("ready");
+      onToast?.(
+        result.enabled
+          ? result.status === "starting"
+            ? "Global Quick Search renderer is starting"
+            : result.registered
+            ? "Global Quick Search shortcut enabled · Ctrl+Alt+J"
+            : "Quick Search is enabled but the Windows shortcut is unavailable"
+          : "Global Quick Search disabled · desktop Ctrl+Space remains available",
+      );
+    } catch (nextError) {
+      if (!mountedRef.current) return;
+      setError(nextError.message);
+      setStatus("error");
+      if (retry) {
+        onToast?.("Quick Search shortcut retry failed");
+      }
+    }
+  };
+
+  const enabled = Boolean(shortcutState?.enabled);
+  const registered = Boolean(shortcutState?.registered);
+  const starting = shortcutState?.status === "starting";
+  const unavailable = shortcutState?.status === "unavailable";
+  const detail = status === "loading"
+    ? "Reading the current-user shortcut preference…"
+    : !enabled
+      ? "System-wide shortcut disabled. Desktop Ctrl+Space remains available."
+      : starting
+        ? "Preparing the isolated search renderer before Windows shortcut registration…"
+      : registered
+        ? `${shortcutState.shortcut} opens Quick Search above Windows applications.`
+        : `${shortcutState?.failureReason ?? "Windows did not register the shortcut."} Desktop Ctrl+Space remains available.`;
+
+  return (
+    <div className={`runtime-setting-row quick-search-shortcut-row ${unavailable ? "is-attention" : ""}`}>
+      <span className="runtime-setting-icon"><SearchRegular /></span>
+      <span className="runtime-setting-copy">
+        <strong>GLOBAL QUICK SEARCH</strong>
+        <small>{detail}</small>
+        {shortcutState?.configurationWarning ? (
+          <small className="runtime-setting-warning">{shortcutState.configurationWarning}</small>
+        ) : null}
+        {error ? <small className="runtime-setting-error" role="alert">{error}</small> : null}
+        {unavailable ? (
+          <button
+            type="button"
+            className="quick-search-shortcut-retry"
+            disabled={status === "saving"}
+            onClick={() => void savePreference(true, true)}
+          >
+            RETRY REGISTRATION
+          </button>
+        ) : null}
+      </span>
+      <button
+        type="button"
+        className={`runtime-switch ${enabled ? "is-on" : ""} ${unavailable ? "needs-repair" : ""}`}
+        role="switch"
+        aria-label="Enable global Quick Search shortcut"
+        aria-checked={enabled}
+        disabled={!shortcutState || status === "saving"}
+        onClick={() => void savePreference(!enabled)}
+      >
+        <span />
+        <strong>{status === "saving" ? "SAVING" : starting ? "STARTING" : enabled ? "ON" : "OFF"}</strong>
+      </button>
+    </div>
+  );
+}
+
 function RuntimeSettingsPanel({ onClose, onToast }) {
   const [runtime, setRuntime] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -904,6 +1029,8 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
             <strong>{status === "saving" ? "SAVING" : startupNeedsRepair ? "REPAIR" : startupEnabled ? "ON" : "OFF"}</strong>
           </button>
         </div>
+
+        <QuickSearchShortcutSetting onToast={onToast} />
 
         <div className="runtime-setting-row is-readonly">
           <span className="runtime-setting-icon"><ShieldRegular /></span>

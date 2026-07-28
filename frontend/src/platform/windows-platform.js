@@ -139,6 +139,7 @@ export function createWindowsPlatform(webview) {
     },
     taskbar: {
       getSnapshot: () => request("taskbar.getSnapshot"),
+      activateWindow: (windowId) => request("taskbar.activateWindow", { windowId }),
       toggleWindow: (windowId) => request("taskbar.toggleWindow", { windowId }),
       closeWindow: (windowId) => request("taskbar.closeWindow", { windowId }),
       showFlyout: (options) => request("taskbar.showFlyout", options),
@@ -147,6 +148,10 @@ export function createWindowsPlatform(webview) {
     taskbarMode: {
       getState: () => request("taskbarMode.getState"),
       setMode: (mode) => request("taskbarMode.setMode", { mode }),
+    },
+    quickSearchShortcut: {
+      getState: () => request("quickSearchShortcut.getState"),
+      setEnabled: (enabled) => request("quickSearchShortcut.setEnabled", { enabled }),
     },
     tray: {
       getSnapshot: () => request("tray.getSnapshot"),
@@ -178,6 +183,10 @@ export function createWindowsPlatform(webview) {
       runDiagnostics: () => request("lifecycle.runDiagnostics", {}, 120_000),
       exitToWindows: () => request("lifecycle.exitToWindows"),
       showDesktop: (options = {}) => request("lifecycle.showDesktop", options),
+    },
+    surface: {
+      dismiss: (restoreForeground = true) =>
+        request("surface.dismiss", { restoreForeground }),
     },
   };
 }

@@ -47,6 +47,30 @@ test("mock tray rejects out-of-range volume and emits real snapshots", async () 
   assert.equal(changed.simulation, true);
 });
 
+test("mock global Quick Search preference is reversible and reflected in diagnostics", async () => {
+  const mock = createMockPlatform();
+  const disabled = await mock.quickSearchShortcut.setEnabled(false);
+  assert.deepEqual(disabled, {
+    enabled: false,
+    registered: false,
+    status: "disabled",
+    shortcut: "Ctrl+Alt+J",
+    failureReason: null,
+    configurationWarning: null,
+  });
+
+  const disabledDiagnostics = await mock.lifecycle.runDiagnostics();
+  const disabledCheck = disabledDiagnostics.checks.find(
+    (check) => check.id === "global-quick-search-hotkey",
+  );
+  assert.equal(disabledCheck.status, "READY");
+  assert.match(disabledCheck.detail, /desktop Ctrl\+Space remains available/u);
+
+  const enabled = await mock.quickSearchShortcut.setEnabled(true);
+  assert.equal(enabled.enabled, true);
+  assert.equal(enabled.registered, true);
+});
+
 test("desktop icons fill down before starting the next column", () => {
   assert.deepEqual(getDesktopFallbackPosition(0, 300), { x: 18, y: 18 });
   assert.deepEqual(getDesktopFallbackPosition(4, 300), { x: 114, y: 106 });

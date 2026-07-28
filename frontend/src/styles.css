@@ -5468,6 +5468,49 @@ button.process-grid:hover {
   font: 8.5px/1.35 "Segoe UI", sans-serif;
 }
 
+.quick-search-shortcut-row.is-attention {
+  border-color: rgba(225, 158, 50, 0.68);
+  background:
+    linear-gradient(90deg, rgba(76, 48, 10, 0.16), transparent 62%),
+    rgba(2, 13, 23, 0.74);
+}
+
+.quick-search-shortcut-row.is-attention .runtime-setting-icon {
+  border-color: rgba(225, 158, 50, 0.62);
+  color: #e7ba6f;
+}
+
+.runtime-setting-copy .runtime-setting-warning,
+.runtime-setting-copy .runtime-setting-error {
+  color: #e7ba6f;
+  font-family: Consolas, monospace;
+}
+
+.runtime-setting-copy .runtime-setting-error {
+  color: #ff8e7f;
+}
+
+.quick-search-shortcut-retry {
+  justify-self: start;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(225, 158, 50, 0.58) !important;
+  color: #e7ba6f !important;
+  font: 600 7.5px/1 Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.quick-search-shortcut-retry:hover,
+.quick-search-shortcut-retry:focus-visible {
+  border-color: rgba(242, 190, 91, 0.9) !important;
+  background: rgba(89, 56, 10, 0.28) !important;
+}
+
+.quick-search-shortcut-retry:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .window-appearance-settings {
   margin: 0 12px 12px;
   overflow: hidden;
@@ -6338,6 +6381,156 @@ button.process-grid:hover {
   animation: overlay-in 180ms ease-out;
 }
 
+.jarvis-global-search {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-width: 720px;
+  min-height: 500px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    linear-gradient(90deg, rgba(9, 38, 66, 0.18) 1px, transparent 1px) 50% 50% / 84px 84px,
+    linear-gradient(rgba(9, 38, 66, 0.14) 1px, transparent 1px) 50% 50% / 84px 84px,
+    #01040a;
+}
+
+.jarvis-global-search::before,
+.jarvis-global-search::after {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+}
+
+.jarvis-global-search::before {
+  inset: 18px;
+  border: 1px solid rgba(38, 143, 220, 0.28);
+  clip-path: polygon(
+    0 16px,
+    16px 0,
+    calc(100% - 46px) 0,
+    calc(100% - 34px) 12px,
+    100% 12px,
+    100% calc(100% - 16px),
+    calc(100% - 16px) 100%,
+    46px 100%,
+    34px calc(100% - 12px),
+    0 calc(100% - 12px)
+  );
+  box-shadow:
+    0 0 12px rgba(34, 207, 255, 0.13) inset,
+    0 0 18px rgba(0, 92, 224, 0.08);
+}
+
+.jarvis-global-search::after {
+  inset: 0;
+  background:
+    linear-gradient(120deg, transparent 8%, rgba(72, 166, 255, 0.08) 8.1%, transparent 8.3%) 0 0 / 58% 100% no-repeat,
+    linear-gradient(300deg, transparent 10%, rgba(21, 123, 255, 0.08) 10.1%, transparent 10.3%) 100% 0 / 52% 100% no-repeat,
+    radial-gradient(circle at 50% 46%, rgba(0, 116, 255, 0.09), transparent 52%);
+}
+
+.global-search-field {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.global-search-field i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  border: 1px solid rgba(25, 108, 183, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.global-search-field i:nth-child(1) {
+  width: min(82vw, 840px);
+  aspect-ratio: 1;
+  border-style: dashed;
+}
+
+.global-search-field i:nth-child(2) {
+  width: min(68vw, 680px);
+  aspect-ratio: 1;
+  border-color: rgba(34, 207, 255, 0.16);
+}
+
+.global-search-field i:nth-child(3) {
+  width: min(54vw, 520px);
+  aspect-ratio: 1;
+  border-color: rgba(51, 125, 255, 0.13);
+  box-shadow: 0 0 38px rgba(0, 92, 224, 0.08);
+}
+
+.jarvis-global-search .overlay-layer {
+  padding: 34px;
+  background: transparent;
+}
+
+.jarvis-global-search .command-palette {
+  position: relative;
+  width: min(760px, calc(100vw - 96px));
+  max-height: calc(100vh - 72px);
+  border-color: rgba(59, 158, 231, 0.58);
+  background-color: rgba(1, 8, 16, 0.97);
+  box-shadow:
+    0 0 0 1px rgba(128, 221, 255, 0.06) inset,
+    0 0 24px rgba(0, 112, 212, 0.2);
+}
+
+.jarvis-global-search .command-palette::before,
+.jarvis-global-search .command-palette::after {
+  position: absolute;
+  z-index: 2;
+  width: 92px;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, transparent, #77d9ff 72%, #f1fbff);
+  box-shadow: 0 0 8px rgba(34, 207, 255, 0.8);
+  pointer-events: none;
+}
+
+.jarvis-global-search .command-palette::before {
+  left: 26px;
+  top: -1px;
+}
+
+.jarvis-global-search .command-palette::after {
+  right: 26px;
+  bottom: -1px;
+  transform: rotate(180deg);
+}
+
+.jarvis-global-search .command-header > small {
+  color: #5d9bbb;
+}
+
+.jarvis-global-search .command-palette form {
+  background:
+    linear-gradient(90deg, rgba(0, 88, 168, 0.11), transparent 36%),
+    #020812;
+}
+
+.command-palette.is-busy .command-results > button,
+.command-palette.is-busy input {
+  cursor: wait;
+}
+
+.command-palette footer strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #82cfee;
+  font: 600 8px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.07em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes overlay-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -6597,6 +6790,44 @@ button.process-grid:hover {
 .command-palette footer span:last-child {
   margin-left: auto;
   color: #3d708e;
+}
+
+@media (max-height: 560px) {
+  .jarvis-global-search .overlay-layer {
+    padding: 22px 34px;
+  }
+
+  .jarvis-global-search .command-palette {
+    max-height: calc(100vh - 44px);
+  }
+
+  .jarvis-global-search .command-palette form {
+    height: 58px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+  }
+
+  .jarvis-global-search .command-results {
+    max-height: calc(100vh - 238px);
+  }
+}
+
+@media (max-width: 780px) {
+  .jarvis-global-search .command-palette {
+    width: calc(100vw - 68px);
+  }
+
+  .jarvis-global-search .command-header > small {
+    display: none;
+  }
+
+  .jarvis-global-search .command-result-category {
+    display: none;
+  }
+
+  .jarvis-global-search .command-results > button {
+    grid-template-columns: 40px minmax(0, 1fr) 24px;
+  }
 }
 
 .system-toast {

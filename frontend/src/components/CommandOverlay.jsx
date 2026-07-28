@@ -36,7 +36,14 @@ function QuickSearchIcon({ result }) {
   return <DocumentRegular />;
 }
 
-export function CommandOverlay({ open, onClose, onExecute }) {
+export function CommandOverlay({
+  open,
+  onClose,
+  onExecute,
+  busy = false,
+  statusMessage = null,
+  surfaceLabel = "LOCAL QUICK ACCESS",
+}) {
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
   const [value, setValue] = useState("");
@@ -68,9 +75,7 @@ export function CommandOverlay({ open, onClose, onExecute }) {
   if (!open) return null;
 
   const execute = (result) => {
-    if (!result) return;
-    setValue("");
-    setActiveIndex(0);
+    if (!result || busy) return;
     onExecute(result);
   };
 
@@ -102,11 +107,18 @@ export function CommandOverlay({ open, onClose, onExecute }) {
     <div className="overlay-layer" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section ref={dialogRef} className="command-palette hud-panel" role="dialog" aria-modal="true" aria-label="JARVIS quick search">
+      <section
+        ref={dialogRef}
+        className={`command-palette hud-panel${busy ? " is-busy" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="JARVIS quick search"
+        aria-busy={busy}
+      >
         <header className="command-header">
           <span><img src="/assets/jarvis-top-agent-ready-core-v1.png" alt="" /> JARVIS SEARCH</span>
-          <small>LOCAL QUICK ACCESS</small>
-          <button type="button" onClick={onClose} aria-label="Close quick search"><DismissRegular /></button>
+          <small>{surfaceLabel}</small>
+          <button type="button" onClick={onClose} aria-label="Close quick search" disabled={busy}><DismissRegular /></button>
         </header>
 
         <form onSubmit={(event) => { event.preventDefault(); execute(selectedResult); }}>
@@ -125,8 +137,9 @@ export function CommandOverlay({ open, onClose, onExecute }) {
             aria-activedescendant={selectedResult ? `quick-search-${selectedResult.resultId}` : undefined}
             autoComplete="off"
             spellCheck="false"
+            disabled={busy}
           />
-          <button type="submit" className="run-command" aria-label="Open selected result" disabled={!selectedResult}><ArrowRightRegular /></button>
+          <button type="submit" className="run-command" aria-label="Open selected result" disabled={!selectedResult || busy}><ArrowRightRegular /></button>
         </form>
 
         <div className="command-results-heading">
@@ -149,6 +162,7 @@ export function CommandOverlay({ open, onClose, onExecute }) {
               role="option"
               aria-selected={index === selectedIndex}
               className={index === selectedIndex ? "is-active" : ""}
+              disabled={busy}
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => execute(result)}
             >
@@ -172,7 +186,8 @@ export function CommandOverlay({ open, onClose, onExecute }) {
           <span>↑ ↓ NAVIGATE</span>
           <span>ENTER OPEN</span>
           <span>ESC CLOSE</span>
-          <span>LOCAL INDEX · NO VOICE</span>
+          {statusMessage ? <strong role="status" aria-live="polite">{statusMessage}</strong> : null}
+          <span>{busy ? "VERIFYING CAPABILITY" : "LOCAL INDEX · NO VOICE"}</span>
         </footer>
       </section>
     </div>

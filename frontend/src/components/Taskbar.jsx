@@ -457,7 +457,12 @@ export function Taskbar({
           <WindowAppsRegular />
         </button>
       </div>
-      <button type="button" className="taskbar-search" onClick={onOpenCommand}>
+      <button
+        type="button"
+        className="taskbar-search"
+        onClick={onOpenCommand}
+        title="Search apps and windows · Ctrl+Alt+J from any application"
+      >
         <SearchRegular />
         <span>Search</span>
       </button>

@@ -9,6 +9,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 - Windows 10 and Windows 11 Home/Pro desktop environments
 - Full primary-taskbar replacement by default, with optional native and hybrid modes, running-window synchronization, and a recovery watchdog
 - Bounded HUD Alt+Tab switcher in healthy full mode, with native Windows fallback in hybrid, safe, secure-desktop, and renderer-failure paths
+- Current-user controlled `Ctrl+Alt+J` global local-search HUD with a disposable independent renderer and an allowlisted capability bridge
 - Explorer-owned notification area in hybrid mode, with automatic native fallback
 - Real Windows audio, network, and power state shared by the top bar, taskbar, and Quick Settings
 - Session-only JARVIS System Feed with bounded, deduplicated host events

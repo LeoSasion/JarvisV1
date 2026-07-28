@@ -101,6 +101,13 @@ JARVIS quick search combines the explicit application allowlist with a cached
 index of `.lnk` entries under the current-user and common Start Menu Programs
 directories plus packaged applications exposed by the Windows AppsFolder.
 Uninstall and removal shortcuts are excluded from this launcher surface. The
+same index is available above ordinary applications through an independent,
+task-switcher-hidden WebView2 HUD. Its current-user `Ctrl+Alt+J` preference is
+managed from JARVIS Settings. The shortcut is registered only after the
+renderer is ready; disabling it unregisters the hotkey and disposes that hidden
+renderer. Its bridge profile exposes only bounded list, open, activate,
+show-desktop, and self-dismiss methods.
+The Windows key and secure-desktop input remain untouched. The
 renderer receives opaque application capability IDs rather than shortcut paths
 or AppUserModelIDs. Shortcut entries also expose only normalized executable process
 names obtained through the Shell Link target, while running packaged apps expose

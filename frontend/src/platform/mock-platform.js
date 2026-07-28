@@ -19,6 +19,7 @@ const WINDOW_APPEARANCE_PROTECTED_PROCESSES = new Set([
 ]);
 const TASKBAR_MODE_STORAGE_KEY = "jarvis.taskbar.mode.v1";
 const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
+const QUICK_SEARCH_SHORTCUT_STORAGE_KEY = "jarvis.quickSearchShortcut.enabled.v1";
 const MOCK_STYLED_WINDOW_COUNTS = {
   off: 0,
   conservative: 4,
@@ -139,6 +140,41 @@ function createMockTaskbarModeState(mode) {
     fallbackReason: null,
     hybridAvailable: true,
     safeMode: false,
+  };
+}
+
+function readMockQuickSearchShortcutEnabled() {
+  try {
+    const settings = JSON.parse(
+      globalThis.localStorage?.getItem(QUICK_SEARCH_SHORTCUT_STORAGE_KEY) ?? "null",
+    );
+    return settings?.version === 1 && typeof settings.enabled === "boolean"
+      ? settings.enabled
+      : true;
+  } catch {
+    return true;
+  }
+}
+
+function persistMockQuickSearchShortcutEnabled(enabled) {
+  try {
+    globalThis.localStorage?.setItem(
+      QUICK_SEARCH_SHORTCUT_STORAGE_KEY,
+      JSON.stringify({ version: 1, enabled }),
+    );
+  } catch {
+    // The in-memory shortcut preference remains usable when storage is disabled.
+  }
+}
+
+function createMockQuickSearchShortcutState(enabled) {
+  return {
+    enabled,
+    registered: enabled,
+    status: enabled ? "registered" : "disabled",
+    shortcut: "Ctrl+Alt+J",
+    failureReason: null,
+    configurationWarning: null,
   };
 }
 
@@ -442,6 +478,9 @@ export function createMockPlatform() {
     windowAppearanceRules,
   );
   let taskbarModeState = createMockTaskbarModeState(readMockTaskbarMode());
+  let quickSearchShortcutState = createMockQuickSearchShortcutState(
+    readMockQuickSearchShortcutEnabled(),
+  );
   let traySnapshot = {
     timestamp: new Date().toISOString(),
     audio: {
@@ -1060,6 +1099,21 @@ export function createMockPlatform() {
       async getSnapshot() {
         return taskbarSnapshot;
       },
+      async activateWindow(windowId) {
+        const target = taskbarSnapshot.windows.find((window) => window.windowId === windowId);
+        if (!target) return { activated: false, mock: true, windowId };
+
+        taskbarSnapshot = {
+          windows: taskbarSnapshot.windows.map((window) => ({
+            ...window,
+            active: window.windowId === windowId,
+            minimized: window.windowId === windowId ? false : window.minimized,
+          })),
+          foregroundWindowId: windowId,
+        };
+        emit("taskbar.snapshot", taskbarSnapshot);
+        return { activated: true, mock: true, windowId };
+      },
       async toggleWindow(windowId) {
         const target = taskbarSnapshot.windows.find((window) => window.windowId === windowId);
         if (!target) return { toggled: false, mock: true, windowId };
@@ -1118,6 +1172,16 @@ export function createMockPlatform() {
         const state = { ...taskbarModeState };
         emit("taskbarMode.changed", state);
         return state;
+      },
+    },
+    quickSearchShortcut: {
+      async getState() {
+        return { ...quickSearchShortcutState };
+      },
+      async setEnabled(enabled) {
+        persistMockQuickSearchShortcutEnabled(Boolean(enabled));
+        quickSearchShortcutState = createMockQuickSearchShortcutState(Boolean(enabled));
+        return { ...quickSearchShortcutState };
       },
     },
     tray: {
@@ -1287,11 +1351,22 @@ export function createMockPlatform() {
       },
       async runDiagnostics() {
         const startupHealthy = !runtimeInfo.startupEnabled || runtimeInfo.startupCommandCurrent;
+        const quickSearchHealthy = !quickSearchShortcutState.enabled ||
+          quickSearchShortcutState.registered;
         const checks = [
           { id: "windows-recovery", label: "WINDOWS RECOVERY", status: "READY", detail: "Explorer and the native Windows taskbar are available.", verifiedFiles: 0 },
           { id: "taskbar-mode", label: "TASKBAR MODE", status: "READY", detail: `Requested ${taskbarModeState.requestedMode.toUpperCase()}; effective ${taskbarModeState.effectiveMode.toUpperCase()}.`, verifiedFiles: 0 },
           { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "5/5 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback.", verifiedFiles: 0 },
           { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "READY", detail: "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit.", verifiedFiles: 0 },
+          {
+            id: "global-quick-search-hotkey",
+            label: "GLOBAL QUICK SEARCH",
+            status: quickSearchHealthy ? "READY" : "ATTENTION",
+            detail: quickSearchShortcutState.enabled
+              ? "Ctrl+Alt+J is registered system-wide for the JARVIS local search HUD."
+              : "The system-wide shortcut is disabled in JARVIS Settings; desktop Ctrl+Space remains available.",
+            verifiedFiles: 0,
+          },
           { id: "native-window-appearance", label: "WINDOW APPEARANCE", status: "READY", detail: `${windowAppearanceState.effectiveMode.toUpperCase()} mode is active; event hooks, integrity guard, persistence, and DWM state tracking are ready.`, verifiedFiles: 0 },
           { id: "webview2", label: "WEBVIEW2 RUNTIME", status: "READY", detail: `Evergreen runtime ${runtimeInfo.webView2Version}.`, verifiedFiles: 0 },
           { id: "installation", label: "INSTALLATION MODE", status: "READY", detail: "Development mode does not require an installer registration.", verifiedFiles: 0 },
@@ -1310,6 +1385,14 @@ export function createMockPlatform() {
       },
       async showDesktop(options = {}) {
         return { shown: false, mock: true, ...options };
+      },
+    },
+    surface: {
+      async dismiss(restoreForeground = true) {
+        window.dispatchEvent(new CustomEvent("jarvis:mock-surface-dismissed", {
+          detail: { restoreForeground },
+        }));
+        return { dismissed: true, mock: true, restoreForeground };
       },
     },
   };

@@ -19,19 +19,22 @@ internal sealed partial class RuntimeDiagnosticsService
     private readonly RuntimeSnapshotFeed? _snapshotFeed;
     private readonly TaskbarModeService? _taskbarModeService;
     private readonly Func<TaskbarLifecycleSnapshot>? _taskbarLifecycleProvider;
+    private readonly QuickSearchShortcutSettingsService? _quickSearchShortcutSettings;
 
     public RuntimeDiagnosticsService(
         StartupRegistrationService startupRegistrationService,
         NativeWindowAppearanceService? windowAppearanceService = null,
         RuntimeSnapshotFeed? snapshotFeed = null,
         TaskbarModeService? taskbarModeService = null,
-        Func<TaskbarLifecycleSnapshot>? taskbarLifecycleProvider = null)
+        Func<TaskbarLifecycleSnapshot>? taskbarLifecycleProvider = null,
+        QuickSearchShortcutSettingsService? quickSearchShortcutSettings = null)
     {
         _startupRegistrationService = startupRegistrationService;
         _windowAppearanceService = windowAppearanceService;
         _snapshotFeed = snapshotFeed;
         _taskbarModeService = taskbarModeService;
         _taskbarLifecycleProvider = taskbarLifecycleProvider;
+        _quickSearchShortcutSettings = quickSearchShortcutSettings;
     }
 
     public RuntimeInfoSnapshot CaptureRuntimeInfo()
@@ -87,6 +90,7 @@ internal sealed partial class RuntimeDiagnosticsService
         AddTaskbarModeCheck(checks);
         AddTaskbarSynchronizationCheck(checks);
         AddSafetyHotkeyCheck(checks);
+        AddQuickSearchHotkeyCheck(checks);
         AddNativeWindowAppearanceCheck(checks);
         AddWebView2Check(checks, runtime.WebView2Version);
         AddInstallationCheck(checks, runtime);
@@ -213,6 +217,55 @@ internal sealed partial class RuntimeDiagnosticsService
             hotkey.Registered
                 ? "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit."
                 : $"The system-wide safety shortcut is unavailable. {hotkey.FailureReason}",
+            0));
+    }
+
+    private void AddQuickSearchHotkeyCheck(ICollection<RuntimeDiagnosticCheck> checks)
+    {
+        if (_quickSearchShortcutSettings is null)
+        {
+            checks.Add(new RuntimeDiagnosticCheck(
+                "global-quick-search-hotkey",
+                "GLOBAL QUICK SEARCH",
+                DiagnosticStatus.Attention,
+                "Global Quick Search preference diagnostics are unavailable.",
+                0));
+            return;
+        }
+
+        var shortcut = _quickSearchShortcutSettings.GetState();
+        var configurationWarning = string.IsNullOrWhiteSpace(shortcut.ConfigurationWarning)
+            ? string.Empty
+            : $" {shortcut.ConfigurationWarning}";
+        string detail;
+        if (!shortcut.Enabled)
+        {
+            detail =
+                "The system-wide shortcut is disabled in JARVIS Settings; desktop Ctrl+Space remains available.";
+        }
+        else if (shortcut.Status.Equals("starting", StringComparison.Ordinal))
+        {
+            detail =
+                "The global Quick Search renderer is starting; shortcut registration is pending.";
+        }
+        else if (shortcut.Registered)
+        {
+            detail =
+                $"{shortcut.Shortcut} is registered system-wide for the JARVIS local search HUD.";
+        }
+        else
+        {
+            detail =
+                $"The system-wide search shortcut is unavailable. " +
+                $"{shortcut.FailureReason ?? "Windows did not register the shortcut."}";
+        }
+        checks.Add(new RuntimeDiagnosticCheck(
+            "global-quick-search-hotkey",
+            "GLOBAL QUICK SEARCH",
+            !shortcut.Enabled || shortcut.Registered
+                ? DiagnosticStatus.Ready
+                : DiagnosticStatus.Attention,
+            detail + configurationWarning,
             0));
     }
 
