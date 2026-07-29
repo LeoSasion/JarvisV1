@@ -45,9 +45,15 @@ internal sealed partial class RuntimeDiagnosticsService
                           new TaskbarModeState(
                               "native",
                               "native",
-                              "Taskbar mode diagnostics are unavailable.",
-                              HybridAvailable: false,
-                              SafeMode: IsSafeModeEnabled());
+                               "Taskbar mode diagnostics are unavailable.",
+                               HybridAvailable: false,
+                               SafeMode: IsSafeModeEnabled(),
+                               TransitionStatus: "fallback",
+                               TransitionGeneration: 0,
+                               TransitionReason: "diagnostics unavailable",
+                               RetryAllowed: false,
+                               RecoveryFailureCount: 0,
+                               RetryAfterUtc: null);
         var lifecycle = _taskbarLifecycleProvider?.Invoke() ??
                         new TaskbarLifecycleSnapshot(
                             "UNAVAILABLE",
@@ -174,13 +180,25 @@ internal sealed partial class RuntimeDiagnosticsService
         var fallback = !string.IsNullOrWhiteSpace(mode.FallbackReason);
         var detail =
             $"Requested {mode.RequestedMode.ToUpperInvariant()}; " +
-            $"effective {mode.EffectiveMode.ToUpperInvariant()}." +
+            $"effective {mode.EffectiveMode.ToUpperInvariant()}; " +
+            $"transition {mode.TransitionStatus.ToUpperInvariant()} " +
+            $"at generation {mode.TransitionGeneration}; " +
+            $"recovery failures {mode.RecoveryFailureCount}." +
             (lifecycle is null ? string.Empty : $" Lifecycle {lifecycle.State}, generation {lifecycle.Generation}.") +
+            (string.IsNullOrWhiteSpace(mode.TransitionReason)
+                ? string.Empty
+                : $" Reason: {mode.TransitionReason}.") +
+            (mode.RetryAfterUtc is { } retryAfterUtc
+                ? $" Retry after {retryAfterUtc:O}."
+                : string.Empty) +
             (fallback ? $" Fallback: {mode.FallbackReason}" : string.Empty);
+        var attention = fallback ||
+                        mode.TransitionStatus is "applying" or "cooldown" ||
+                        mode.RecoveryFailureCount > 0;
         checks.Add(new RuntimeDiagnosticCheck(
             "taskbar-mode",
             "TASKBAR MODE",
-            fallback ? DiagnosticStatus.Attention : DiagnosticStatus.Ready,
+            attention ? DiagnosticStatus.Attention : DiagnosticStatus.Ready,
             detail,
             0));
     }

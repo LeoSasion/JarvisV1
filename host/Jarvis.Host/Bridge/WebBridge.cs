@@ -353,6 +353,7 @@ internal sealed class WebBridge : IDisposable
             "taskbarMode.getState" => _taskbarModeService.GetState(),
             "taskbarMode.setMode" => _taskbarModeService.SetRequestedMode(
                 GetRequiredTaskbarMode(parameters)),
+            "taskbarMode.retry" => RetryTaskbarMode(),
             "quickSearchShortcut.getState" => GetQuickSearchShortcutState(),
             "quickSearchShortcut.setEnabled" => SetQuickSearchShortcutEnabled(
                 GetRequiredBoolean(parameters, "enabled")),
@@ -1389,6 +1390,20 @@ internal sealed class WebBridge : IDisposable
         }
 
         return mode!;
+    }
+
+    private TaskbarModeState RetryTaskbarMode()
+    {
+        try
+        {
+            return _taskbarModeService.RequestRetry();
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new BridgeFaultException(
+                "TASKBAR_RETRY_BLOCKED",
+                ex.Message);
+        }
     }
 
     private static string? GetRequestedPanel(JsonElement parameters)

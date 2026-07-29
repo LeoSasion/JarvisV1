@@ -35,8 +35,9 @@ function createStore(initialValue) {
 
 const WINDOW_APPEARANCE_MODES = new Set(["off", "conservative", "enhanced", "immersive"]);
 const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
+const TASKBAR_TRANSITION_STATUSES = new Set(["settled", "applying", "fallback", "cooldown"]);
 
-function normalizeTaskbarModeState(rawState = {}) {
+export function normalizeTaskbarModeState(rawState = {}) {
   const reportedRequestedMode = rawState.requestedMode ?? rawState.RequestedMode;
   const requestedMode = TASKBAR_MODES.has(reportedRequestedMode)
     ? reportedRequestedMode
@@ -46,12 +47,42 @@ function normalizeTaskbarModeState(rawState = {}) {
     ? reportedEffectiveMode
     : "native";
   const fallbackReason = rawState.fallbackReason ?? rawState.FallbackReason;
+  const reportedTransitionStatus =
+    rawState.transitionStatus ?? rawState.TransitionStatus;
+  const transitionStatus = TASKBAR_TRANSITION_STATUSES.has(reportedTransitionStatus)
+    ? reportedTransitionStatus
+    : effectiveMode === requestedMode
+      ? "settled"
+      : "fallback";
+  const transitionGeneration = Number(
+    rawState.transitionGeneration ?? rawState.TransitionGeneration,
+  );
+  const transitionReason = rawState.transitionReason ?? rawState.TransitionReason;
+  const recoveryFailureCount = Number(
+    rawState.recoveryFailureCount ?? rawState.RecoveryFailureCount,
+  );
+  const retryAfterValue = rawState.retryAfterUtc ?? rawState.RetryAfterUtc;
+  const retryAfterTimestamp = retryAfterValue ? Date.parse(retryAfterValue) : Number.NaN;
   return {
     requestedMode,
     effectiveMode,
     fallbackReason: fallbackReason ? String(fallbackReason) : null,
     hybridAvailable: Boolean(rawState.hybridAvailable ?? rawState.HybridAvailable),
     safeMode: Boolean(rawState.safeMode ?? rawState.SafeMode),
+    transitionStatus,
+    transitionGeneration: Number.isSafeInteger(transitionGeneration) &&
+      transitionGeneration >= 0
+      ? transitionGeneration
+      : 0,
+    transitionReason: transitionReason ? String(transitionReason) : null,
+    retryAllowed: Boolean(rawState.retryAllowed ?? rawState.RetryAllowed),
+    recoveryFailureCount: Number.isSafeInteger(recoveryFailureCount) &&
+      recoveryFailureCount >= 0
+      ? recoveryFailureCount
+      : 0,
+    retryAfterUtc: Number.isFinite(retryAfterTimestamp)
+      ? new Date(retryAfterTimestamp).toISOString()
+      : null,
     loading: false,
     error: null,
   };
@@ -63,6 +94,12 @@ function taskbarModeStatesEqual(left, right) {
     left.fallbackReason === right.fallbackReason &&
     left.hybridAvailable === right.hybridAvailable &&
     left.safeMode === right.safeMode &&
+    left.transitionStatus === right.transitionStatus &&
+    left.transitionGeneration === right.transitionGeneration &&
+    left.transitionReason === right.transitionReason &&
+    left.retryAllowed === right.retryAllowed &&
+    left.recoveryFailureCount === right.recoveryFailureCount &&
+    left.retryAfterUtc === right.retryAfterUtc &&
     left.loading === right.loading &&
     left.error === right.error;
 }
@@ -489,6 +526,12 @@ const taskbarModeStore = createStore({
   fallbackReason: null,
   hybridAvailable: false,
   safeMode: false,
+  transitionStatus: "settled",
+  transitionGeneration: 0,
+  transitionReason: "initial state",
+  retryAllowed: false,
+  recoveryFailureCount: 0,
+  retryAfterUtc: null,
   loading: true,
   error: null,
 });
@@ -643,8 +686,21 @@ function setTaskbarModeState(nextState) {
   }
 }
 
+export function shouldAcceptTaskbarModeState(current, nextState) {
+  if (nextState.transitionGeneration < current.transitionGeneration) {
+    return false;
+  }
+
+  return nextState.transitionGeneration !== current.transitionGeneration ||
+    current.transitionStatus === "applying" ||
+    nextState.transitionStatus !== "applying";
+}
+
 function publishTaskbarModeState(rawState) {
-  setTaskbarModeState(normalizeTaskbarModeState(rawState));
+  const nextState = normalizeTaskbarModeState(rawState);
+  if (shouldAcceptTaskbarModeState(taskbarModeStore.getSnapshot(), nextState)) {
+    setTaskbarModeState(nextState);
+  }
 }
 
 function reportTaskbarModeError(error) {
@@ -1110,6 +1166,23 @@ export async function setTaskbarMode(mode) {
 
   try {
     const result = await platform.taskbarMode.setMode(mode);
+    publishTaskbarModeState(result);
+    return taskbarModeStore.getSnapshot();
+  } catch (error) {
+    reportTaskbarModeError(error);
+    throw error;
+  }
+}
+
+export async function retryTaskbarMode() {
+  const current = taskbarModeStore.getSnapshot();
+  if (current.transitionStatus === "applying") {
+    throw new Error("A taskbar transition is already in progress.");
+  }
+
+  setTaskbarModeState({ ...current, loading: true, error: null });
+  try {
+    const result = await platform.taskbarMode.retry();
     publishTaskbarModeState(result);
     return taskbarModeStore.getSnapshot();
   } catch (error) {

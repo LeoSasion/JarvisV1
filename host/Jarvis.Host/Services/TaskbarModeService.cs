@@ -11,6 +11,14 @@ internal enum TaskbarMode
     Full
 }
 
+internal enum TaskbarTransitionStatus
+{
+    Settled,
+    Applying,
+    Fallback,
+    Cooldown
+}
+
 internal sealed class TaskbarModeService
 {
     private static readonly string SettingsPath = Path.Combine(
@@ -30,6 +38,10 @@ internal sealed class TaskbarModeService
     private string? _fallbackReason;
     private string? _configurationFallbackReason;
     private bool _hybridAvailable;
+    private TaskbarTransitionStatus _transitionStatus = TaskbarTransitionStatus.Settled;
+    private long _transitionGeneration;
+    private string? _transitionReason = "initial state";
+    private TaskbarRecoveryCircuitSnapshot _recovery;
 
     public TaskbarModeService()
     {
@@ -52,6 +64,8 @@ internal sealed class TaskbarModeService
     public event Action? RequestedModeChanged;
 
     public event Action<TaskbarModeState>? StateChanged;
+
+    public event Action? RetryRequested;
 
     public TaskbarMode RequestedMode
     {
@@ -96,6 +110,53 @@ internal sealed class TaskbarModeService
         if (changed)
         {
             RequestedModeChanged?.Invoke();
+            state = GetState();
+            StateChanged?.Invoke(state);
+        }
+
+        return state;
+    }
+
+    public TaskbarModeState BeginTransition(
+        long generation,
+        string reason,
+        TaskbarRecoveryCircuitSnapshot recovery)
+    {
+        if (generation <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(generation),
+                "Taskbar transition generations must be positive.");
+        }
+
+        TaskbarModeState state;
+        var changed = false;
+        lock (_gate)
+        {
+            if (generation <= _transitionGeneration)
+            {
+                return CreateState();
+            }
+
+            var normalizedReason = NormalizeTransitionReason(reason);
+            changed = _transitionGeneration != generation ||
+                      _transitionStatus != TaskbarTransitionStatus.Applying ||
+                      !string.Equals(
+                          _transitionReason,
+                          normalizedReason,
+                          StringComparison.Ordinal) ||
+                      _fallbackReason is not null ||
+                      _recovery != recovery;
+            _transitionGeneration = generation;
+            _transitionStatus = TaskbarTransitionStatus.Applying;
+            _transitionReason = normalizedReason;
+            _fallbackReason = null;
+            _recovery = recovery;
+            state = CreateState();
+        }
+
+        if (changed)
+        {
             StateChanged?.Invoke(state);
         }
 
@@ -103,26 +164,111 @@ internal sealed class TaskbarModeService
     }
 
     public TaskbarModeState ReportEffectiveMode(
+        long generation,
         TaskbarMode effectiveMode,
         bool hybridAvailable,
-        string? fallbackReason)
+        string? fallbackReason,
+        string transitionReason,
+        TaskbarRecoveryCircuitSnapshot recovery)
     {
         TaskbarModeState state;
         var changed = false;
         lock (_gate)
         {
+            if (generation != _transitionGeneration)
+            {
+                return CreateState();
+            }
+
             var normalizedFallbackReason = string.IsNullOrWhiteSpace(fallbackReason)
                 ? _configurationFallbackReason
                 : fallbackReason.Trim();
+            var normalizedTransitionReason = NormalizeTransitionReason(transitionReason);
+            var transitionStatus = ResolveTransitionStatus(
+                _requestedMode,
+                effectiveMode,
+                normalizedFallbackReason,
+                recovery);
             changed = _effectiveMode != effectiveMode ||
                       _hybridAvailable != hybridAvailable ||
                       !string.Equals(
                           _fallbackReason,
                           normalizedFallbackReason,
-                          StringComparison.Ordinal);
+                          StringComparison.Ordinal) ||
+                      _transitionStatus != transitionStatus ||
+                      !string.Equals(
+                          _transitionReason,
+                          normalizedTransitionReason,
+                          StringComparison.Ordinal) ||
+                      _recovery != recovery;
             _effectiveMode = effectiveMode;
             _hybridAvailable = hybridAvailable;
             _fallbackReason = normalizedFallbackReason;
+            _transitionStatus = transitionStatus;
+            _transitionReason = normalizedTransitionReason;
+            _recovery = recovery;
+            state = CreateState();
+        }
+
+        if (changed)
+        {
+            StateChanged?.Invoke(state);
+        }
+
+        return state;
+    }
+
+    public TaskbarModeState RequestRetry()
+    {
+        lock (_gate)
+        {
+            if (IsSafeModeEnabled())
+            {
+                throw new InvalidOperationException(
+                    "Taskbar retry is unavailable while native-taskbar safety mode is active.");
+            }
+
+            if (_transitionStatus == TaskbarTransitionStatus.Applying)
+            {
+                throw new InvalidOperationException(
+                    "A taskbar transition is already in progress.");
+            }
+
+            if (_recovery.RetryAfterUtc is { } retryAfterUtc &&
+                retryAfterUtc > DateTimeOffset.UtcNow)
+            {
+                throw new InvalidOperationException(
+                    $"Taskbar retry is cooling down until {retryAfterUtc:O}.");
+            }
+
+            if (_requestedMode == _effectiveMode)
+            {
+                throw new InvalidOperationException(
+                    "The requested taskbar mode is already active.");
+            }
+        }
+
+        RetryRequested?.Invoke();
+        var state = GetState();
+        StateChanged?.Invoke(state);
+        return state;
+    }
+
+    public TaskbarModeState ReportRecoverySnapshot(
+        long generation,
+        TaskbarRecoveryCircuitSnapshot recovery)
+    {
+        TaskbarModeState state;
+        var changed = false;
+        lock (_gate)
+        {
+            if (generation != _transitionGeneration)
+            {
+                return CreateState();
+            }
+
+            changed = _recovery != recovery;
+            _recovery = recovery;
             state = CreateState();
         }
 
@@ -156,18 +302,54 @@ internal sealed class TaskbarModeService
         }
     }
 
+    internal static TaskbarTransitionStatus ResolveTransitionStatus(
+        TaskbarMode requestedMode,
+        TaskbarMode effectiveMode,
+        string? fallbackReason,
+        TaskbarRecoveryCircuitSnapshot recovery) =>
+        recovery.IsOpen && requestedMode != TaskbarMode.Native
+            ? TaskbarTransitionStatus.Cooldown
+            : !string.IsNullOrWhiteSpace(fallbackReason) ||
+              effectiveMode != requestedMode
+                ? TaskbarTransitionStatus.Fallback
+                : TaskbarTransitionStatus.Settled;
+
     internal static TaskbarMode ResolveInitialMode(
         TaskbarMode? persistedMode,
         bool settingsFileExists) =>
         persistedMode ??
         (settingsFileExists ? TaskbarMode.Native : TaskbarMode.Full);
 
-    private TaskbarModeState CreateState() => new(
-        ToWireValue(_requestedMode),
-        ToWireValue(_effectiveMode),
-        _fallbackReason,
-        _hybridAvailable,
-        IsSafeModeEnabled());
+    private TaskbarModeState CreateState()
+    {
+        var safeMode = IsSafeModeEnabled();
+        var transitionStatus = _transitionStatus;
+        var retryAllowed = !safeMode &&
+                           transitionStatus != TaskbarTransitionStatus.Applying &&
+                           _requestedMode != _effectiveMode &&
+                           (_recovery.RetryAfterUtc is null ||
+                            _recovery.RetryAfterUtc <= DateTimeOffset.UtcNow);
+        if (transitionStatus == TaskbarTransitionStatus.Cooldown && retryAllowed)
+        {
+            transitionStatus = TaskbarTransitionStatus.Fallback;
+        }
+
+        return new TaskbarModeState(
+            ToWireValue(_requestedMode),
+            ToWireValue(_effectiveMode),
+            _fallbackReason,
+            _hybridAvailable,
+            safeMode,
+            transitionStatus.ToString().ToLowerInvariant(),
+            _transitionGeneration,
+            _transitionReason,
+            retryAllowed,
+            _recovery.FailureCount,
+            _recovery.RetryAfterUtc);
+    }
+
+    private static string NormalizeTransitionReason(string reason) =>
+        string.IsNullOrWhiteSpace(reason) ? "unspecified" : reason.Trim();
 
     private static TaskbarMode? LoadMode(out bool settingsFileExists)
     {
@@ -230,4 +412,10 @@ internal sealed record TaskbarModeState(
     string EffectiveMode,
     string? FallbackReason,
     bool HybridAvailable,
-    bool SafeMode);
+    bool SafeMode,
+    string TransitionStatus,
+    long TransitionGeneration,
+    string? TransitionReason,
+    bool RetryAllowed,
+    int RecoveryFailureCount,
+    DateTimeOffset? RetryAfterUtc);

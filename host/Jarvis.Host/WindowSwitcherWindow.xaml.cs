@@ -118,6 +118,14 @@ public partial class WindowSwitcherWindow : Window
         {
             await InitializeWebViewAsync();
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+            // A taskbar-mode change can intentionally release the prewarmed runtime.
+        }
+        catch (Exception) when (_isClosing || _shutdown.IsCancellationRequested)
+        {
+            // Observe an initialization failure that raced intentional runtime release.
+        }
         catch (Exception ex)
         {
             HostLog.Error("Window-switcher WebView2 initialization failed.", ex);
@@ -129,7 +137,9 @@ public partial class WindowSwitcherWindow : Window
     {
         var frontendDirectory = FrontendLocator.FindDistributionDirectory();
         var environment = await WebViewEnvironmentProvider.GetAsync();
+        _shutdown.Token.ThrowIfCancellationRequested();
         await WebView.EnsureCoreWebView2Async(environment);
+        _shutdown.Token.ThrowIfCancellationRequested();
         WebViewHostConfiguration.Apply(
             WebView.CoreWebView2,
             frontendDirectory,

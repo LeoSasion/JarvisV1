@@ -32,6 +32,8 @@ public partial class MainWindow : Window
     private readonly TrayStatusService _trayStatusService;
     private readonly SystemFeedService _systemFeedService;
     private readonly TaskbarLifecycleMachine _taskbarLifecycle = new();
+    private readonly TaskbarRebindEpoch _taskbarRebindEpoch = new();
+    private readonly TaskbarRecoveryCircuit _taskbarRecoveryCircuit = new();
     private readonly NativeWindowAppearanceService _windowAppearanceService;
     private GlobalSafetyHotkey? _safetyHotkey;
     private GlobalQuickSearchHotkey? _quickSearchHotkey;
@@ -42,7 +44,7 @@ public partial class MainWindow : Window
     private WindowSwitcherController? _windowSwitcherController;
     private QuickSearchWindow? _quickSearchWindow;
     private CancellationTokenSource? _taskbarRebindCancellation;
-    private long _taskbarGeneration;
+    private CancellationTokenSource? _taskbarStabilityCancellation;
     private bool _isClosing;
     private bool _diagnosticPanelShown;
     private bool _diagnosticWindowSwitcherShown;
@@ -60,6 +62,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _taskbarReplacement.ReplacementLost += OnTaskbarReplacementLost;
         _taskbarModeService.RequestedModeChanged += OnRequestedTaskbarModeChanged;
+        _taskbarModeService.RetryRequested += OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged += OnTaskbarModeStateChanged;
         _quickSearchShortcutSettings.EnabledChanged += OnQuickSearchShortcutPreferenceChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -79,8 +82,7 @@ public partial class MainWindow : Window
         }
         _windowSource = handle == IntPtr.Zero ? null : HwndSource.FromHwnd(handle);
         _windowSource?.AddHook(WindowProcedure);
-        if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var bounds) ||
-            !NativeDisplay.PositionWindow(this, bounds))
+        if (!TryPositionDesktopSurface(TaskbarMode.Native))
         {
             HostLog.Warning("The desktop host could not be fitted to the primary monitor bounds.");
         }
@@ -124,10 +126,7 @@ public partial class MainWindow : Window
                 _ = ShowWindow(handle, SwShowNoActivate);
             }
 
-            if (NativeDisplay.TryGetPrimaryMonitorBounds(out var bounds))
-            {
-                _ = NativeDisplay.PositionWindow(this, bounds);
-            }
+            _ = TryPositionDesktopSurface(ResolveDesktopSurfaceMode());
         });
     }
 
@@ -225,7 +224,7 @@ public partial class MainWindow : Window
             }
 
             _desktopReady = true;
-            EnsureWindowSwitcher();
+            ReconcileWindowSwitcherRuntime("desktop-ready");
             ReconcileGlobalQuickSearchShortcut();
             HostLog.Info("Desktop surface is ready; evaluating the requested taskbar mode.");
             QueueTaskbarRebind("desktop-ready", TimeSpan.Zero);
@@ -297,7 +296,7 @@ public partial class MainWindow : Window
     {
         if (_isClosing ||
             !_desktopReady ||
-            generation != Volatile.Read(ref _taskbarGeneration) ||
+            !_taskbarRebindEpoch.IsCurrent(generation) ||
             _taskbarWindow is not null)
         {
             return;
@@ -332,19 +331,22 @@ public partial class MainWindow : Window
         TaskbarMode mode,
         bool hybridAvailable)
     {
-        if (_isClosing || generation != Volatile.Read(ref _taskbarGeneration))
+        if (_isClosing || !_taskbarRebindEpoch.IsCurrent(generation))
         {
             return;
         }
 
         DisableTaskbarReplacement();
         SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "taskbar surface failed");
-        _taskbarModeService.ReportEffectiveMode(
+        ReportTaskbarOutcome(
+            generation,
             TaskbarMode.Native,
             hybridAvailable,
             mode == TaskbarMode.Hybrid
                 ? "The hybrid taskbar surface could not safely yield the native notification area."
-                : "The full replacement renderer did not become ready.");
+                : "The full replacement renderer did not become ready.",
+            "taskbar surface failed",
+            countFailure: true);
     }
 
     private async void OnTaskbarSurfaceReady(
@@ -353,7 +355,7 @@ public partial class MainWindow : Window
         bool hybridAvailable)
     {
         if (_isClosing ||
-            generation != Volatile.Read(ref _taskbarGeneration) ||
+            !_taskbarRebindEpoch.IsCurrent(generation) ||
             _taskbarWindow is null)
         {
             return;
@@ -363,7 +365,14 @@ public partial class MainWindow : Window
         {
             _taskbarWindow.Reveal();
             SetTaskbarLifecycleState(TaskbarLifecycleState.ReplacementActive, "hybrid surface ready");
-            _taskbarModeService.ReportEffectiveMode(TaskbarMode.Hybrid, hybridAvailable, null);
+            ReportTaskbarOutcome(
+                generation,
+                TaskbarMode.Hybrid,
+                hybridAvailable,
+                fallbackReason: null,
+                transitionReason: "hybrid surface ready",
+                countFailure: false);
+            ScheduleStableTaskbarSuccess(generation);
             HostLog.Info("JARVIS hybrid taskbar surface revealed; Explorer notification area remains active.");
             return;
         }
@@ -373,33 +382,183 @@ public partial class MainWindow : Window
         if (await _taskbarReplacement.ActivateAsync(taskbarHandle))
         {
             if (_isClosing ||
-                generation != Volatile.Read(ref _taskbarGeneration) ||
+                !_taskbarRebindEpoch.IsCurrent(generation) ||
                 _taskbarWindow is null)
             {
                 _taskbarReplacement.Restore();
                 return;
             }
 
+            if (!TryPositionDesktopSurface(TaskbarMode.Full))
+            {
+                DisableTaskbarReplacement();
+                SetTaskbarLifecycleState(
+                    TaskbarLifecycleState.NativeFallback,
+                    "full desktop positioning failed");
+                ReportTaskbarOutcome(
+                    generation,
+                    TaskbarMode.Native,
+                    hybridAvailable,
+                    fallbackReason: "The desktop host could not expand after the full replacement was activated.",
+                    transitionReason: "full desktop positioning failed",
+                    countFailure: true);
+                return;
+            }
+
             _taskbarWindow?.Reveal();
             SetTaskbarLifecycleState(TaskbarLifecycleState.ReplacementActive, "full surface ready");
-            _taskbarModeService.ReportEffectiveMode(TaskbarMode.Full, hybridAvailable, null);
+            ReportTaskbarOutcome(
+                generation,
+                TaskbarMode.Full,
+                hybridAvailable,
+                fallbackReason: null,
+                transitionReason: "full surface ready",
+                countFailure: false);
+            ScheduleStableTaskbarSuccess(generation);
             HostLog.Info("JARVIS taskbar surface revealed.");
         }
         else
         {
             DisableTaskbarReplacement();
             SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "full activation failed");
-            _taskbarModeService.ReportEffectiveMode(
+            ReportTaskbarOutcome(
+                generation,
                 TaskbarMode.Native,
                 hybridAvailable,
-                "The full replacement watchdog did not confirm a safe activation.");
+                "The full replacement watchdog did not confirm a safe activation.",
+                "full activation failed",
+                countFailure: true);
             HostLog.Warning("JARVIS taskbar surface remained concealed because activation was not confirmed.");
         }
     }
 
     private void OnTaskbarReplacementLost()
     {
+        _ = Dispatcher.BeginInvoke(HandleTaskbarReplacementLost);
+    }
+
+    private void HandleTaskbarReplacementLost()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        CancelTaskbarStabilityConfirmation();
+        var generation = _taskbarRebindEpoch.Current;
+        var recovery = _taskbarRecoveryCircuit.ReportFailure(DateTimeOffset.UtcNow);
+        SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "watchdog-lost");
+        _taskbarModeService.ReportEffectiveMode(
+            generation,
+            TaskbarMode.Native,
+            hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _),
+            fallbackReason: "The taskbar recovery watchdog exited unexpectedly.",
+            transitionReason: "watchdog-lost",
+            recovery: recovery);
+        if (recovery.IsOpen)
+        {
+            if (recovery.RetryAfterUtc is { } retryAfterUtc)
+            {
+                HostLog.Warning(
+                    $"Automatic taskbar reactivation is cooling down until {retryAfterUtc:O}.");
+            }
+
+            return;
+        }
+
         QueueTaskbarRebind("watchdog-lost", TimeSpan.FromMilliseconds(750));
+    }
+
+    private TaskbarModeState ReportTaskbarOutcome(
+        long generation,
+        TaskbarMode effectiveMode,
+        bool hybridAvailable,
+        string? fallbackReason,
+        string transitionReason,
+        bool countFailure)
+    {
+        if (!_taskbarRebindEpoch.IsCurrent(generation))
+        {
+            return _taskbarModeService.GetState();
+        }
+
+        if (countFailure)
+        {
+            CancelTaskbarStabilityConfirmation();
+        }
+
+        var recovery = countFailure
+            ? _taskbarRecoveryCircuit.ReportFailure(DateTimeOffset.UtcNow)
+            : _taskbarRecoveryCircuit.Capture(DateTimeOffset.UtcNow);
+        return _taskbarModeService.ReportEffectiveMode(
+            generation,
+            effectiveMode,
+            hybridAvailable,
+            fallbackReason,
+            transitionReason,
+            recovery);
+    }
+
+    private void ScheduleStableTaskbarSuccess(long generation)
+    {
+        CancelTaskbarStabilityConfirmation();
+        var cancellation = new CancellationTokenSource();
+        _taskbarStabilityCancellation = cancellation;
+        _ = ConfirmStableTaskbarSuccessAsync(generation, cancellation);
+    }
+
+    private async Task ConfirmStableTaskbarSuccessAsync(
+        long generation,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), cancellation.Token);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (_isClosing ||
+                    cancellation.IsCancellationRequested ||
+                    !_taskbarRebindEpoch.IsCurrent(generation) ||
+                    _taskbarLifecycle.State != TaskbarLifecycleState.ReplacementActive)
+                {
+                    return;
+                }
+
+                var recovery = _taskbarRecoveryCircuit.ReportStableSuccess();
+                _taskbarModeService.ReportRecoverySnapshot(generation, recovery);
+                HostLog.Info("Taskbar replacement remained stable for 30 seconds; recovery failures cleared.");
+            });
+        }
+        catch (OperationCanceledException) when (
+            cancellation.IsCancellationRequested ||
+            _isClosing ||
+            Dispatcher.HasShutdownStarted)
+        {
+            // A newer taskbar transition owns stability confirmation.
+        }
+        catch (InvalidOperationException) when (_isClosing || Dispatcher.HasShutdownStarted)
+        {
+            // The host dispatcher can reject the final stability callback during exit.
+        }
+        finally
+        {
+            if (ReferenceEquals(
+                    Interlocked.CompareExchange(
+                        ref _taskbarStabilityCancellation,
+                        null,
+                        cancellation),
+                    cancellation))
+            {
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void CancelTaskbarStabilityConfirmation()
+    {
+        var cancellation = Interlocked.Exchange(ref _taskbarStabilityCancellation, null);
+        cancellation?.Cancel();
+        cancellation?.Dispose();
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -408,7 +567,28 @@ public partial class MainWindow : Window
         QueueTaskbarRebind("display-settings-changed", TimeSpan.FromMilliseconds(900));
     }
 
-    private void EnsureWindowSwitcher()
+    private void ReconcileWindowSwitcherRuntime(string reason)
+    {
+        if (_isClosing || !_desktopReady)
+        {
+            return;
+        }
+
+        var state = _taskbarModeService.GetState();
+        var decision = WindowSwitcherRuntimePolicy.Evaluate(
+            _taskbarModeService.RequestedMode,
+            state.SafeMode,
+            IsWindowSwitcherDiagnosticEnabled());
+        if (!decision.ShouldExist)
+        {
+            ReleaseWindowSwitcher($"{reason}; {decision.Reason}");
+            return;
+        }
+
+        EnsureWindowSwitcher($"{reason}; {decision.Reason}");
+    }
+
+    private void EnsureWindowSwitcher(string reason)
     {
         if (_isClosing || _windowSwitcherWindow is not null)
         {
@@ -434,16 +614,31 @@ public partial class MainWindow : Window
         if (!_windowSwitcherController.Start())
         {
             HostLog.Warning("Native Alt+Tab remains active because the JARVIS hook did not start.");
-            _windowSwitcherController.Dispose();
-            _windowSwitcherController = null;
-            _windowSwitcherWindow.CloseFromHost();
-            _windowSwitcherWindow = null;
+            ReleaseWindowSwitcher("hook registration failed");
             return;
         }
 
         // Create the HWND and warm WebView2 while fully transparent. Input is not
         // intercepted until both this renderer and full taskbar replacement report ready.
         _windowSwitcherWindow.Show();
+        HostLog.Info($"JARVIS window-switcher runtime created ({reason}).");
+    }
+
+    private void ReleaseWindowSwitcher(string reason)
+    {
+        if (_windowSwitcherController is null && _windowSwitcherWindow is null)
+        {
+            return;
+        }
+
+        SetWindowSwitcherEnabled(false);
+        var controller = _windowSwitcherController;
+        var window = _windowSwitcherWindow;
+        _windowSwitcherController = null;
+        _windowSwitcherWindow = null;
+        controller?.Dispose();
+        window?.CloseFromHost();
+        HostLog.Info($"JARVIS window-switcher runtime released ({reason}).");
     }
 
     private void EnsureQuickSearch()
@@ -605,7 +800,7 @@ public partial class MainWindow : Window
     private async Task ShowDiagnosticWindowSwitcherAsync()
     {
         if (_diagnosticWindowSwitcherShown ||
-            Environment.GetEnvironmentVariable("JARVIS_WINDOW_SWITCHER_DIAGNOSTIC") != "1" ||
+            !IsWindowSwitcherDiagnosticEnabled() ||
             _windowSwitcherWindow?.IsReady != true)
         {
             return;
@@ -624,6 +819,9 @@ public partial class MainWindow : Window
         HostLog.Info("Opening persistent JARVIS window-switcher diagnostic surface.");
         await _windowSwitcherWindow.PresentAsync(state);
     }
+
+    private static bool IsWindowSwitcherDiagnosticEnabled() =>
+        Environment.GetEnvironmentVariable("JARVIS_WINDOW_SWITCHER_DIAGNOSTIC") == "1";
 
     private void OnPreviewDragOver(object sender, DragEventArgs e)
     {
@@ -668,7 +866,22 @@ public partial class MainWindow : Window
 
     private void OnRequestedTaskbarModeChanged()
     {
-        QueueTaskbarRebind("requested-mode-changed", TimeSpan.Zero);
+        CancelTaskbarStabilityConfirmation();
+        _ = _taskbarRecoveryCircuit.Reset();
+        QueueTaskbarRebind(
+            "requested-mode-changed",
+            TimeSpan.Zero,
+            () => ReconcileWindowSwitcherRuntime("requested-mode-changed"));
+    }
+
+    private void OnTaskbarRetryRequested()
+    {
+        CancelTaskbarStabilityConfirmation();
+        _ = _taskbarRecoveryCircuit.Reset();
+        QueueTaskbarRebind(
+            "manual-retry",
+            TimeSpan.Zero,
+            () => ReconcileWindowSwitcherRuntime("manual-retry"));
     }
 
     private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
@@ -721,6 +934,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        var generation = _taskbarRebindEpoch.Next();
+        CancelTaskbarStabilityConfirmation();
+        _taskbarModeService.BeginTransition(
+            generation,
+            reason,
+            _taskbarRecoveryCircuit.Capture(DateTimeOffset.UtcNow));
+        CancelPendingTaskbarRebind();
         _ = Dispatcher.BeginInvoke(() =>
         {
             if (_isClosing)
@@ -728,38 +948,53 @@ public partial class MainWindow : Window
                 return;
             }
 
-            Interlocked.Increment(ref _taskbarGeneration);
-            CancelPendingTaskbarRebind();
             SetTaskbarLifecycleState(TaskbarLifecycleState.Recovering, reason);
             DisableTaskbarReplacement();
             SetTaskbarLifecycleState(TaskbarLifecycleState.NativeVisible, reason);
-            _taskbarModeService.ReportEffectiveMode(
+            ReportTaskbarOutcome(
+                generation,
                 TaskbarMode.Native,
                 hybridAvailable: false,
-                $"The native taskbar is active during {reason}.");
+                fallbackReason: $"The native taskbar is active during {reason}.",
+                transitionReason: reason,
+                countFailure: false);
         });
     }
 
-    private void QueueTaskbarRebind(string reason, TimeSpan delay)
+    private void QueueTaskbarRebind(
+        string reason,
+        TimeSpan delay,
+        Action? prepare = null)
     {
         if (_isClosing)
         {
             return;
         }
 
-        var generation = Interlocked.Increment(ref _taskbarGeneration);
+        var generation = _taskbarRebindEpoch.Next();
+        CancelTaskbarStabilityConfirmation();
+        _taskbarModeService.BeginTransition(
+            generation,
+            reason,
+            _taskbarRecoveryCircuit.Capture(DateTimeOffset.UtcNow));
         var cancellation = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _taskbarRebindCancellation, cancellation);
         previous?.Cancel();
         previous?.Dispose();
         _ = Dispatcher.BeginInvoke(
-            () => _ = RebindTaskbarAsync(generation, reason, delay, cancellation.Token));
+            () => _ = RebindTaskbarAsync(
+                generation,
+                reason,
+                delay,
+                prepare,
+                cancellation.Token));
     }
 
     private async Task RebindTaskbarAsync(
         long generation,
         string reason,
         TimeSpan delay,
+        Action? prepare,
         CancellationToken cancellationToken)
     {
         try
@@ -771,7 +1006,13 @@ public partial class MainWindow : Window
 
             if (_isClosing ||
                 !_desktopReady ||
-                generation != Volatile.Read(ref _taskbarGeneration))
+                !_taskbarRebindEpoch.IsCurrent(generation))
+            {
+                return;
+            }
+
+            prepare?.Invoke();
+            if (_isClosing || !_taskbarRebindEpoch.IsCurrent(generation))
             {
                 return;
             }
@@ -779,28 +1020,47 @@ public partial class MainWindow : Window
             SetTaskbarLifecycleState(TaskbarLifecycleState.Rebinding, reason);
             DisableTaskbarReplacement();
 
-            if (!NativeDisplay.TryGetPrimaryMonitorBounds(out var desktopBounds) ||
-                !NativeDisplay.PositionWindow(this, desktopBounds))
+            var requestedMode = _taskbarModeService.RequestedMode;
+            if (!TryPositionDesktopSurface(TaskbarMode.Native))
             {
                 SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "desktop positioning failed");
-                _taskbarModeService.ReportEffectiveMode(
+                ReportTaskbarOutcome(
+                    generation,
                     TaskbarMode.Native,
                     hybridAvailable: false,
-                    "The desktop host could not be positioned on the primary monitor.");
+                    fallbackReason: "The desktop host could not be positioned on the primary monitor.",
+                    transitionReason: "desktop positioning failed",
+                    countFailure: true);
                 return;
             }
 
-            var requestedMode = _taskbarModeService.RequestedMode;
+            var recovery = _taskbarRecoveryCircuit.Capture(DateTimeOffset.UtcNow);
+            if (requestedMode != TaskbarMode.Native && recovery.IsOpen)
+            {
+                SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "recovery cooldown active");
+                _taskbarModeService.ReportEffectiveMode(
+                    generation,
+                    TaskbarMode.Native,
+                    hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _),
+                    fallbackReason: "Automatic taskbar replacement is paused after repeated failures.",
+                    transitionReason: "recovery cooldown active",
+                    recovery: recovery);
+                return;
+            }
+
             if (requestedMode == TaskbarMode.Native ||
                 Environment.GetEnvironmentVariable("JARVIS_KEEP_NATIVE_TASKBAR") == "1")
             {
                 SetTaskbarLifecycleState(TaskbarLifecycleState.NativeVisible, reason);
-                _taskbarModeService.ReportEffectiveMode(
+                ReportTaskbarOutcome(
+                    generation,
                     TaskbarMode.Native,
                     hybridAvailable: false,
-                    requestedMode == TaskbarMode.Native
+                    fallbackReason: requestedMode == TaskbarMode.Native
                         ? null
-                        : "JARVIS_KEEP_NATIVE_TASKBAR=1 keeps the native Windows taskbar active.");
+                        : "JARVIS_KEEP_NATIVE_TASKBAR=1 keeps the native Windows taskbar active.",
+                    transitionReason: reason,
+                    countFailure: false);
                 return;
             }
 
@@ -809,10 +1069,13 @@ public partial class MainWindow : Window
                 if (!NativeShellSurfaceService.TryCapture(out var shellSurface, out var failureReason))
                 {
                     SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "hybrid probe failed");
-                    _taskbarModeService.ReportEffectiveMode(
+                    ReportTaskbarOutcome(
+                        generation,
                         TaskbarMode.Native,
                         hybridAvailable: false,
-                        failureReason ?? "Explorer's notification area is unavailable.");
+                        fallbackReason: failureReason ?? "Explorer's notification area is unavailable.",
+                        transitionReason: "hybrid probe failed",
+                        countFailure: true);
                     return;
                 }
 
@@ -829,10 +1092,13 @@ public partial class MainWindow : Window
             if (!_taskbarReplacement.TryGetTargetBounds(out var taskbarBounds))
             {
                 SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "full target unavailable");
-                _taskbarModeService.ReportEffectiveMode(
+                ReportTaskbarOutcome(
+                    generation,
                     TaskbarMode.Native,
                     hybridAvailable: NativeShellSurfaceService.TryCapture(out _, out _),
-                    "The visible bottom-aligned primary taskbar is unavailable for full replacement.");
+                    fallbackReason: "The visible bottom-aligned primary taskbar is unavailable for full replacement.",
+                    transitionReason: "full target unavailable",
+                    countFailure: true);
                 return;
             }
 
@@ -850,13 +1116,21 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            if (!_taskbarRebindEpoch.IsCurrent(generation))
+            {
+                return;
+            }
+
             HostLog.Error($"Taskbar rebind failed after {reason}.", ex);
             DisableTaskbarReplacement();
             SetTaskbarLifecycleState(TaskbarLifecycleState.NativeFallback, "rebind exception");
-            _taskbarModeService.ReportEffectiveMode(
+            ReportTaskbarOutcome(
+                generation,
                 TaskbarMode.Native,
                 hybridAvailable: false,
-                "The taskbar lifecycle coordinator encountered an error and restored Windows.");
+                fallbackReason: "The taskbar lifecycle coordinator encountered an error and restored Windows.",
+                transitionReason: "rebind exception",
+                countFailure: true);
         }
     }
 
@@ -875,9 +1149,12 @@ public partial class MainWindow : Window
         {
             DisableTaskbarReplacement();
             _taskbarModeService.ReportEffectiveMode(
+                _taskbarRebindEpoch.Current,
                 TaskbarMode.Native,
                 hybridAvailable: false,
-                transition.Reason);
+                fallbackReason: transition.Reason,
+                transitionReason: "unsafe lifecycle transition",
+                recovery: _taskbarRecoveryCircuit.Capture(DateTimeOffset.UtcNow));
         }
 
         var effectiveState = transition.State;
@@ -898,7 +1175,7 @@ public partial class MainWindow : Window
 
     private TaskbarLifecycleSnapshot CaptureTaskbarLifecycle() => new(
         _taskbarLifecycle.State.ToString(),
-        Volatile.Read(ref _taskbarGeneration),
+        _taskbarRebindEpoch.Current,
         _taskbarWindow is not null,
         NativeTaskbarController.IsPrimaryVisible());
 
@@ -913,10 +1190,37 @@ public partial class MainWindow : Window
     {
         SetWindowSwitcherEnabled(false);
         _taskbarReplacement.Restore();
+        _ = TryPositionDesktopSurface(TaskbarMode.Native);
         var taskbarWindow = _taskbarWindow;
         _taskbarWindow = null;
         taskbarWindow?.Conceal();
         taskbarWindow?.CloseFromHost();
+    }
+
+    private TaskbarMode ResolveDesktopSurfaceMode()
+    {
+        var state = _taskbarModeService.GetState();
+        return _taskbarLifecycle.State == TaskbarLifecycleState.ReplacementActive &&
+               TaskbarModeService.TryParseMode(state.EffectiveMode, out var effectiveMode) &&
+               effectiveMode == TaskbarMode.Full
+            ? TaskbarMode.Full
+            : TaskbarMode.Native;
+    }
+
+    private bool TryPositionDesktopSurface(TaskbarMode effectiveMode)
+    {
+        if (!NativeDisplay.TryGetPrimaryMonitor(out var monitor))
+        {
+            return false;
+        }
+
+        var keepNativeTaskbar =
+            Environment.GetEnvironmentVariable("JARVIS_KEEP_NATIVE_TASKBAR") == "1";
+        var bounds = DesktopSurfacePlacementPolicy.Resolve(
+            monitor,
+            effectiveMode,
+            keepNativeTaskbar);
+        return NativeDisplay.PositionWindow(this, bounds);
     }
 
     private void ShowDesktop(string? panel)
@@ -997,13 +1301,15 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         _isClosing = true;
-        Interlocked.Increment(ref _taskbarGeneration);
+        _taskbarRebindEpoch.Invalidate();
         CancelPendingTaskbarRebind();
+        CancelTaskbarStabilityConfirmation();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         _taskbarReplacement.ReplacementLost -= OnTaskbarReplacementLost;
         _taskbarModeService.RequestedModeChanged -= OnRequestedTaskbarModeChanged;
+        _taskbarModeService.RetryRequested -= OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged -= OnTaskbarModeStateChanged;
         _quickSearchShortcutSettings.EnabledChanged -= OnQuickSearchShortcutPreferenceChanged;
         _windowSource?.RemoveHook(WindowProcedure);
@@ -1015,10 +1321,7 @@ public partial class MainWindow : Window
         _quickSearchHotkey = null;
         _quickSearchWindow?.CloseFromHost();
         _quickSearchWindow = null;
-        _windowSwitcherController?.Dispose();
-        _windowSwitcherController = null;
-        _windowSwitcherWindow?.CloseFromHost();
-        _windowSwitcherWindow = null;
+        ReleaseWindowSwitcher("host shutdown");
         // Restore third-party DWM values and remove the recovery snapshot before
         // asking the taskbar watchdog to finish its own recovery pass.
         _windowAppearanceService.Dispose();

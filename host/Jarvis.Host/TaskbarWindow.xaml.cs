@@ -266,6 +266,14 @@ public partial class TaskbarWindow : Window
             await InitializeWebViewAsync();
             HostLog.Info("Taskbar WebView2 initialization completed; awaiting navigation.");
         }
+        catch (OperationCanceledException) when (_healthShutdown.IsCancellationRequested)
+        {
+            // A rebind can intentionally close a concealed surface during prewarming.
+        }
+        catch (Exception) when (_isClosing || _healthShutdown.IsCancellationRequested)
+        {
+            // Observe an initialization failure that raced intentional surface release.
+        }
         catch (Exception ex)
         {
             HostLog.Error("Taskbar WebView2 initialization failed.", ex);
@@ -277,7 +285,9 @@ public partial class TaskbarWindow : Window
     {
         var frontendDirectory = FrontendLocator.FindDistributionDirectory();
         var environment = await WebViewEnvironmentProvider.GetAsync();
+        _healthShutdown.Token.ThrowIfCancellationRequested();
         await WebView.EnsureCoreWebView2Async(environment);
+        _healthShutdown.Token.ThrowIfCancellationRequested();
 
         WebViewHostConfiguration.Apply(
             WebView.CoreWebView2,
@@ -374,6 +384,7 @@ public partial class TaskbarWindow : Window
                 await _bridge.StartTelemetryAsync();
             }
 
+            _healthShutdown.Token.ThrowIfCancellationRequested();
             _healthTask ??= MonitorTaskbarSurfaceAsync(_healthShutdown.Token);
 
             if (!_reportedReady)
@@ -422,6 +433,11 @@ public partial class TaskbarWindow : Window
         }
         catch (Exception ex)
         {
+            if (_isClosing || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             HostLog.Error("Taskbar surface heartbeat failed.", ex);
             ReportFailure("TASKBAR HEARTBEAT FAILED");
         }

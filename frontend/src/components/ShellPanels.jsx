@@ -40,6 +40,7 @@ import {
   refreshNotificationHistory,
   removeWindowAppearanceRule,
   requestNotificationHistoryAccess,
+  retryTaskbarMode,
   setTrayMuted,
   setTrayVolume,
   setTaskbarMode,
@@ -81,6 +82,11 @@ import {
   groupStartMenuApplications,
 } from "../start-menu-model.js";
 import { normalizeProcessName } from "../taskbar-grouping.js";
+import {
+  canRetryTaskbarMode,
+  getTaskbarCooldownRemaining,
+  getTaskbarTransitionToast,
+} from "../taskbar-mode-model.js";
 import {
   getVisualThemeSnapshot,
   setVisualTheme,
@@ -1264,21 +1270,80 @@ function NativeIntegrationSettings({ onToast }) {
 function TaskbarModeSettings({ onToast }) {
   const state = useTaskbarModeState();
   const [pendingMode, setPendingMode] = useState(null);
+  const [retrying, setRetrying] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
+  const previousTransition = useRef({
+    generation: state.transitionGeneration,
+    status: state.transitionStatus,
+  });
   const selectedMode = pendingMode ?? state.requestedMode;
-  const busy = state.loading || pendingMode !== null;
+  const busy = state.loading ||
+    state.transitionStatus === "applying" ||
+    pendingMode !== null ||
+    retrying;
+  const retryAfterTimestamp = state.retryAfterUtc
+    ? Date.parse(state.retryAfterUtc)
+    : Number.NaN;
+  const cooldownRemaining = getTaskbarCooldownRemaining(
+    state.retryAfterUtc,
+    clock,
+  );
+  const modeMismatch = state.requestedMode !== state.effectiveMode;
+  const canRetry = canRetryTaskbarMode(state, busy, clock);
+
+  useEffect(() => {
+    const previous = previousTransition.current;
+    const toast = getTaskbarTransitionToast(previous, state);
+    if (toast) onToast?.(toast);
+    previousTransition.current = {
+      generation: state.transitionGeneration,
+      status: state.transitionStatus,
+    };
+  }, [
+    onToast,
+    state.effectiveMode,
+    state.transitionGeneration,
+    state.transitionStatus,
+  ]);
+
+  useEffect(() => {
+    if (!Number.isFinite(retryAfterTimestamp) ||
+        retryAfterTimestamp <= Date.now()) {
+      return undefined;
+    }
+
+    setClock(Date.now());
+    const timer = globalThis.setInterval(() => {
+      const now = Date.now();
+      setClock(now);
+      if (now >= retryAfterTimestamp) {
+        globalThis.clearInterval(timer);
+      }
+    }, 1000);
+    return () => globalThis.clearInterval(timer);
+  }, [retryAfterTimestamp]);
 
   const updateMode = async (mode) => {
     if (busy || mode === state.requestedMode) return;
     setPendingMode(mode);
     try {
-      const nextState = await setTaskbarMode(mode);
-      onToast?.(nextState.effectiveMode === mode
-        ? `任务栏模式已切换至 ${mode.toUpperCase()}`
-        : `任务栏已安全回退至 ${nextState.effectiveMode.toUpperCase()}`);
+      await setTaskbarMode(mode);
     } catch {
       // The shared taskbar-mode store exposes bridge failures inline.
     } finally {
       setPendingMode(null);
+    }
+  };
+
+  const retryMode = async () => {
+    if (!canRetry) return;
+    setRetrying(true);
+    try {
+      await retryTaskbarMode();
+    } catch {
+      // The shared taskbar-mode store exposes the structured rejection inline.
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -1324,12 +1389,18 @@ function TaskbarModeSettings({ onToast }) {
         </div>
       </fieldset>
 
-      <div className="window-appearance-telemetry" role="status" aria-live="polite">
+      <div className="window-appearance-telemetry is-taskbar" role="status" aria-live="polite">
         <span><small>请求模式 · REQUESTED</small><strong>{busy ? "APPLYING" : state.requestedMode.toUpperCase()}</strong></span>
         <span><small>实际模式 · EFFECTIVE</small><strong>{state.effectiveMode.toUpperCase()}</strong></span>
-        <span><small>混合探测 · HYBRID</small><strong>{state.hybridAvailable ? "AVAILABLE" : "UNVERIFIED"}</strong></span>
+        <span><small>事务状态 · TRANSITION</small><strong>{state.transitionStatus.toUpperCase()}</strong></span>
+        <span><small>恢复预算 · RECOVERY</small><strong>{state.recoveryFailureCount}/3 · G{state.transitionGeneration}</strong></span>
       </div>
 
+      {state.transitionReason ? (
+        <p className="window-appearance-feedback" role="status">
+          <PulseRegular /><span>当前事务：{state.transitionReason}</span>
+        </p>
+      ) : null}
       {state.safeMode ? (
         <p className="window-appearance-feedback is-fallback" role="status">
           <ShieldRegular /><span>安全模式已启用：JARVIS_KEEP_NATIVE_TASKBAR=1。</span>
@@ -1338,6 +1409,21 @@ function TaskbarModeSettings({ onToast }) {
       {state.fallbackReason ? (
         <p className="window-appearance-feedback is-fallback" role="status">
           <AlertRegular /><span>{state.fallbackReason}</span>
+          {modeMismatch ? (
+            <button
+              type="button"
+              className="taskbar-mode-retry"
+              disabled={!canRetry}
+              onClick={retryMode}
+            >
+              <ArrowClockwiseRegular />
+              {retrying
+                ? "RETRYING"
+                : cooldownRemaining > 0
+                  ? `RETRY ${cooldownRemaining}s`
+                  : `RETRY ${state.requestedMode.toUpperCase()}`}
+            </button>
+          ) : null}
         </p>
       ) : null}
       {state.error ? (

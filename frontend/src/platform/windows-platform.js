@@ -148,6 +148,7 @@ export function createWindowsPlatform(webview) {
     taskbarMode: {
       getState: () => request("taskbarMode.getState"),
       setMode: (mode) => request("taskbarMode.setMode", { mode }),
+      retry: () => request("taskbarMode.retry"),
     },
     quickSearchShortcut: {
       getState: () => request("quickSearchShortcut.getState"),

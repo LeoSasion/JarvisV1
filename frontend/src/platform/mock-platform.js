@@ -133,13 +133,19 @@ function persistMockTaskbarMode(mode) {
   }
 }
 
-function createMockTaskbarModeState(mode) {
+function createMockTaskbarModeState(mode, options = {}) {
   return {
     requestedMode: mode,
-    effectiveMode: mode,
-    fallbackReason: null,
+    effectiveMode: options.effectiveMode ?? mode,
+    fallbackReason: options.fallbackReason ?? null,
     hybridAvailable: true,
     safeMode: false,
+    transitionStatus: options.transitionStatus ?? "settled",
+    transitionGeneration: options.transitionGeneration ?? 0,
+    transitionReason: options.transitionReason ?? "mock state ready",
+    retryAllowed: options.retryAllowed ?? false,
+    recoveryFailureCount: options.recoveryFailureCount ?? 0,
+    retryAfterUtc: options.retryAfterUtc ?? null,
   };
 }
 
@@ -644,9 +650,49 @@ export function createMockPlatform() {
 
   let activeTransfer = null;
   let transferTimer = null;
+  let taskbarModeTimer = null;
 
   const emit = (eventName, data) => {
     eventListeners.get(eventName)?.forEach((listener) => listener(data));
+  };
+
+  const beginMockTaskbarTransition = (mode, reason) => {
+    if (taskbarModeTimer !== null) {
+      globalThis.clearTimeout(taskbarModeTimer);
+      taskbarModeTimer = null;
+    }
+
+    const generation = taskbarModeState.transitionGeneration + 1;
+    taskbarModeState = createMockTaskbarModeState(mode, {
+      effectiveMode: taskbarModeState.effectiveMode,
+      transitionStatus: "applying",
+      transitionGeneration: generation,
+      transitionReason: reason,
+    });
+    runtimeInfo = {
+      ...runtimeInfo,
+      requestedTaskbarMode: mode,
+      taskbarLifecycleState: "Rebinding",
+      taskbarGeneration: generation,
+    };
+    emit("taskbarMode.changed", { ...taskbarModeState });
+    taskbarModeTimer = globalThis.setTimeout(() => {
+      taskbarModeState = createMockTaskbarModeState(mode, {
+        transitionGeneration: generation,
+        transitionReason: `${mode} mock surface ready`,
+      });
+      runtimeInfo = {
+        ...runtimeInfo,
+        requestedTaskbarMode: mode,
+        effectiveTaskbarMode: mode,
+        taskbarFallbackReason: null,
+        taskbarLifecycleState: mode === "native" ? "NativeVisible" : "ReplacementActive",
+        taskbarGeneration: generation,
+      };
+      taskbarModeTimer = null;
+      emit("taskbarMode.changed", { ...taskbarModeState });
+    }, 120);
+    return { ...taskbarModeState };
   };
 
   const findMockSource = (path) => {
@@ -1160,18 +1206,24 @@ export function createMockPlatform() {
         }
 
         persistMockTaskbarMode(mode);
-        taskbarModeState = createMockTaskbarModeState(mode);
-        runtimeInfo = {
-          ...runtimeInfo,
-          requestedTaskbarMode: mode,
-          effectiveTaskbarMode: mode,
-          taskbarFallbackReason: null,
-          taskbarLifecycleState: mode === "native" ? "NativeVisible" : "ReplacementActive",
-          taskbarGeneration: runtimeInfo.taskbarGeneration + 1,
-        };
-        const state = { ...taskbarModeState };
-        emit("taskbarMode.changed", state);
-        return state;
+        return beginMockTaskbarTransition(mode, "mock requested-mode-changed");
+      },
+      async retry() {
+        if (taskbarModeState.transitionStatus === "applying") {
+          const error = new Error("A taskbar transition is already in progress.");
+          error.code = "TASKBAR_RETRY_BLOCKED";
+          throw error;
+        }
+        if (taskbarModeState.requestedMode === taskbarModeState.effectiveMode) {
+          const error = new Error("The requested taskbar mode is already active.");
+          error.code = "TASKBAR_RETRY_BLOCKED";
+          throw error;
+        }
+
+        return beginMockTaskbarTransition(
+          taskbarModeState.requestedMode,
+          "mock manual-retry",
+        );
       },
     },
     quickSearchShortcut: {
@@ -1355,7 +1407,13 @@ export function createMockPlatform() {
           quickSearchShortcutState.registered;
         const checks = [
           { id: "windows-recovery", label: "WINDOWS RECOVERY", status: "READY", detail: "Explorer and the native Windows taskbar are available.", verifiedFiles: 0 },
-          { id: "taskbar-mode", label: "TASKBAR MODE", status: "READY", detail: `Requested ${taskbarModeState.requestedMode.toUpperCase()}; effective ${taskbarModeState.effectiveMode.toUpperCase()}.`, verifiedFiles: 0 },
+          {
+            id: "taskbar-mode",
+            label: "TASKBAR MODE",
+            status: taskbarModeState.transitionStatus === "settled" ? "READY" : "ATTENTION",
+            detail: `Requested ${taskbarModeState.requestedMode.toUpperCase()}; effective ${taskbarModeState.effectiveMode.toUpperCase()}; transition ${taskbarModeState.transitionStatus.toUpperCase()} at generation ${taskbarModeState.transitionGeneration}; recovery failures ${taskbarModeState.recoveryFailureCount}.`,
+            verifiedFiles: 0,
+          },
           { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "5/5 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback.", verifiedFiles: 0 },
           { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "READY", detail: "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit.", verifiedFiles: 0 },
           {

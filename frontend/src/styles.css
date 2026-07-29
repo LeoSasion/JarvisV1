@@ -5853,6 +5853,10 @@ button.process-grid:hover {
   color: #e4b166;
 }
 
+.window-appearance-telemetry.is-taskbar {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .window-rule-editor,
 .window-compatibility {
   border-top: 1px solid rgba(27, 74, 103, 0.72);
@@ -6169,6 +6173,41 @@ button.process-grid:hover {
 
 .window-appearance-feedback.is-error svg {
   color: #ff8877;
+}
+
+.window-appearance-feedback:has(.taskbar-mode-retry) {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.taskbar-mode-retry {
+  min-height: 26px;
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid rgba(225, 158, 50, 0.58);
+  color: #e7ba6f;
+  background: rgba(4, 16, 25, 0.78);
+  font: 600 7.5px/1 Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+.taskbar-mode-retry svg {
+  width: 12px;
+  height: 12px;
+  color: currentColor !important;
+}
+
+.taskbar-mode-retry:hover:not(:disabled),
+.taskbar-mode-retry:focus-visible:not(:disabled) {
+  border-color: rgba(242, 190, 91, 0.9);
+  background: rgba(89, 56, 10, 0.28);
+}
+
+.taskbar-mode-retry:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 
 .runtime-switch {
