@@ -67,6 +67,10 @@ if ($LaunchSafeMode) {
             $launch.CloseMainWindow() | Out-Null
             if (-not $launch.WaitForExit(5000)) {
                 Stop-Process -Id $launch.Id -Force
+                if (-not $launch.WaitForExit(5000)) {
+                    $failure =
+                        "The safe-mode JARVIS process did not exit after forced cleanup."
+                }
             }
         }
         $env:JARVIS_KEEP_NATIVE_TASKBAR = $previous

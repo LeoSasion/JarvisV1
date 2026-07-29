@@ -7,8 +7,8 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 ## Current scope
 
 - Windows 10 and Windows 11 Home/Pro desktop environments
-- Full primary-taskbar replacement by default, with optional native and hybrid modes, running-window synchronization, and a recovery watchdog
-- Bounded HUD Alt+Tab switcher in healthy full mode, with native Windows fallback in hybrid, safe, secure-desktop, and renderer-failure paths
+- Full primary-taskbar replacement by default, with optional native and hybrid modes, fullscreen-aware reversible suppression, running-window synchronization, and a recovery watchdog
+- Current-virtual-desktop window scoping for the replacement taskbar and bounded HUD Alt+Tab switcher, with fail-open public-API fallback and native Windows fallback in hybrid, safe, secure-desktop, and renderer-failure paths
 - Current-user controlled `Ctrl+Alt+J` global local-search HUD with a disposable independent renderer and an allowlisted capability bridge
 - Explorer-owned notification area in hybrid mode, with automatic native fallback
 - Real Windows audio, network, and power state shared by the top bar, taskbar, and Quick Settings
@@ -67,6 +67,12 @@ dotnet run --project .\host\Jarvis.Host\Jarvis.Host.csproj
 ```
 
 Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md).
+
+If both JARVIS and its watchdog have already exited but Explorer's primary
+taskbar is still hidden after an interrupted development session, run
+`.\scripts\restore-native-taskbar.ps1`. The script refuses to act while any
+`Jarvis.Host` process is still running, so it cannot bypass an active recovery
+lease.
 
 Taskbar modes are stored per user. `native` preserves the complete Windows
 taskbar, `hybrid` yields the notification area to Explorer, and `full` hides the

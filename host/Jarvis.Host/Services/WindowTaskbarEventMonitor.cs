@@ -9,6 +9,7 @@ internal sealed class WindowTaskbarEventMonitor : IDisposable
     private const uint EventSystemMinimizeEnd = 0x0017;
     private const uint EventObjectCreate = 0x8000;
     private const uint EventObjectHide = 0x8003;
+    private const uint EventObjectLocationChange = 0x800B;
     private const uint EventObjectNameChange = 0x800C;
     private const uint EventObjectCloaked = 0x8017;
     private const uint EventObjectUncloaked = 0x8018;
@@ -20,6 +21,7 @@ internal sealed class WindowTaskbarEventMonitor : IDisposable
         (EventSystemForeground, EventSystemForeground),
         (EventSystemMinimizeStart, EventSystemMinimizeEnd),
         (EventObjectCreate, EventObjectHide),
+        (EventObjectLocationChange, EventObjectLocationChange),
         (EventObjectNameChange, EventObjectNameChange),
         (EventObjectCloaked, EventObjectUncloaked)
     ];

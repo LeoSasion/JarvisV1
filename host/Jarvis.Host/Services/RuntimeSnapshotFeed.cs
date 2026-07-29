@@ -101,7 +101,10 @@ internal sealed class RuntimeSnapshotFeed : IDisposable
                 _taskbarEventHookCount,
                 WindowTaskbarEventMonitor.ExpectedHookCount,
                 checked((int)TaskbarEventDebounce.TotalMilliseconds),
-                checked((int)RefreshInterval.TotalMilliseconds));
+                checked((int)RefreshInterval.TotalMilliseconds),
+                _taskbarService.VirtualDesktopFilteringAvailable,
+                _latest?.Taskbar.ExcludedVirtualDesktopWindowCount ?? 0,
+                _latest?.Taskbar.ForegroundFullscreen ?? false);
         }
     }
 
@@ -261,6 +264,9 @@ internal sealed class RuntimeSnapshotFeed : IDisposable
                 left.ForegroundWindowId,
                 right.ForegroundWindowId,
                 StringComparison.OrdinalIgnoreCase) ||
+            left.ForegroundFullscreen != right.ForegroundFullscreen ||
+            left.VirtualDesktopFilteringAvailable != right.VirtualDesktopFilteringAvailable ||
+            left.ExcludedVirtualDesktopWindowCount != right.ExcludedVirtualDesktopWindowCount ||
             left.Windows.Count != right.Windows.Count)
         {
             return false;
@@ -349,4 +355,7 @@ internal sealed record RuntimeTaskbarFeedDiagnostics(
     int EventHookCount,
     int ExpectedEventHookCount,
     int EventDebounceMilliseconds,
-    int PollingIntervalMilliseconds);
+    int PollingIntervalMilliseconds,
+    bool VirtualDesktopFilteringAvailable,
+    int ExcludedVirtualDesktopWindowCount,
+    bool ForegroundFullscreen);

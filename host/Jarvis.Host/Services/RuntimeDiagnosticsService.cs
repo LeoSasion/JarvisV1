@@ -139,10 +139,10 @@ internal sealed partial class RuntimeDiagnosticsService
         var available = feed.PollingActive || eventDriven;
         var status = !available
             ? DiagnosticStatus.Failed
-            : completeEventCoverage
+            : completeEventCoverage && feed.VirtualDesktopFilteringAvailable
                 ? DiagnosticStatus.Ready
                 : DiagnosticStatus.Attention;
-        var detail = completeEventCoverage
+        var synchronizationDetail = completeEventCoverage
             ? $"{feed.EventHookCount}/{feed.ExpectedEventHookCount} Windows event hooks are active with " +
               $"{feed.EventDebounceMilliseconds} ms coalescing; " +
               $"{feed.PollingIntervalMilliseconds} ms polling remains as recovery fallback."
@@ -153,6 +153,14 @@ internal sealed partial class RuntimeDiagnosticsService
                 ? $"Windows event hooks are unavailable; " +
                   $"{feed.PollingIntervalMilliseconds} ms polling fallback is active."
                 : "Neither Windows event hooks nor the polling fallback are active.";
+        var virtualDesktopDetail = feed.VirtualDesktopFilteringAvailable
+            ? $" Current virtual desktop filtering is active; " +
+              $"{feed.ExcludedVirtualDesktopWindowCount} off-desktop window(s) are omitted."
+            : " Current virtual desktop filtering is unavailable; window enumeration is fail-open.";
+        var fullscreenDetail = feed.ForegroundFullscreen
+            ? " A primary-monitor fullscreen foreground window is currently detected."
+            : " No primary-monitor fullscreen foreground window is currently detected.";
+        var detail = synchronizationDetail + virtualDesktopDetail + fullscreenDetail;
 
         checks.Add(new RuntimeDiagnosticCheck(
             "taskbar-synchronization",

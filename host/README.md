@@ -31,6 +31,14 @@ selected HWND through the existing taskbar service. Native and hybrid modes,
 safe mode, Ctrl+Alt+Tab, injected input, Win+Tab, renderer failure, and empty
 snapshots remain on the Windows switcher.
 
+When an ordinary foreground application covers the complete primary-monitor
+frame, JARVIS temporarily hides only its taskbar surface and chrome overlays.
+The replacement lease, renderer heartbeat, watchdog, and Explorer recovery
+state remain intact, so leaving F11 or borderless fullscreen reveals the same
+validated surface without rebinding WebView2 or flashing the native taskbar.
+Maximized work-area windows and fullscreen windows on secondary monitors do not
+suppress the primary JARVIS taskbar.
+
 The native taskbar is restored on normal exit, WebView failure, UI-thread crash,
 watchdog failure, UI hang, and forced host-process termination. On recovery the
 watchdog first hides the verified JARVIS taskbar HWND from outside the host, so a
@@ -74,6 +82,12 @@ Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to run the full-screen desktop
 host without hiding or overlaying the native taskbar. Native-window hooks and
 styling are also disabled. This is the recovery and development-safe mode.
 
+For development recovery only, if the host and its watchdog have both exited
+but `Shell_TrayWnd` remains hidden, run
+`..\scripts\restore-native-taskbar.ps1`. It refuses to reshow Explorer while any
+`Jarvis.Host` process is alive; use the global `Ctrl+Shift+Q` safety exit first
+and allow the watchdog to finish whenever possible.
+
 The replacement taskbar opens JARVIS-native Start, quick-settings, and
 notification panels on the desktop host. Start can filter and launch the
 explicitly allowlisted Windows applications or switch to a currently running
@@ -82,12 +96,21 @@ power-source, CPU, memory, and uptime status; its controls open the matching
 Windows Settings pages rather than mutating system settings directly.
 
 Running-window synchronization uses out-of-context Windows accessibility event
-hooks for foreground, create/destroy, show/hide, title, minimize, and cloak
-changes. Bursts are coalesced for 75 ms and refresh only the taskbar snapshot;
-the one-second full telemetry poll remains active as a recovery fallback. If all
-event hooks are unavailable, JARVIS continues in polling-only mode and reports
-that degraded state through runtime diagnostics. Dynamic application groups keep
-their first-seen order instead of following foreground-window Z-order.
+hooks for foreground, create/destroy, show/hide, location, title, minimize, and
+cloak changes. Bursts are coalesced for 75 ms and refresh only the taskbar
+snapshot; the one-second full telemetry poll remains active as a recovery
+fallback. If all event hooks are unavailable, JARVIS continues in polling-only
+mode and reports that degraded state through runtime diagnostics. Dynamic
+application groups keep their first-seen order instead of following
+foreground-window Z-order.
+
+Eligible taskbar windows are filtered through the documented
+`IVirtualDesktopManager::IsWindowOnCurrentVirtualDesktop` method. An explicit
+off-desktop result is omitted from both the taskbar and the JARVIS switcher, and
+task actions revalidate the same scope before activating, minimizing, or
+closing. COM activation or query failures fail open so API degradation cannot
+make all applications disappear. JARVIS does not call private Explorer virtual
+desktop services and does not create, switch, move, or remove desktops.
 
 Pinned taskbar items use Windows-style launch semantics: middle-click or
 Shift+click requests a new application instance instead of toggling the current
@@ -209,8 +232,10 @@ The host forwards WebView2's native Escape accelerator to the React document, so
 the command dialog can close without terminating the Windows host.
 
 The independent taskbar surface is served from
-`index.html?surface=taskbar`. It receives a `taskbar.snapshot` event every second
-and keeps fixed launchers synchronized with visible top-level Windows windows.
+`index.html?surface=taskbar`. It receives bounded `taskbar.snapshot` events from
+the event-driven runtime feed, with one-second polling retained as recovery, and
+keeps fixed launchers synchronized with current-desktop top-level Windows
+windows.
 
 Supported methods:
 

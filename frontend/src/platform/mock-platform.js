@@ -1414,7 +1414,7 @@ export function createMockPlatform() {
             detail: `Requested ${taskbarModeState.requestedMode.toUpperCase()}; effective ${taskbarModeState.effectiveMode.toUpperCase()}; transition ${taskbarModeState.transitionStatus.toUpperCase()} at generation ${taskbarModeState.transitionGeneration}; recovery failures ${taskbarModeState.recoveryFailureCount}.`,
             verifiedFiles: 0,
           },
-          { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "5/5 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback.", verifiedFiles: 0 },
+          { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "6/6 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback. Current virtual desktop filtering is active; 0 off-desktop windows are omitted. No primary-monitor fullscreen foreground window is currently detected.", verifiedFiles: 0 },
           { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "READY", detail: "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit.", verifiedFiles: 0 },
           {
             id: "global-quick-search-hotkey",

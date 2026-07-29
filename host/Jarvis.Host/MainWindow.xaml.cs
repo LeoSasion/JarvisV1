@@ -65,6 +65,7 @@ public partial class MainWindow : Window
         _taskbarModeService.RetryRequested += OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged += OnTaskbarModeStateChanged;
         _quickSearchShortcutSettings.EnabledChanged += OnQuickSearchShortcutPreferenceChanged;
+        _snapshotFeed.SnapshotAvailable += OnRuntimeSnapshotAvailable;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
@@ -128,6 +129,36 @@ public partial class MainWindow : Window
 
             _ = TryPositionDesktopSurface(ResolveDesktopSurfaceMode());
         });
+    }
+
+    private void OnRuntimeSnapshotAvailable(RuntimeTelemetrySnapshot snapshot)
+    {
+        if (_isClosing || !snapshot.TaskbarChanged)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                if (_isClosing)
+                {
+                    return;
+                }
+
+                var suppress =
+                    snapshot.Taskbar.ForegroundFullscreen &&
+                    _taskbarLifecycle.State == TaskbarLifecycleState.ReplacementActive;
+                _taskbarWindow?.SetFullscreenSuppressed(
+                    suppress,
+                    snapshot.Taskbar.ForegroundWindowId);
+            });
+        }
+        catch (InvalidOperationException) when (_isClosing)
+        {
+            // The dispatcher may stop while the final telemetry snapshot is being published.
+        }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -363,6 +394,10 @@ public partial class MainWindow : Window
 
         if (mode == TaskbarMode.Hybrid)
         {
+            var taskbarSnapshot = _snapshotFeed.GetTaskbarSnapshot();
+            _taskbarWindow.SetFullscreenSuppressed(
+                taskbarSnapshot.ForegroundFullscreen,
+                taskbarSnapshot.ForegroundWindowId);
             _taskbarWindow.Reveal();
             SetTaskbarLifecycleState(TaskbarLifecycleState.ReplacementActive, "hybrid surface ready");
             ReportTaskbarOutcome(
@@ -405,7 +440,11 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _taskbarWindow?.Reveal();
+            var taskbarSnapshot = _snapshotFeed.GetTaskbarSnapshot();
+            _taskbarWindow.SetFullscreenSuppressed(
+                taskbarSnapshot.ForegroundFullscreen,
+                taskbarSnapshot.ForegroundWindowId);
+            _taskbarWindow.Reveal();
             SetTaskbarLifecycleState(TaskbarLifecycleState.ReplacementActive, "full surface ready");
             ReportTaskbarOutcome(
                 generation,
@@ -1312,6 +1351,7 @@ public partial class MainWindow : Window
         _taskbarModeService.RetryRequested -= OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged -= OnTaskbarModeStateChanged;
         _quickSearchShortcutSettings.EnabledChanged -= OnQuickSearchShortcutPreferenceChanged;
+        _snapshotFeed.SnapshotAvailable -= OnRuntimeSnapshotAvailable;
         _windowSource?.RemoveHook(WindowProcedure);
         _windowSource = null;
         _bridge?.Dispose();
@@ -1331,6 +1371,7 @@ public partial class MainWindow : Window
         _systemFeedService.Dispose();
         _trayStatusService.Dispose();
         _snapshotFeed.Dispose();
+        _taskbarService.Dispose();
         _audioEndpointService.Dispose();
         _terminalSessionService.Dispose();
         _shellService.Dispose();

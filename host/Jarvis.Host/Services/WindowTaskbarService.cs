@@ -9,17 +9,20 @@ using Jarvis.Host.Bridge;
 
 namespace Jarvis.Host.Services;
 
-internal sealed class WindowTaskbarService
+internal sealed class WindowTaskbarService : IDisposable
 {
     private const int MaxIconCacheEntries = 128;
+    private const int GwlStyle = -16;
     private const int GwlExStyle = -20;
     private const int GclpHicon = -14;
     private const int GclpHiconSmall = -34;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExAppWindow = 0x00040000L;
+    private const long WsMaximize = 0x01000000L;
     private const int SwMinimize = 6;
     private const int SwRestore = 9;
     private const uint DwmwaCloaked = 14;
+    private const uint DwmwaExtendedFrameBounds = 9;
     private const uint WmGetIcon = 0x007F;
     private const uint WmClose = 0x0010;
     private const nuint IconSmall = 0;
@@ -33,6 +36,7 @@ internal sealed class WindowTaskbarService
     private const uint MaxAppUserModelIdLength = 512;
 
     private readonly object _iconCacheLock = new();
+    private readonly VirtualDesktopWindowFilter _virtualDesktopFilter = new();
     private readonly Dictionary<string, string> _iconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, ProcessIconCacheEntry> _processIconCache = new();
     private readonly Dictionary<int, ProcessApplicationCacheEntry> _processApplicationCache = new();
@@ -40,13 +44,23 @@ internal sealed class WindowTaskbarService
     public WindowTaskbarSnapshot Capture()
     {
         var foreground = GetForegroundWindow();
+        var foregroundFullscreen = IsFullscreenOnPrimaryMonitor(foreground);
         var windows = new List<TaskbarWindowSnapshot>();
+        var excludedVirtualDesktopWindows = 0;
 
         _ = EnumWindows((window, _) =>
         {
-            if (TryCaptureWindow(window, foreground, out var snapshot))
+            if (TryCaptureWindow(
+                    window,
+                    foreground,
+                    out var snapshot,
+                    out var virtualDesktopMembership))
             {
                 windows.Add(snapshot);
+            }
+            else if (virtualDesktopMembership == VirtualDesktopMembership.Other)
+            {
+                excludedVirtualDesktopWindows++;
             }
 
             return true;
@@ -56,8 +70,13 @@ internal sealed class WindowTaskbarService
 
         return new WindowTaskbarSnapshot(
             windows,
-            foreground == IntPtr.Zero ? null : FormatWindowId(foreground));
+            foreground == IntPtr.Zero ? null : FormatWindowId(foreground),
+            ForegroundFullscreen: foregroundFullscreen,
+            VirtualDesktopFilteringAvailable: _virtualDesktopFilter.IsAvailable,
+            ExcludedVirtualDesktopWindowCount: excludedVirtualDesktopWindows);
     }
+
+    public bool VirtualDesktopFilteringAvailable => _virtualDesktopFilter.IsAvailable;
 
     public WindowToggleResult Toggle(string windowId)
     {
@@ -130,10 +149,18 @@ internal sealed class WindowTaskbarService
     private bool TryCaptureWindow(
         IntPtr window,
         IntPtr foreground,
-        out TaskbarWindowSnapshot snapshot)
+        out TaskbarWindowSnapshot snapshot,
+        out VirtualDesktopMembership virtualDesktopMembership)
     {
         snapshot = null!;
+        virtualDesktopMembership = VirtualDesktopMembership.Unavailable;
         if (!TryGetEligibleProcessId(window, out var processId))
+        {
+            return false;
+        }
+
+        virtualDesktopMembership = _virtualDesktopFilter.Query(window);
+        if (!VirtualDesktopScopePolicy.ShouldInclude(virtualDesktopMembership))
         {
             return false;
         }
@@ -163,6 +190,72 @@ internal sealed class WindowTaskbarService
         {
             return false;
         }
+    }
+
+    private static bool IsFullscreenOnPrimaryMonitor(IntPtr window)
+    {
+        if (window == IntPtr.Zero ||
+            IsIconic(window) ||
+            !IsWindowVisible(window) ||
+            IsCloaked(window) ||
+            !NativeDisplay.TryGetMonitorForWindow(window, out var monitor))
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(window, out var processId);
+        if (processId == 0 || processId == Environment.ProcessId)
+        {
+            return false;
+        }
+
+        var className = ReadClassName(window);
+        if (className is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "Progman" or "WorkerW")
+        {
+            return false;
+        }
+
+        if (!TryGetWindowFrameBounds(window, out var bounds))
+        {
+            return false;
+        }
+
+        return TaskbarFullscreenPolicy.ShouldSuppress(
+            bounds,
+            monitor,
+            windowVisible: true,
+            minimized: false,
+            windowMaximized: IsWindowMaximized(window));
+    }
+
+    private static bool IsWindowMaximized(IntPtr window)
+    {
+        var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
+        return IsZoomed(window) ||
+               (style & WsMaximize) == WsMaximize;
+    }
+
+    private static bool TryGetWindowFrameBounds(
+        IntPtr window,
+        out PixelRect bounds)
+    {
+        if (DwmGetWindowAttribute(
+                window,
+                DwmwaExtendedFrameBounds,
+                out NativeRect frame,
+                Marshal.SizeOf<NativeRect>()) != 0 &&
+            !GetWindowRect(window, out frame))
+        {
+            bounds = default;
+            return false;
+        }
+
+        bounds = new PixelRect(
+            frame.Left,
+            frame.Top,
+            frame.Right,
+            frame.Bottom);
+        return bounds.Width > 0 && bounds.Height > 0;
     }
 
     private static bool IsCloaked(IntPtr window)
@@ -303,10 +396,11 @@ internal sealed class WindowTaskbarService
         }
     }
 
-    private static bool TryResolveEligibleWindow(string windowId, out IntPtr window) =>
+    private bool TryResolveEligibleWindow(string windowId, out IntPtr window) =>
         TryParseWindowId(windowId, out window) &&
         IsWindow(window) &&
-        TryGetEligibleProcessId(window, out _);
+        TryGetEligibleProcessId(window, out _) &&
+        VirtualDesktopScopePolicy.ShouldInclude(_virtualDesktopFilter.Query(window));
 
     private static bool TryGetEligibleProcessId(IntPtr window, out uint processId)
     {
@@ -469,6 +563,17 @@ internal sealed class WindowTaskbarService
 
     private delegate bool EnumWindowsCallback(IntPtr window, IntPtr state);
 
+    public void Dispose()
+    {
+        _virtualDesktopFilter.Dispose();
+        lock (_iconCacheLock)
+        {
+            _iconCache.Clear();
+            _processIconCache.Clear();
+            _processApplicationCache.Clear();
+        }
+    }
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr state);
@@ -486,7 +591,15 @@ internal sealed class WindowTaskbarService
     private static extern bool IsIconic(IntPtr window);
 
     [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsZoomed(IntPtr window);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr window, out NativeRect rectangle);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
@@ -582,6 +695,22 @@ internal sealed class WindowTaskbarService
         out int value,
         int valueSize);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr window,
+        uint attribute,
+        out NativeRect value,
+        int valueSize);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct ShFileInfo
     {
@@ -602,7 +731,10 @@ internal sealed class WindowTaskbarService
 
 internal sealed record WindowTaskbarSnapshot(
     IReadOnlyList<TaskbarWindowSnapshot> Windows,
-    string? ForegroundWindowId);
+    string? ForegroundWindowId,
+    bool ForegroundFullscreen = false,
+    bool VirtualDesktopFilteringAvailable = false,
+    int ExcludedVirtualDesktopWindowCount = 0);
 
 internal sealed record TaskbarWindowSnapshot(
     string WindowId,

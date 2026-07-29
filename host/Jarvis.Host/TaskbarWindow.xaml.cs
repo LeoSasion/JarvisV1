@@ -49,6 +49,8 @@ public partial class TaskbarWindow : Window
     private bool _reportedReady;
     private bool _reportedFailure;
     private bool _surfaceRevealed;
+    private bool _fullscreenSuppressed;
+    private string? _fullscreenSourceWindowId;
 
     internal TaskbarWindow(
         PixelRect bounds,
@@ -92,6 +94,57 @@ public partial class TaskbarWindow : Window
     public void Reveal()
     {
         _surfaceRevealed = true;
+        ApplySurfaceVisibility();
+    }
+
+    public void Conceal()
+    {
+        _surfaceRevealed = false;
+        ApplySurfaceVisibility();
+    }
+
+    public void SetFullscreenSuppressed(
+        bool suppressed,
+        string? foregroundWindowId = null)
+    {
+        if (_fullscreenSuppressed == suppressed)
+        {
+            return;
+        }
+
+        var sourceWindowId = suppressed
+            ? foregroundWindowId
+            : _fullscreenSourceWindowId;
+        _fullscreenSuppressed = suppressed;
+        _fullscreenSourceWindowId = suppressed
+            ? foregroundWindowId
+            : null;
+        ApplySurfaceVisibility();
+        var source = string.IsNullOrWhiteSpace(sourceWindowId)
+            ? "unknown foreground"
+            : sourceWindowId;
+        HostLog.Info(suppressed
+            ? $"JARVIS taskbar surface suppressed for primary-monitor fullscreen foreground {source}."
+            : $"JARVIS taskbar surface restored after fullscreen foreground {source} ended.");
+    }
+
+    private bool ShouldShowSurface() =>
+        TaskbarSurfaceVisibilityPolicy.ShouldShow(
+            _surfaceRevealed,
+            _fullscreenSuppressed);
+
+    private void ApplySurfaceVisibility()
+    {
+        if (!ShouldShowSurface())
+        {
+            CloseTaskbarOverlays();
+            HideTaskbarFlyout();
+            IsHitTestVisible = false;
+            Opacity = 0;
+            Hide();
+            return;
+        }
+
         if (!IsVisible)
         {
             Show();
@@ -103,15 +156,6 @@ public partial class TaskbarWindow : Window
         _ = ShowDiagnosticFlyoutAfterSurfaceReadyAsync();
     }
 
-    public void Conceal()
-    {
-        _surfaceRevealed = false;
-        CloseTaskbarOverlays();
-        IsHitTestVisible = false;
-        Opacity = 0;
-        Hide();
-    }
-
     public void CloseFromHost()
     {
         _allowClose = true;
@@ -121,7 +165,7 @@ public partial class TaskbarWindow : Window
 
     private async Task ShowTaskbarOverlaysAsync()
     {
-        if (!_surfaceRevealed || _isClosing || WebView.CoreWebView2 is null)
+        if (!ShouldShowSurface() || _isClosing || WebView.CoreWebView2 is null)
         {
             return;
         }
@@ -147,7 +191,7 @@ public partial class TaskbarWindow : Window
                 metrics.Size <= 0 ||
                 metrics.ViewportWidth <= 0 ||
                 metrics.ViewportHeight <= 0 ||
-                !_surfaceRevealed ||
+                !ShouldShowSurface() ||
                 _isClosing)
             {
                 return;
@@ -189,7 +233,7 @@ public partial class TaskbarWindow : Window
                 HostLog.Warning("The taskbar launcher overlay could not be positioned.");
             }
         }
-        catch (InvalidOperationException) when (_isClosing || !_surfaceRevealed)
+        catch (InvalidOperationException) when (_isClosing || !ShouldShowSurface())
         {
             // The WebView or overlay may close while taskbar replacement is being restored.
         }
