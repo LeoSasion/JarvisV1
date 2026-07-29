@@ -1,6 +1,6 @@
 # JARVIS V1 R33-R38 Fullscreen and Virtual Desktop Plan
 
-Status: `IMPLEMENTED - AUTOMATED GATES PASSED`
+Status: `F11 CORRECTION IMPLEMENTED - INTERACTIVE RETEST PENDING`
 
 Baseline: `main @ 57ef7d1`
 
@@ -32,9 +32,10 @@ Primary references:
 - Classify fullscreen from the foreground window frame and its monitor bounds.
 - Allow a narrow DWM frame tolerance without treating an ordinary maximized
   work-area window as fullscreen.
-- Exclude both synchronized `IsZoomed` state and the earlier `WS_MAXIMIZE`
-  transition bit, because the native taskbar lease can temporarily expand an
-  ordinary maximized frame to the monitor bounds.
+- Exclude a maximized window only when it still has the standard caption and
+  resize-frame styles. Read both synchronized `IsZoomed` state and the earlier
+  `WS_MAXIMIZE` transition bit, but do not reject a borderless F11 window merely
+  because the browser retained either maximized marker.
 - Suppress only for a fullscreen foreground window on the primary monitor.
 - Keep invalid, minimized, shell-owned, secondary-monitor, and unmeasurable
   windows on the ordinary taskbar path.
@@ -103,8 +104,10 @@ Primary references:
 
 ## Validation result
 
-- Host Debug and Release builds: 0 warnings and 0 errors.
-- Host tests: 114 passed, 0 failed.
+- Host Debug tests and Release build passed after the F11 correction; the
+  Release build completed with 0 warnings and 0 errors.
+- Host tests after the correction: 119 passed, 0 failed, including retained
+  `IsZoomed` and `WS_MAXIMIZE` borderless-F11 regressions.
 - Frontend: format contract, ESLint, 51 tests, and Vite production build all
   passed.
 - Safe native lifecycle on Windows build 26200: `READY`; Explorer remained
@@ -125,5 +128,14 @@ Primary references:
   windows but could not make any non-Codex window foreground, even before
   JARVIS started. Therefore an unattended F11 enter/leave screenshot could not
   be obtained in this run. No production-only activation bypass was added;
-  interactive F11 confirmation remains a recommended follow-up on the built
+  interactive F11 confirmation was delegated to the user on the built
   executable.
+- User acceptance on 2026-07-29 found that F11 hid the top chrome but left the
+  JARVIS taskbar visible. The runtime log contained no fullscreen-suppression
+  event. The correction now distinguishes a standard framed maximized window
+  from a borderless F11 window whose browser retains `IsZoomed` or
+  `WS_MAXIMIZE`; deterministic regression coverage is included. A rebuilt
+  executable still requires one short interactive F11 retest.
+- Post-correction safe lifecycle verification returned `READY`: Explorer
+  remained alive, the native taskbar was visible before and after, and no
+  JARVIS process remained.

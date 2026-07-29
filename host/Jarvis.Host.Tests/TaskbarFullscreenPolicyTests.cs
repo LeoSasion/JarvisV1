@@ -19,7 +19,7 @@ public sealed class TaskbarFullscreenPolicyTests
             PrimaryMonitor,
             windowVisible: true,
             minimized: false,
-            windowMaximized: false));
+            standardMaximizedWindow: false));
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public sealed class TaskbarFullscreenPolicyTests
             PrimaryMonitor,
             windowVisible: true,
             minimized: false,
-            windowMaximized: false));
+            standardMaximizedWindow: false));
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class TaskbarFullscreenPolicyTests
             PrimaryMonitor,
             windowVisible: true,
             minimized: false,
-            windowMaximized: false));
+            standardMaximizedWindow: false));
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class TaskbarFullscreenPolicyTests
             PrimaryMonitor,
             windowVisible: true,
             minimized: false,
-            windowMaximized: true));
+            standardMaximizedWindow: true));
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public sealed class TaskbarFullscreenPolicyTests
             secondary,
             windowVisible: true,
             minimized: false,
-            windowMaximized: false));
+            standardMaximizedWindow: false));
     }
 
     [Theory]
@@ -88,7 +88,7 @@ public sealed class TaskbarFullscreenPolicyTests
             PrimaryMonitor,
             windowVisible,
             minimized,
-            windowMaximized: false));
+            standardMaximizedWindow: false));
     }
 
     [Fact]
@@ -99,6 +99,31 @@ public sealed class TaskbarFullscreenPolicyTests
             PrimaryMonitor,
             windowVisible: true,
             minimized: false,
-            windowMaximized: false));
+            standardMaximizedWindow: false));
+    }
+
+    [Theory]
+    [InlineData(true, TaskbarFullscreenPolicy.CaptionStyle | TaskbarFullscreenPolicy.ThickFrameStyle)]
+    [InlineData(false, TaskbarFullscreenPolicy.MaximizedStyle | TaskbarFullscreenPolicy.CaptionStyle | TaskbarFullscreenPolicy.ThickFrameStyle)]
+    public void StandardFramedMaximizedWindowsAreExcluded(
+        bool isZoomed,
+        long style)
+    {
+        Assert.True(TaskbarFullscreenPolicy.IsStandardMaximizedWindow(
+            isZoomed,
+            style));
+    }
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(true, TaskbarFullscreenPolicy.ThickFrameStyle)]
+    [InlineData(false, TaskbarFullscreenPolicy.MaximizedStyle)]
+    public void BorderlessF11WindowsAreNotExcludedWhenMaximizedStateIsRetained(
+        bool isZoomed,
+        long style)
+    {
+        Assert.False(TaskbarFullscreenPolicy.IsStandardMaximizedWindow(
+            isZoomed,
+            style));
     }
 }

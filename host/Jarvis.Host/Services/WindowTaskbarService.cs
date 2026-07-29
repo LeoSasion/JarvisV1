@@ -18,7 +18,6 @@ internal sealed class WindowTaskbarService : IDisposable
     private const int GclpHiconSmall = -34;
     private const long WsExToolWindow = 0x00000080L;
     private const long WsExAppWindow = 0x00040000L;
-    private const long WsMaximize = 0x01000000L;
     private const int SwMinimize = 6;
     private const int SwRestore = 9;
     private const uint DwmwaCloaked = 14;
@@ -225,14 +224,15 @@ internal sealed class WindowTaskbarService : IDisposable
             monitor,
             windowVisible: true,
             minimized: false,
-            windowMaximized: IsWindowMaximized(window));
+            standardMaximizedWindow: IsStandardMaximizedWindow(window));
     }
 
-    private static bool IsWindowMaximized(IntPtr window)
+    private static bool IsStandardMaximizedWindow(IntPtr window)
     {
         var style = GetWindowLongPtr(window, GwlStyle).ToInt64();
-        return IsZoomed(window) ||
-               (style & WsMaximize) == WsMaximize;
+        return TaskbarFullscreenPolicy.IsStandardMaximizedWindow(
+            IsZoomed(window),
+            style);
     }
 
     private static bool TryGetWindowFrameBounds(

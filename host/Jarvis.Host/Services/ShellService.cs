@@ -11,19 +11,19 @@ internal sealed partial class ShellService : IDisposable
 
     private static readonly IReadOnlyDictionary<string, string> AllowedApplications =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["calc.exe"] = "calc.exe",
-        ["code"] = "Code.exe",
-        ["code.exe"] = "Code.exe",
-        ["control.exe"] = "control.exe",
-        ["explorer.exe"] = "explorer.exe",
-        ["mspaint.exe"] = "mspaint.exe",
-        ["notepad.exe"] = "notepad.exe",
-        ["powershell.exe"] = "powershell.exe",
-        ["pwsh.exe"] = "pwsh.exe",
-        ["taskmgr.exe"] = "taskmgr.exe",
-        ["wt.exe"] = "wt.exe"
-    };
+        {
+            ["calc.exe"] = "calc.exe",
+            ["code"] = "Code.exe",
+            ["code.exe"] = "Code.exe",
+            ["control.exe"] = "control.exe",
+            ["explorer.exe"] = "explorer.exe",
+            ["mspaint.exe"] = "mspaint.exe",
+            ["notepad.exe"] = "notepad.exe",
+            ["powershell.exe"] = "powershell.exe",
+            ["pwsh.exe"] = "pwsh.exe",
+            ["taskmgr.exe"] = "taskmgr.exe",
+            ["wt.exe"] = "wt.exe"
+        };
 
     private readonly DesktopService _desktopService;
     private readonly StartMenuApplicationService _startMenuApplications = new();

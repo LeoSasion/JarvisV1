@@ -37,7 +37,10 @@ The replacement lease, renderer heartbeat, watchdog, and Explorer recovery
 state remain intact, so leaving F11 or borderless fullscreen reveals the same
 validated surface without rebinding WebView2 or flashing the native taskbar.
 Maximized work-area windows and fullscreen windows on secondary monitors do not
-suppress the primary JARVIS taskbar.
+suppress the primary JARVIS taskbar. A retained maximized-state flag alone does
+not disqualify fullscreen: JARVIS excludes only maximized windows that still
+have a standard caption and resize frame, allowing F11 borderless windows to
+hide the surface correctly.
 
 The native taskbar is restored on normal exit, WebView failure, UI-thread crash,
 watchdog failure, UI hang, and forced host-process termination. On recovery the
