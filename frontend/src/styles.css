@@ -2537,6 +2537,135 @@ button.process-grid:hover {
   animation: explorer-layer-in 160ms ease-out;
 }
 
+.explorer-context-menu {
+  position: absolute;
+  z-index: 245;
+  width: 272px;
+  padding: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(42, 155, 214, 0.86);
+  border-radius: 4px;
+  background:
+    linear-gradient(135deg, rgba(8, 53, 81, 0.18), transparent 44%),
+    rgba(1, 8, 16, 0.988);
+  box-shadow:
+    0 0 0 1px rgba(0, 28, 47, 0.96) inset,
+    0 14px 34px rgba(0, 0, 0, 0.56),
+    0 0 18px rgba(0, 132, 238, 0.2);
+  pointer-events: auto;
+}
+
+.explorer-context-menu::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  width: 62px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #32d2ff, transparent);
+  box-shadow: 0 0 8px rgba(34, 207, 255, 0.72);
+}
+
+.explorer-context-menu header {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 9px;
+  border-bottom: 1px solid rgba(31, 83, 117, 0.62);
+}
+
+.explorer-context-menu header strong {
+  color: #bcecff;
+  font: 600 9px/1 Bahnschrift, sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.explorer-context-menu header small {
+  overflow: hidden;
+  color: #50768f;
+  font: 7.5px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.07em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-context-menu__items {
+  padding-top: 4px;
+}
+
+.explorer-context-menu__items button {
+  width: 100%;
+  height: 36px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: #d0e2eb;
+  font-size: 11px;
+  text-align: left;
+}
+
+.explorer-context-menu__items button:hover:not(:disabled),
+.explorer-context-menu__items button:focus-visible {
+  outline: none;
+  border-color: rgba(34, 207, 255, 0.36);
+  background:
+    linear-gradient(90deg, rgba(0, 132, 238, 0.18), transparent 82%),
+    rgba(6, 34, 53, 0.82);
+  color: #effbff;
+}
+
+.explorer-context-menu__items button:disabled {
+  color: #49606f;
+  cursor: not-allowed;
+}
+
+.explorer-context-menu__items button.is-danger:not(:disabled) {
+  color: #efaa9f;
+}
+
+.explorer-context-menu__items button.is-danger:hover,
+.explorer-context-menu__items button.is-danger:focus-visible {
+  border-color: rgba(255, 103, 84, 0.4);
+  background:
+    linear-gradient(90deg, rgba(118, 28, 22, 0.32), transparent 82%),
+    rgba(43, 15, 17, 0.86);
+}
+
+.explorer-context-menu__items button svg {
+  width: 17px;
+  height: 17px;
+  color: #71c7ef;
+}
+
+.explorer-context-menu__items button.is-danger svg {
+  color: #e48072;
+}
+
+.explorer-context-menu__items button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-context-menu__items button kbd {
+  color: #55788f;
+  font: 7px/1 "Cascadia Mono", monospace;
+  letter-spacing: 0.04em;
+}
+
+.explorer-context-menu__separator {
+  height: 1px;
+  margin: 4px 9px;
+  background: linear-gradient(90deg, transparent, rgba(45, 112, 153, 0.72), transparent);
+}
+
 .jarvis-shell.has-external-taskbar .explorer-layer {
   bottom: 56px;
 }
@@ -3039,17 +3168,53 @@ button.process-grid:hover {
   letter-spacing: 0.11em;
 }
 
-.explorer-list-heading span,
+.explorer-list-heading > button,
 .explorer-entry > span {
   min-width: 0;
   padding-inline: 12px;
   border-right: 1px solid rgba(25, 54, 76, 0.5);
 }
 
-.explorer-list-heading span:last-child,
+.explorer-list-heading > button:last-child,
 .explorer-entry > span:last-child {
   border-right: 0;
   text-align: right;
+}
+
+.explorer-list-heading > button {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-block: 0;
+  border-left: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+
+.explorer-list-heading > button:last-child {
+  justify-content: flex-end;
+}
+
+.explorer-list-heading > button:hover,
+.explorer-list-heading > button:focus-visible,
+.explorer-list-heading > button.is-active {
+  outline: none;
+  background: linear-gradient(180deg, rgba(12, 67, 99, 0.44), transparent);
+  color: #8edcff;
+}
+
+.explorer-list-heading > button:focus-visible {
+  box-shadow: 0 -1px 0 #32d2ff inset;
+}
+
+.explorer-list-heading > button small {
+  color: #32d2ff;
+  font: 10px/1 "Cascadia Mono", monospace;
+  text-shadow: 0 0 7px rgba(34, 207, 255, 0.66);
 }
 
 .explorer-file-viewport {

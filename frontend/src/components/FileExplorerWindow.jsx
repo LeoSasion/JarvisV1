@@ -40,6 +40,7 @@ import {
 } from "react";
 import { platform } from "../platform/index.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
+import { ExplorerContextMenu } from "./ExplorerContextMenu.jsx";
 import {
   canReplaceAllConflicts,
   getTransferSummary,
@@ -58,15 +59,25 @@ import {
   getExplorerEscapeAction,
   getExplorerGridColumnCount,
   getExplorerKeyboardCommand,
+  getExplorerKeyboardSelection,
   getExplorerKeyboardTarget,
   getExplorerSearchSummary,
+  getExplorerSortTransition,
   normalizeExplorerAddress,
   normalizeExplorerSearchQuery,
   readExplorerPreferences,
   segmentExplorerSearchMatch,
   sortExplorerEntries,
+  toggleExplorerFocusedSelection,
   writeExplorerPreferences,
 } from "../explorer-interaction-model.js";
+import {
+  getExplorerContextMenuActions,
+  getExplorerContextMenuEstimatedHeight,
+  getExplorerContextMenuPosition,
+  isExplorerContextMenuTrigger,
+  resolveExplorerContextSelection,
+} from "../explorer-context-menu-model.js";
 
 const EMPTY_SNAPSHOT = {
   currentPath: "",
@@ -85,6 +96,13 @@ const locationIcons = {
   document: DocumentRegular,
   image: ImageRegular,
 };
+
+const EXPLORER_SORT_COLUMNS = Object.freeze([
+  { id: "name", label: "NAME" },
+  { id: "type", label: "TYPE" },
+  { id: "modified", label: "MODIFIED" },
+  { id: "size", label: "SIZE" },
+]);
 
 const entryIcons = {
   archive: ArchiveRegular,
@@ -388,6 +406,7 @@ export function FileExplorerWindow({
   const currentPathRef = useRef("");
   const addressRef = useRef(null);
   const searchRef = useRef(null);
+  const explorerLayerRef = useRef(null);
   const fileViewportRef = useRef(null);
   const entryRefs = useRef(new Map());
   const pendingSearchFocusPathRef = useRef(null);
@@ -402,6 +421,7 @@ export function FileExplorerWindow({
   const [transfer, setTransfer] = useState(null);
   const [operationBusy, setOperationBusy] = useState(null);
   const [operationNotice, setOperationNotice] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
   const [search, setSearch] = useState("");
   const [addressEditing, setAddressEditing] = useState(false);
   const [addressValue, setAddressValue] = useState("");
@@ -428,6 +448,7 @@ export function FileExplorerWindow({
     const nextSelection = options.selectPaths ?? [];
     setLoading(true);
     setError(null);
+    setContextMenu(null);
     try {
       const result = normalizeSnapshot(await platform.explorer.browse(path));
       if (requestId !== requestIdRef.current) return null;
@@ -460,6 +481,7 @@ export function FileExplorerWindow({
     if (!result) return;
     setOperationNotice(null);
     setCommandDialog(null);
+    setContextMenu(null);
     setPendingTransfer(null);
     setHistory((current) => {
       const prefix = current.slice(0, historyIndex + 1);
@@ -496,6 +518,7 @@ export function FileExplorerWindow({
     setError(null);
     setOperationNotice(null);
     setCommandDialog(null);
+    setContextMenu(null);
 
     browse(initialPath).then((result) => {
       if (cancelled || !result) return;
@@ -606,6 +629,10 @@ export function FileExplorerWindow({
       entry.typeLabel.toLocaleLowerCase().includes(deferredSearch)
     ));
   }, [deferredSearch, sortedEntries]);
+  const visiblePaths = useMemo(
+    () => visibleEntries.map((entry) => entry.path),
+    [visibleEntries],
+  );
 
   useEffect(() => {
     setFocusedPath((current) => {
@@ -643,6 +670,33 @@ export function FileExplorerWindow({
     () => selectedEntries.reduce((total, entry) => total + (entry.sizeBytes ?? 0), 0),
     [selectedEntries],
   );
+  const transferActive = Boolean(transfer && !isTransferTerminal(transfer.status));
+  const canPaste = Boolean(
+    clipboard?.paths.length &&
+    snapshot.currentPath &&
+    !transferActive,
+  );
+  const contextMenuActions = useMemo(
+    () => contextMenu
+      ? getExplorerContextMenuActions({
+          kind: contextMenu.kind,
+          selectionCount: contextMenu.paths.length,
+          hasCurrentPath: Boolean(snapshot.currentPath),
+          canPaste,
+          busy: Boolean(operationBusy),
+          transferActive,
+          loading,
+        })
+      : [],
+    [
+      canPaste,
+      contextMenu,
+      loading,
+      operationBusy,
+      snapshot.currentPath,
+      transferActive,
+    ],
+  );
 
   const openEntry = useCallback(async (entry) => {
     if (entry.isDirectory) {
@@ -667,6 +721,18 @@ export function FileExplorerWindow({
       onToast(`Unable to open Windows Explorer: ${openError.message}`);
     }
   }, [onToast, snapshot.currentPath]);
+
+  const showProperties = useCallback(async (entry) => {
+    if (!entry?.path) return;
+    try {
+      await platform.explorer.showProperties(entry.path);
+      onToast(platform.isNative
+        ? `Opened properties for ${entry.name}`
+        : `Properties requested for ${entry.name}`);
+    } catch (propertiesError) {
+      onToast(`Unable to open properties: ${propertiesError.message}`);
+    }
+  }, [onToast]);
 
   const selectEntry = useCallback((entry, event) => {
     const toggleSelection = event.ctrlKey || event.metaKey;
@@ -697,18 +763,52 @@ export function FileExplorerWindow({
     setSelectionAnchor(entry.path);
   }, [selectionAnchor, visibleEntries]);
 
-  const focusEntryAt = useCallback((index, additive = false) => {
-    const entry = visibleEntries[index];
-    if (!entry) return;
-    setFocusedPath(entry.path);
-    setSelectionAnchor(entry.path);
-    setSelectedPaths((current) => (
-      additive ? [...new Set([...current, entry.path])] : [entry.path]
-    ));
-    window.requestAnimationFrame(() => {
-      entryRefs.current.get(entry.path)?.focus();
+  const focusEntryAt = useCallback((index, modifiers = {}) => {
+    const nextSelection = getExplorerKeyboardSelection({
+      visiblePaths,
+      selectedPaths,
+      focusedPath,
+      selectionAnchor,
+      targetIndex: index,
+      extendSelection: Boolean(modifiers.extendSelection),
+      additiveSelection: Boolean(modifiers.additiveSelection),
+      focusOnly: Boolean(modifiers.focusOnly),
     });
-  }, [visibleEntries]);
+    if (!nextSelection.focusedPath) return;
+    setFocusedPath(nextSelection.focusedPath);
+    setSelectionAnchor(nextSelection.selectionAnchor);
+    setSelectedPaths(nextSelection.selectedPaths);
+    window.requestAnimationFrame(() => {
+      entryRefs.current.get(nextSelection.focusedPath)?.focus();
+    });
+  }, [
+    focusedPath,
+    selectedPaths,
+    selectionAnchor,
+    visiblePaths,
+  ]);
+
+  const toggleFocusedEntrySelection = useCallback(() => {
+    const nextSelection = toggleExplorerFocusedSelection({
+      visiblePaths,
+      selectedPaths,
+      focusedPath,
+      selectionAnchor,
+    });
+    if (!nextSelection.focusedPath) return;
+    setSelectionAnchor(nextSelection.selectionAnchor);
+    setSelectedPaths(nextSelection.selectedPaths);
+  }, [
+    focusedPath,
+    selectedPaths,
+    selectionAnchor,
+    visiblePaths,
+  ]);
+
+  const chooseSortKey = useCallback((requestedKey) => {
+    setExplorerPreferences((current) =>
+      getExplorerSortTransition(current, requestedKey));
+  }, [setExplorerPreferences]);
 
   const beginAddressEdit = useCallback(() => {
     setAddressValue(snapshot.currentPath);
@@ -739,8 +839,9 @@ export function FileExplorerWindow({
     await navigate(address);
   }, [addressValue, navigate, snapshot.currentPath]);
 
-  const copySelectedPaths = useCallback(async () => {
-    const text = formatExplorerCopyPath(selectedPaths);
+  const copySelectedPaths = useCallback(async (paths = selectedPaths) => {
+    const targetPaths = Array.isArray(paths) ? paths : selectedPaths;
+    const text = formatExplorerCopyPath(targetPaths);
     if (!text) {
       onToast("Select one or more items to copy their paths");
       return;
@@ -752,25 +853,26 @@ export function FileExplorerWindow({
       await navigator.clipboard.writeText(text);
       setOperationNotice({
         tone: "success",
-        message: `${selectedPaths.length} path${selectedPaths.length === 1 ? "" : "s"} copied`,
+        message: `${targetPaths.length} path${targetPaths.length === 1 ? "" : "s"} copied`,
       });
-      onToast(`Copied ${selectedPaths.length} path${selectedPaths.length === 1 ? "" : "s"}`);
+      onToast(`Copied ${targetPaths.length} path${targetPaths.length === 1 ? "" : "s"}`);
     } catch (clipboardError) {
       onToast(`Unable to copy path: ${clipboardError.message}`);
     }
   }, [onToast, selectedPaths]);
 
-  const copySelection = useCallback(async (mode) => {
-    if (selectedPaths.length === 0 || (transfer && !isTransferTerminal(transfer.status))) return;
-    const nextClipboard = { mode, paths: [...selectedPaths] };
+  const copySelection = useCallback(async (mode, paths = selectedPaths) => {
+    const targetPaths = Array.isArray(paths) ? paths : selectedPaths;
+    if (targetPaths.length === 0 || (transfer && !isTransferTerminal(transfer.status))) return;
+    const nextClipboard = { mode, paths: [...targetPaths] };
     try {
       await platform.clipboard.write(nextClipboard.paths, mode);
       setClipboard(nextClipboard);
       setOperationNotice({
         tone: "info",
-        message: `${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} ${mode === "copy" ? "copied" : "cut"} to Windows clipboard.`,
+        message: `${targetPaths.length} item${targetPaths.length === 1 ? "" : "s"} ${mode === "copy" ? "copied" : "cut"} to Windows clipboard.`,
       });
-      onToast(`${mode === "copy" ? "Copied" : "Cut"} ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"}`);
+      onToast(`${mode === "copy" ? "Copied" : "Cut"} ${targetPaths.length} item${targetPaths.length === 1 ? "" : "s"}`);
     } catch (clipboardError) {
       const message = `Windows clipboard unavailable: ${clipboardError.message}`;
       setOperationNotice({ tone: "error", message });
@@ -932,9 +1034,8 @@ export function FileExplorerWindow({
     });
   }, [operationBusy, snapshot.currentPath, transfer]);
 
-  const openRenameDialog = useCallback(() => {
-    if (selectedEntries.length !== 1 || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
-    const entry = selectedEntries[0];
+  const showRenameDialogForEntry = useCallback((entry) => {
+    if (!entry || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
     setCommandDialog({
       id: `rename-${entry.path}`,
       type: "rename",
@@ -945,22 +1046,31 @@ export function FileExplorerWindow({
       initialValue: entry.name,
       confirmLabel: "APPLY NAME",
     });
-  }, [operationBusy, selectedEntries, transfer]);
+  }, [operationBusy, transfer]);
 
-  const openRecycleDialog = useCallback(() => {
-    if (selectedEntries.length === 0 || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
-    const preview = selectedEntries.slice(0, 3).map((entry) => entry.name).join(", ");
-    const remaining = selectedEntries.length - Math.min(3, selectedEntries.length);
+  const openRenameDialog = useCallback(() => {
+    if (selectedEntries.length !== 1) return;
+    showRenameDialogForEntry(selectedEntries[0]);
+  }, [selectedEntries, showRenameDialogForEntry]);
+
+  const showRecycleDialogForEntries = useCallback((entries) => {
+    if (!entries?.length || operationBusy || (transfer && !isTransferTerminal(transfer.status))) return;
+    const preview = entries.slice(0, 3).map((entry) => entry.name).join(", ");
+    const remaining = entries.length - Math.min(3, entries.length);
     setCommandDialog({
       id: `recycle-${Date.now()}`,
       type: "recycle",
-      paths: selectedEntries.map((entry) => entry.path),
+      paths: entries.map((entry) => entry.path),
       title: "MOVE TO RECYCLE BIN",
       description: `${preview}${remaining > 0 ? ` and ${remaining} more` : ""} will remain recoverable from the Windows Recycle Bin.`,
       confirmLabel: "MOVE TO RECYCLE BIN",
       danger: true,
     });
-  }, [operationBusy, selectedEntries, transfer]);
+  }, [operationBusy, transfer]);
+
+  const openRecycleDialog = useCallback(() => {
+    showRecycleDialogForEntries(selectedEntries);
+  }, [selectedEntries, showRecycleDialogForEntries]);
 
   const confirmCommand = useCallback(async (value) => {
     if (!commandDialog) return;
@@ -1009,19 +1119,167 @@ export function FileExplorerWindow({
     }
   }, [commandDialog, runMutation, snapshot.currentPath]);
 
+  const closeExplorerContextMenu = useCallback((restoreFocus = false) => {
+    const closingMenu = contextMenu;
+    setContextMenu(null);
+    if (!restoreFocus || !closingMenu) return;
+    window.requestAnimationFrame(() => {
+      if (closingMenu.returnFocusPath) {
+        entryRefs.current.get(closingMenu.returnFocusPath)?.focus();
+      } else {
+        fileViewportRef.current?.focus();
+      }
+    });
+  }, [contextMenu]);
+
+  const openExplorerContextMenu = useCallback(({
+    kind,
+    paths,
+    clientX,
+    clientY,
+    returnFocusPath = null,
+  }) => {
+    const actions = getExplorerContextMenuActions({
+      kind,
+      selectionCount: paths.length,
+      hasCurrentPath: Boolean(snapshot.currentPath),
+      canPaste,
+      busy: Boolean(operationBusy),
+      transferActive,
+      loading,
+    });
+    const layerBounds = explorerLayerRef.current?.getBoundingClientRect();
+    const viewportPosition = getExplorerContextMenuPosition({
+      clientX: clientX - (layerBounds?.left ?? 0),
+      clientY: clientY - (layerBounds?.top ?? 0),
+      viewportWidth: layerBounds?.width ?? window.innerWidth,
+      viewportHeight: layerBounds?.height ?? window.innerHeight,
+      menuHeight: getExplorerContextMenuEstimatedHeight(actions),
+    });
+    setContextMenu({
+      id: `${kind}-${Date.now()}`,
+      kind,
+      paths,
+      returnFocusPath,
+      x: viewportPosition.x,
+      y: viewportPosition.y,
+    });
+  }, [
+    canPaste,
+    loading,
+    operationBusy,
+    snapshot.currentPath,
+    transferActive,
+  ]);
+
+  const openItemContextMenu = useCallback((entry, clientX, clientY) => {
+    const paths = resolveExplorerContextSelection(selectedPaths, entry.path);
+    setSelectedPaths(paths);
+    setSelectionAnchor(entry.path);
+    setFocusedPath(entry.path);
+    openExplorerContextMenu({
+      kind: "item",
+      paths,
+      clientX,
+      clientY,
+      returnFocusPath: entry.path,
+    });
+  }, [openExplorerContextMenu, selectedPaths]);
+
+  const openBackgroundContextMenu = useCallback((clientX, clientY) => {
+    setSelectedPaths([]);
+    setSelectionAnchor(null);
+    openExplorerContextMenu({
+      kind: "background",
+      paths: [],
+      clientX,
+      clientY,
+    });
+  }, [openExplorerContextMenu]);
+
+  const executeExplorerContextAction = useCallback(async (actionId) => {
+    if (!contextMenu) return;
+    const menu = contextMenu;
+    const entries = snapshot.entries.filter((entry) =>
+      menu.paths.includes(entry.path));
+    const singleEntry = entries.length === 1 ? entries[0] : null;
+    const opensDialog = actionId === "rename" ||
+      actionId === "recycle" ||
+      actionId === "new-folder";
+    closeExplorerContextMenu(!opensDialog);
+
+    if (actionId === "open" && singleEntry) {
+      await openEntry(singleEntry);
+    } else if (actionId === "open-in-windows") {
+      await openInWindows(singleEntry?.path ?? snapshot.currentPath);
+    } else if (actionId === "copy") {
+      await copySelection("copy", menu.paths);
+    } else if (actionId === "cut") {
+      await copySelection("move", menu.paths);
+    } else if (actionId === "copy-path") {
+      await copySelectedPaths(menu.paths);
+    } else if (actionId === "rename" && singleEntry) {
+      showRenameDialogForEntry(singleEntry);
+    } else if (actionId === "properties" && singleEntry) {
+      await showProperties(singleEntry);
+    } else if (actionId === "recycle") {
+      showRecycleDialogForEntries(entries);
+    } else if (actionId === "new-folder") {
+      openCreateDialog();
+    } else if (actionId === "paste") {
+      await pasteClipboard();
+    } else if (actionId === "refresh" && snapshot.currentPath) {
+      await browse(snapshot.currentPath, { clearSearch: false });
+    }
+  }, [
+    browse,
+    closeExplorerContextMenu,
+    contextMenu,
+    copySelectedPaths,
+    copySelection,
+    openCreateDialog,
+    openEntry,
+    openInWindows,
+    pasteClipboard,
+    showProperties,
+    showRecycleDialogForEntries,
+    showRenameDialogForEntry,
+    snapshot.currentPath,
+    snapshot.entries,
+  ]);
+
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const dismissOutside = (event) => {
+      if (event.target instanceof Element &&
+          event.target.closest(".explorer-context-menu")) return;
+      closeExplorerContextMenu(false);
+    };
+    const dismissOnResize = () => closeExplorerContextMenu(false);
+    window.addEventListener("pointerdown", dismissOutside, true);
+    window.addEventListener("resize", dismissOnResize);
+    return () => {
+      window.removeEventListener("pointerdown", dismissOutside, true);
+      window.removeEventListener("resize", dismissOnResize);
+    };
+  }, [closeExplorerContextMenu, contextMenu]);
+
   useEffect(() => {
     if (!open || !active) return undefined;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
         const action = getExplorerEscapeAction({
+          contextMenu,
           addressEditing,
           pendingTransfer,
           commandDialog,
           search,
           selectionCount: selectedPaths.length,
         });
-        if (action === "cancel-address") {
+        if (action === "close-context-menu") {
+          closeExplorerContextMenu(true);
+        } else if (action === "cancel-address") {
           setAddressEditing(false);
           setAddressValue(snapshot.currentPath);
         } else if (action === "cancel-transfer") {
@@ -1049,6 +1307,8 @@ export function FileExplorerWindow({
           searchRef.current?.select();
         } else if (explorerCommand === "copy-path") {
           void copySelectedPaths();
+        } else if (explorerCommand === "properties" && selectedEntry) {
+          void showProperties(selectedEntry);
         } else if (explorerCommand === "back" && historyIndex > 0) {
           void navigateHistory(historyIndex - 1);
         } else if (explorerCommand === "forward" && historyIndex < history.length - 1) {
@@ -1100,7 +1360,9 @@ export function FileExplorerWindow({
     beginAddressEdit,
     browse,
     clearExplorerSearch,
+    closeExplorerContextMenu,
     commandDialog,
+    contextMenu,
     copySelectedPaths,
     copySelection,
     active,
@@ -1118,6 +1380,8 @@ export function FileExplorerWindow({
     pendingTransfer,
     search,
     selectedPaths.length,
+    selectedEntry,
+    showProperties,
     snapshot.currentPath,
     snapshot.parentPath,
     visibleEntries,
@@ -1129,8 +1393,6 @@ export function FileExplorerWindow({
   const canGoForward = historyIndex >= 0 && historyIndex < history.length - 1;
   const hasSelection = selectedEntries.length > 0;
   const canRename = selectedEntries.length === 1;
-  const transferActive = Boolean(transfer && !isTransferTerminal(transfer.status));
-  const canPaste = Boolean(clipboard?.paths.length && snapshot.currentPath && !transferActive);
   const searchSummary = getExplorerSearchSummary(
     snapshot.entries.length,
     visibleEntries.length,
@@ -1138,7 +1400,7 @@ export function FileExplorerWindow({
   );
 
   return (
-    <div className="explorer-layer" aria-hidden={false}>
+    <div ref={explorerLayerRef} className="explorer-layer" aria-hidden={false}>
       <section className="jarvis-explorer" role="dialog" aria-modal="false" aria-label="JARVIS File Explorer">
         <header
           className="explorer-titlebar"
@@ -1241,10 +1503,7 @@ export function FileExplorerWindow({
               value={sortKey}
               aria-label="Sort folder contents"
               title="Sort folder contents"
-              onChange={(event) => setExplorerPreferences((current) => ({
-                ...current,
-                sortKey: event.target.value,
-              }))}
+              onChange={(event) => chooseSortKey(event.target.value)}
             >
               <option value="name">Name</option>
               <option value="type">Type</option>
@@ -1311,16 +1570,58 @@ export function FileExplorerWindow({
 
           <section className={`explorer-files is-${viewMode}`} aria-label="Folder contents">
             {viewMode === "list" ? (
-              <div className="explorer-list-heading" aria-hidden="true">
-                <span>NAME</span><span>TYPE</span><span>MODIFIED</span><span>SIZE</span>
+              <div className="explorer-list-heading" aria-label="Sortable file columns">
+                {EXPLORER_SORT_COLUMNS.map((column) => {
+                  const activeSort = sortKey === column.id;
+                  return (
+                    <button
+                      key={column.id}
+                      type="button"
+                      className={activeSort ? "is-active" : ""}
+                      aria-pressed={activeSort}
+                      aria-label={activeSort
+                        ? `${column.label}, sorted ${sortDirection}. Activate to sort ${sortDirection === "ascending" ? "descending" : "ascending"}.`
+                        : `Sort by ${column.label.toLocaleLowerCase()}.`}
+                      onClick={() => chooseSortKey(column.id)}
+                    >
+                      <span>{column.label}</span>
+                      {activeSort
+                        ? <small aria-hidden="true">{sortDirection === "ascending" ? "↑" : "↓"}</small>
+                        : null}
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 
             <div
               ref={fileViewportRef}
               className="explorer-file-viewport"
+              tabIndex={visibleEntries.length === 0 ? 0 : -1}
+              aria-keyshortcuts="Shift+F10"
               onDragOver={allowFileDrop}
               onDrop={(event) => dropFiles(event)}
+              onScroll={() => {
+                if (contextMenu) closeExplorerContextMenu(false);
+              }}
+              onContextMenu={(event) => {
+                if (event.target instanceof Element &&
+                    event.target.closest(".explorer-entry")) return;
+                event.preventDefault();
+                event.stopPropagation();
+                openBackgroundContextMenu(event.clientX, event.clientY);
+              }}
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget ||
+                    !isExplorerContextMenuTrigger(event)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const bounds = event.currentTarget.getBoundingClientRect();
+                openBackgroundContextMenu(
+                  bounds.left + Math.min(36, bounds.width / 2),
+                  bounds.top + Math.min(36, bounds.height / 2),
+                );
+              }}
               onClick={(event) => {
                 if (event.target === event.currentTarget) {
                   setSelectedPaths([]);
@@ -1354,11 +1655,21 @@ export function FileExplorerWindow({
                     className={`explorer-entry ${selected ? "is-selected" : ""} ${clipboardPathSet.has(entry.path) ? "is-cut" : ""}`}
                     title={entry.path}
                     aria-pressed={selected}
+                    aria-haspopup="menu"
                     tabIndex={focusedPath === entry.path ? 0 : -1}
                     draggable
                     onFocus={() => setFocusedPath(entry.path)}
                     onClick={(event) => selectEntry(entry, event)}
                     onDoubleClick={() => openEntry(entry)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openItemContextMenu(
+                        entry,
+                        event.clientX,
+                        event.clientY,
+                      );
+                    }}
                     onDragStart={(event) => {
                       const paths = selected && selectedPaths.length > 0
                         ? selectedPaths
@@ -1370,7 +1681,16 @@ export function FileExplorerWindow({
                       ? (event) => dropFiles(event, entry.path)
                       : undefined}
                     onKeyDown={(event) => {
-                      if ([
+                      if (isExplorerContextMenuTrigger(event)) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        openItemContextMenu(
+                          entry,
+                          bounds.left + Math.min(36, bounds.width / 2),
+                          bounds.top + Math.min(30, bounds.height / 2),
+                        );
+                      } else if ([
                         "ArrowLeft",
                         "ArrowRight",
                         "ArrowUp",
@@ -1379,6 +1699,7 @@ export function FileExplorerWindow({
                         "End",
                       ].includes(event.key)) {
                         event.preventDefault();
+                        const preserveSelection = event.ctrlKey || event.metaKey;
                         const columns = getExplorerGridColumnCount(
                           fileViewportRef.current?.clientWidth,
                           viewMode,
@@ -1390,8 +1711,21 @@ export function FileExplorerWindow({
                             event.key,
                             columns,
                           ),
-                          event.shiftKey,
+                          {
+                            extendSelection: event.shiftKey,
+                            additiveSelection: event.shiftKey &&
+                              preserveSelection,
+                            focusOnly: preserveSelection && !event.shiftKey,
+                          },
                         );
+                      } else if (
+                        event.key === " " &&
+                        (event.ctrlKey || event.metaKey) &&
+                        !event.altKey &&
+                        !event.shiftKey
+                      ) {
+                        event.preventDefault();
+                        toggleFocusedEntrySelection();
                       } else if (event.key === "Enter") {
                         event.preventDefault();
                         void openEntry(entry);
@@ -1493,6 +1827,14 @@ export function FileExplorerWindow({
           />
         ) : null}
       </section>
+      {contextMenu ? (
+        <ExplorerContextMenu
+          menu={contextMenu}
+          actions={contextMenuActions}
+          onAction={(actionId) => void executeExplorerContextAction(actionId)}
+          onDismiss={closeExplorerContextMenu}
+        />
+      ) : null}
     </div>
   );
 }

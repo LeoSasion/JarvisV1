@@ -16,6 +16,17 @@ export const quickSearchScopes = Object.freeze([
   Object.freeze({ id: "set", prefix: "set:", label: "SETTINGS", detail: "Windows settings" }),
 ]);
 
+export function isQuickSearchToggleShortcut(eventLike) {
+  return Boolean(
+    eventLike &&
+    !eventLike.defaultPrevented &&
+    (eventLike.ctrlKey || eventLike.metaKey) &&
+    !eventLike.altKey &&
+    !eventLike.shiftKey &&
+    eventLike.code === "Space",
+  );
+}
+
 export function getQuickSearchScopeShortcut(eventLike) {
   if (
     !eventLike ||

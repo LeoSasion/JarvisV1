@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createQuickSearchIndex,
   getQuickSearchScopeShortcut,
+  isQuickSearchToggleShortcut,
   normalizeSearchText,
   parseQuickSearchQuery,
   searchQuickIndex,
@@ -147,4 +148,30 @@ test("Quick Search scope shortcuts accept only unmodified Ctrl or Command digits
   assert.equal(getQuickSearchScopeShortcut({ key: "2", ctrlKey: true, shiftKey: true }), null);
   assert.equal(getQuickSearchScopeShortcut({ key: "3", altKey: true, ctrlKey: true }), null);
   assert.equal(getQuickSearchScopeShortcut({ key: "4" }), null);
+});
+
+test("Quick Search toggle yields to active controls and rejects modified variants", () => {
+  assert.equal(isQuickSearchToggleShortcut({
+    code: "Space",
+    ctrlKey: true,
+  }), true);
+  assert.equal(isQuickSearchToggleShortcut({
+    code: "Space",
+    metaKey: true,
+  }), true);
+  assert.equal(isQuickSearchToggleShortcut({
+    code: "Space",
+    ctrlKey: true,
+    defaultPrevented: true,
+  }), false);
+  assert.equal(isQuickSearchToggleShortcut({
+    code: "Space",
+    ctrlKey: true,
+    shiftKey: true,
+  }), false);
+  assert.equal(isQuickSearchToggleShortcut({
+    code: "Space",
+    ctrlKey: true,
+    altKey: true,
+  }), false);
 });

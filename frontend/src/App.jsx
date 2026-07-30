@@ -8,6 +8,7 @@ import { TelemetryRail } from "./components/TelemetryRail.jsx";
 import { TopStatusBar } from "./components/TopStatusBar.jsx";
 import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
 import { platform } from "./platform/index.js";
+import { isQuickSearchToggleShortcut } from "./quick-search.js";
 import { recordRecentApplication } from "./recent-applications.js";
 import {
   getVisibleInternalWindowIds,
@@ -121,7 +122,7 @@ export function App() {
 
   useEffect(() => {
     const handleShortcut = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.code === "Space") {
+      if (isQuickSearchToggleShortcut(event)) {
         event.preventDefault();
         setCommandOpen((current) => !current);
         return;

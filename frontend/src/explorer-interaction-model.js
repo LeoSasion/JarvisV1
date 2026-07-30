@@ -99,6 +99,7 @@ export function getExplorerSearchSummary(totalCount, visibleCount, query) {
 }
 
 export function getExplorerEscapeAction(state = {}) {
+  if (state.contextMenu) return "close-context-menu";
   if (state.addressEditing) return "cancel-address";
   if (state.pendingTransfer) return "cancel-transfer";
   if (state.commandDialog) return "cancel-dialog";
@@ -156,10 +157,122 @@ export function getExplorerKeyboardTarget(itemCount, currentIndex, key, columns 
   return safeIndex;
 }
 
+function uniqueExplorerPaths(paths) {
+  return [...new Set(
+    (Array.isArray(paths) ? paths : [])
+      .filter((path) => typeof path === "string" && path),
+  )];
+}
+
+export function getExplorerKeyboardSelection({
+  visiblePaths,
+  selectedPaths,
+  focusedPath,
+  selectionAnchor,
+  targetIndex,
+  extendSelection = false,
+  additiveSelection = false,
+  focusOnly = false,
+}) {
+  const visible = uniqueExplorerPaths(visiblePaths);
+  const selected = uniqueExplorerPaths(selectedPaths);
+  const targetPath = visible[targetIndex];
+  if (!targetPath) {
+    return Object.freeze({
+      focusedPath: visible.includes(focusedPath) ? focusedPath : null,
+      selectionAnchor: visible.includes(selectionAnchor)
+        ? selectionAnchor
+        : null,
+      selectedPaths: Object.freeze(selected),
+    });
+  }
+
+  const anchorPath = visible.includes(selectionAnchor)
+    ? selectionAnchor
+    : visible.includes(focusedPath)
+      ? focusedPath
+      : targetPath;
+
+  if (focusOnly) {
+    return Object.freeze({
+      focusedPath: targetPath,
+      selectionAnchor: anchorPath,
+      selectedPaths: Object.freeze(selected),
+    });
+  }
+
+  if (extendSelection) {
+    const anchorIndex = visible.indexOf(anchorPath);
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    const range = visible.slice(start, end + 1);
+    return Object.freeze({
+      focusedPath: targetPath,
+      selectionAnchor: anchorPath,
+      selectedPaths: Object.freeze(
+        additiveSelection
+          ? uniqueExplorerPaths([...selected, ...range])
+          : range,
+      ),
+    });
+  }
+
+  return Object.freeze({
+    focusedPath: targetPath,
+    selectionAnchor: targetPath,
+    selectedPaths: Object.freeze([targetPath]),
+  });
+}
+
+export function toggleExplorerFocusedSelection({
+  visiblePaths,
+  selectedPaths,
+  focusedPath,
+  selectionAnchor,
+}) {
+  const visible = uniqueExplorerPaths(visiblePaths);
+  const selected = uniqueExplorerPaths(selectedPaths);
+  if (!visible.includes(focusedPath)) {
+    return Object.freeze({
+      focusedPath: null,
+      selectionAnchor: visible.includes(selectionAnchor)
+        ? selectionAnchor
+        : null,
+      selectedPaths: Object.freeze(selected),
+    });
+  }
+  return Object.freeze({
+    focusedPath,
+    selectionAnchor: focusedPath,
+    selectedPaths: Object.freeze(
+      selected.includes(focusedPath)
+        ? selected.filter((path) => path !== focusedPath)
+        : [...selected, focusedPath],
+    ),
+  });
+}
+
+export function getExplorerSortTransition(preferences, requestedKey) {
+  const current = normalizeExplorerPreferences(preferences);
+  if (!SORT_KEYS.has(requestedKey)) return current;
+  const sortDirection = current.sortKey === requestedKey
+    ? current.sortDirection === "ascending" ? "descending" : "ascending"
+    : ["modified", "size"].includes(requestedKey)
+      ? "descending"
+      : "ascending";
+  return Object.freeze({
+    ...current,
+    sortKey: requestedKey,
+    sortDirection,
+  });
+}
+
 export function getExplorerKeyboardCommand(eventLike) {
   if (!eventLike) return null;
   const key = String(eventLike.key ?? "").toLocaleLowerCase();
-  if (eventLike.altKey && !eventLike.ctrlKey && !eventLike.metaKey) {
+  if (eventLike.altKey && !eventLike.ctrlKey && !eventLike.metaKey &&
+      !eventLike.shiftKey) {
+    if (key === "enter") return "properties";
     if (key === "arrowleft") return "back";
     if (key === "arrowright") return "forward";
     if (key === "arrowup") return "up";
