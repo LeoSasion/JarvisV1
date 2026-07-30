@@ -203,7 +203,7 @@ try {
     if (-not $closeRequested -or -not $hostProcess.WaitForExit(10000)) {
         Write-Warning 'The installed host did not accept a graceful close; forcing safe-mode test cleanup.'
         Stop-Process -Id $hostProcess.Id
-        $hostProcess.WaitForExit(10000)
+        $hostProcess.WaitForExit(10000) | Out-Null
     }
     $hostProcess = $null
 
@@ -222,7 +222,7 @@ try {
         ''
     }
     if ($newLog -notmatch 'Desktop surface navigation completed' -or
-        $newLog -notmatch 'safe mode is enabled' -or
+        $newLog -notmatch 'Taskbar lifecycle: Rebinding -> NativeVisible' -or
         $newLog -notmatch 'Native window appearance is inactive:.*JARVIS_KEEP_NATIVE_TASKBAR=1') {
         throw 'The installed host did not produce the expected WebView2 and safe-mode receipts.'
     }
@@ -302,7 +302,7 @@ finally {
 
     if ($null -ne $hostProcess -and -not $hostProcess.HasExited) {
         Stop-Process -Id $hostProcess.Id -ErrorAction SilentlyContinue
-        $hostProcess.WaitForExit(10000)
+        $hostProcess.WaitForExit(10000) | Out-Null
     }
 
     $uninstaller = Join-Path $installDirectory 'unins000.exe'

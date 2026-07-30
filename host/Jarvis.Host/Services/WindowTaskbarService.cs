@@ -36,6 +36,8 @@ internal sealed class WindowTaskbarService : IDisposable
 
     private readonly object _iconCacheLock = new();
     private readonly object _showDesktopLock = new();
+    private readonly object _fullscreenShortcutLock = new();
+    private readonly Dictionary<IntPtr, uint> _fullscreenShortcutWindows = new();
     private readonly VirtualDesktopWindowFilter _virtualDesktopFilter = new();
     private readonly Dictionary<string, string> _iconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, ProcessIconCacheEntry> _processIconCache = new();
@@ -80,6 +82,48 @@ internal sealed class WindowTaskbarService : IDisposable
     }
 
     public bool VirtualDesktopFilteringAvailable => _virtualDesktopFilter.IsAvailable;
+
+    public void ObserveFullscreenShortcut()
+    {
+        var window = GetForegroundWindow();
+        if (window == IntPtr.Zero || !IsWindow(window))
+        {
+            return;
+        }
+
+        _ = GetWindowThreadProcessId(window, out var processId);
+        if (processId == 0 || processId == Environment.ProcessId)
+        {
+            return;
+        }
+
+        lock (_fullscreenShortcutLock)
+        {
+            if (_fullscreenShortcutWindows.TryGetValue(window, out var existingProcessId) &&
+                existingProcessId == processId)
+            {
+                _fullscreenShortcutWindows.Remove(window);
+            }
+            else
+            {
+                _fullscreenShortcutWindows[window] = processId;
+            }
+        }
+    }
+
+    public void ObserveFullscreenExitShortcut()
+    {
+        var window = GetForegroundWindow();
+        if (window == IntPtr.Zero)
+        {
+            return;
+        }
+
+        lock (_fullscreenShortcutLock)
+        {
+            _fullscreenShortcutWindows.Remove(window);
+        }
+    }
 
     public WindowToggleResult Toggle(string windowId)
     {
@@ -367,7 +411,7 @@ internal sealed class WindowTaskbarService : IDisposable
         }
     }
 
-    private static bool IsFullscreenOnPrimaryMonitor(IntPtr window)
+    private bool IsFullscreenOnPrimaryMonitor(IntPtr window)
     {
         if (window == IntPtr.Zero ||
             IsIconic(window) ||
@@ -395,12 +439,38 @@ internal sealed class WindowTaskbarService : IDisposable
             return false;
         }
 
+        var standardMaximizedWindow = IsStandardMaximizedWindow(window);
+        var workAreaConstrainedFullscreen = HasObservedFullscreenShortcut(window);
+
         return TaskbarFullscreenPolicy.ShouldSuppress(
             bounds,
             monitor,
             windowVisible: true,
             minimized: false,
-            standardMaximizedWindow: IsStandardMaximizedWindow(window));
+            standardMaximizedWindow: standardMaximizedWindow,
+            workAreaConstrainedFullscreen: workAreaConstrainedFullscreen);
+    }
+
+    private bool HasObservedFullscreenShortcut(IntPtr window)
+    {
+        lock (_fullscreenShortcutLock)
+        {
+            if (!_fullscreenShortcutWindows.TryGetValue(window, out var expectedProcessId))
+            {
+                return false;
+            }
+
+            _ = GetWindowThreadProcessId(window, out var currentProcessId);
+            if (!IsWindow(window) ||
+                currentProcessId == 0 ||
+                currentProcessId != expectedProcessId)
+            {
+                _fullscreenShortcutWindows.Remove(window);
+                return false;
+            }
+
+            return true;
+        }
     }
 
     private static bool IsStandardMaximizedWindow(IntPtr window)
@@ -745,6 +815,11 @@ internal sealed class WindowTaskbarService : IDisposable
         {
             _showDesktopTargets = Array.Empty<ShowDesktopRestoreTarget>();
             _showDesktopRestoreJarvisForeground = false;
+        }
+
+        lock (_fullscreenShortcutLock)
+        {
+            _fullscreenShortcutWindows.Clear();
         }
 
         _virtualDesktopFilter.Dispose();

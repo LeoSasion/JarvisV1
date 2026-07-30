@@ -17,6 +17,7 @@ internal sealed class GlobalWindowSwitcherHook : IDisposable
     private const uint VkShift = 0x10;
     private const uint VkControl = 0x11;
     private const uint VkMenu = 0x12;
+    private const uint VkF11 = 0x7A;
     private const uint VkLeftMenu = 0xA4;
     private const uint VkRightMenu = 0xA5;
     private const uint LlkhfInjected = 0x00000010;
@@ -25,6 +26,8 @@ internal sealed class GlobalWindowSwitcherHook : IDisposable
     private readonly Func<bool, bool> _beginOrAdvance;
     private readonly Action _commit;
     private readonly Action _cancel;
+    private readonly Action _fullscreenToggle;
+    private readonly Action _fullscreenExit;
     private readonly ManualResetEventSlim _startupCompleted = new(false);
     private readonly LowLevelKeyboardProcedure _procedure;
 
@@ -35,17 +38,22 @@ internal sealed class GlobalWindowSwitcherHook : IDisposable
     private bool _sessionActive;
     private bool _suppressTabKeyUp;
     private bool _suppressEscapeKeyUp;
+    private bool _f11Down;
     private bool _disposed;
     private Exception? _startupFailure;
 
     public GlobalWindowSwitcherHook(
         Func<bool, bool> beginOrAdvance,
         Action commit,
-        Action cancel)
+        Action cancel,
+        Action fullscreenToggle,
+        Action fullscreenExit)
     {
         _beginOrAdvance = beginOrAdvance;
         _commit = commit;
         _cancel = cancel;
+        _fullscreenToggle = fullscreenToggle;
+        _fullscreenExit = fullscreenExit;
         _procedure = KeyboardProcedure;
     }
 
@@ -92,6 +100,7 @@ internal sealed class GlobalWindowSwitcherHook : IDisposable
         Volatile.Write(ref _enabled, enabled);
         if (!enabled)
         {
+            _f11Down = false;
             CancelActiveSession();
         }
     }
@@ -154,15 +163,36 @@ internal sealed class GlobalWindowSwitcherHook : IDisposable
         try
         {
             var input = Marshal.PtrToStructure<LowLevelKeyboardInput>(longParameter);
-            if ((input.Flags & LlkhfInjected) != 0)
-            {
-                return CallNextHookEx(_hook, code, wordParameter, longParameter);
-            }
-
             var message = unchecked((uint)wordParameter.ToInt64());
             var keyDown = message is WmKeyDown or WmSysKeyDown;
             var keyUp = message is WmKeyUp or WmSysKeyUp;
             if (!keyDown && !keyUp)
+            {
+                return CallNextHookEx(_hook, code, wordParameter, longParameter);
+            }
+
+            // Observe F11 before filtering injected input. Accessibility and UI
+            // automation still cause the foreground app to enter fullscreen, so
+            // the replacement taskbar must follow the same state transition.
+            if (input.VirtualKey == VkF11)
+            {
+                if (keyDown && !_f11Down && Volatile.Read(ref _enabled))
+                {
+                    _f11Down = true;
+                    _fullscreenToggle();
+                }
+                else if (keyUp)
+                {
+                    _f11Down = false;
+                }
+            }
+
+            if (input.VirtualKey == VkEscape && keyDown && Volatile.Read(ref _enabled))
+            {
+                _fullscreenExit();
+            }
+
+            if ((input.Flags & LlkhfInjected) != 0)
             {
                 return CallNextHookEx(_hook, code, wordParameter, longParameter);
             }

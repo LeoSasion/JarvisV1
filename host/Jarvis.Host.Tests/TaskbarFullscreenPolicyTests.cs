@@ -47,6 +47,20 @@ public sealed class TaskbarFullscreenPolicyTests
     }
 
     [Fact]
+    public void ObservedF11WorkAreaCoverageSuppressesTheReplacementTaskbar()
+    {
+        var visualBounds = new PixelRect(0, 0, 2560, 1400);
+
+        Assert.True(TaskbarFullscreenPolicy.ShouldSuppress(
+            visualBounds,
+            PrimaryMonitor,
+            windowVisible: true,
+            minimized: false,
+            standardMaximizedWindow: true,
+            workAreaConstrainedFullscreen: true));
+    }
+
+    [Fact]
     public void StandardMaximizedWindowDoesNotCountAsFullscreenEvenIfItCoversTheMonitor()
     {
         Assert.False(TaskbarFullscreenPolicy.ShouldSuppress(

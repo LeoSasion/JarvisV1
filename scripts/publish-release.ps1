@@ -154,6 +154,7 @@ Invoke-Checked -FilePath $dotnet -Arguments @(
     "-p:FileVersion=$numericVersion.0",
     "-p:AssemblyVersion=$numericVersion.0",
     "-p:InformationalVersion=$Version",
+    '-p:IncludeSourceRevisionInInformationalVersion=false',
     '-p:DebugType=None',
     '-p:DebugSymbols=false',
     '-p:PublishSingleFile=false'

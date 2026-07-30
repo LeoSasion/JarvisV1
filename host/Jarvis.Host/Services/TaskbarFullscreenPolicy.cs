@@ -12,11 +12,12 @@ internal static class TaskbarFullscreenPolicy
         DisplayMonitorTarget monitor,
         bool windowVisible,
         bool minimized,
-        bool standardMaximizedWindow)
+        bool standardMaximizedWindow,
+        bool workAreaConstrainedFullscreen = false)
     {
         if (!windowVisible ||
             minimized ||
-            standardMaximizedWindow ||
+            (standardMaximizedWindow && !workAreaConstrainedFullscreen) ||
             !monitor.IsPrimary ||
             windowBounds.Width <= 0 ||
             windowBounds.Height <= 0 ||
@@ -26,10 +27,21 @@ internal static class TaskbarFullscreenPolicy
             return false;
         }
 
-        return IsNear(windowBounds.Left, monitor.Bounds.Left) &&
+        var coversMonitor =
+            IsNear(windowBounds.Left, monitor.Bounds.Left) &&
+            IsNear(windowBounds.Top, monitor.Bounds.Top) &&
+            IsNear(windowBounds.Right, monitor.Bounds.Right) &&
+            IsNear(windowBounds.Bottom, monitor.Bounds.Bottom);
+        if (coversMonitor)
+        {
+            return true;
+        }
+
+        return workAreaConstrainedFullscreen &&
+               IsNear(windowBounds.Left, monitor.Bounds.Left) &&
                IsNear(windowBounds.Top, monitor.Bounds.Top) &&
                IsNear(windowBounds.Right, monitor.Bounds.Right) &&
-               IsNear(windowBounds.Bottom, monitor.Bounds.Bottom);
+               IsNear(windowBounds.Bottom, monitor.WorkArea.Bottom);
     }
 
     internal static bool IsStandardMaximizedWindow(bool isZoomed, long style)

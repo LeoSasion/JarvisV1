@@ -27,7 +27,12 @@ internal sealed class WindowSwitcherController : IDisposable
         _snapshotFeed = snapshotFeed;
         _taskbarService = taskbarService;
         _window = window;
-        _hook = new GlobalWindowSwitcherHook(BeginOrAdvance, Commit, Cancel);
+        _hook = new GlobalWindowSwitcherHook(
+            BeginOrAdvance,
+            Commit,
+            Cancel,
+            _taskbarService.ObserveFullscreenShortcut,
+            _taskbarService.ObserveFullscreenExitShortcut);
     }
 
     public bool Start() => _hook.Register();
