@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text;
 using System.Text.Json;
 using Jarvis.Host.Infrastructure;
@@ -11,19 +10,6 @@ namespace Jarvis.Host.Bridge;
 internal sealed class WebBridge : IDisposable
 {
     private const string TrustedOrigin = "https://jarvis.local/";
-    private static readonly HashSet<string> GlobalSearchMethods = new(
-        [
-            "desktop.listEntries",
-            "lifecycle.showDesktop",
-            "shell.listApplications",
-            "shell.open",
-            "shell.openApplication",
-            "surface.dismiss",
-            "taskbar.activateWindow",
-            "taskbar.getSnapshot"
-        ],
-        StringComparer.Ordinal);
-
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -45,15 +31,13 @@ internal sealed class WebBridge : IDisposable
     private readonly TrayStatusService _trayStatusService;
     private readonly SystemFeedService _systemFeedService;
     private readonly RuntimeDiagnosticsService _runtimeDiagnosticsService;
-    private readonly QuickSearchShortcutSettingsService? _quickSearchShortcutSettings;
+    private readonly SystemSessionActionService? _systemSessionActionService;
     private readonly WindowsNotificationHistoryService _notificationHistoryService = new();
     private readonly DesktopClipboardService _clipboardService = new();
     private readonly Action _requestExit;
     private readonly Action<string?> _showDesktop;
     private readonly Action<TaskbarFlyoutRequest>? _showTaskbarFlyout;
     private readonly Action? _hideTaskbarFlyout;
-    private readonly Action<bool>? _dismissSurface;
-    private readonly WebBridgeProfile _profile;
     private readonly bool _terminalEnabled;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly object _terminalOutputGate = new();
@@ -84,9 +68,7 @@ internal sealed class WebBridge : IDisposable
         Action<TaskbarFlyoutRequest>? showTaskbarFlyout = null,
         Action? hideTaskbarFlyout = null,
         bool terminalEnabled = true,
-        WebBridgeProfile profile = WebBridgeProfile.Full,
-        Action<bool>? dismissSurface = null,
-        QuickSearchShortcutSettingsService? quickSearchShortcutSettings = null)
+        SystemSessionActionService? systemSessionActionService = null)
     {
         _webView = webView;
         _dispatcher = dispatcher;
@@ -101,14 +83,12 @@ internal sealed class WebBridge : IDisposable
         _trayStatusService = trayStatusService;
         _systemFeedService = systemFeedService;
         _runtimeDiagnosticsService = runtimeDiagnosticsService;
-        _quickSearchShortcutSettings = quickSearchShortcutSettings;
+        _systemSessionActionService = systemSessionActionService;
         _requestExit = requestExit;
         _showDesktop = showDesktop;
         _showTaskbarFlyout = showTaskbarFlyout;
         _hideTaskbarFlyout = hideTaskbarFlyout;
         _terminalEnabled = terminalEnabled;
-        _profile = profile;
-        _dismissSurface = dismissSurface;
     }
 
     public void Attach()
@@ -122,18 +102,15 @@ internal sealed class WebBridge : IDisposable
         _webView.WebMessageReceived += OnWebMessageReceived;
         _shellService.ApplicationCatalogChanged += OnApplicationCatalogChanged;
         _desktopService.EntriesChanged += OnDesktopEntriesChanged;
-        if (_profile == WebBridgeProfile.Full)
+        _windowAppearanceService.StateChanged += OnWindowAppearanceChanged;
+        _taskbarModeService.StateChanged += OnTaskbarModeChanged;
+        _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
+        _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
+        _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
+        if (_terminalEnabled)
         {
-            _windowAppearanceService.StateChanged += OnWindowAppearanceChanged;
-            _taskbarModeService.StateChanged += OnTaskbarModeChanged;
-            _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
-            _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
-            _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
-            if (_terminalEnabled)
-            {
-                _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
-                _terminalSessionService.SessionExited += OnTerminalSessionExited;
-            }
+            _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
+            _terminalSessionService.SessionExited += OnTerminalSessionExited;
         }
         _attached = true;
     }
@@ -146,36 +123,30 @@ internal sealed class WebBridge : IDisposable
             _snapshotFeed.SnapshotAvailable += OnSnapshotAvailable;
             _telemetryAttached = true;
             _snapshotFeed.Start();
-            if (_profile == WebBridgeProfile.Full)
-            {
-                _trayStatusService.Start();
-                _systemFeedService.Start();
-            }
+            _trayStatusService.Start();
+            _systemFeedService.Start();
         }
 
-        if (_profile == WebBridgeProfile.Full)
+        Post(new
         {
-            Post(new
-            {
-                @event = "windowAppearance.changed",
-                data = _windowAppearanceService.GetState()
-            });
-            Post(new
-            {
-                @event = "taskbarMode.changed",
-                data = _taskbarModeService.GetState()
-            });
-            Post(new
-            {
-                @event = "tray.snapshot",
-                data = _trayStatusService.GetSnapshot()
-            });
-            Post(new
-            {
-                @event = "feed.snapshot",
-                data = _systemFeedService.GetSnapshot()
-            });
-        }
+            @event = "windowAppearance.changed",
+            data = _windowAppearanceService.GetState()
+        });
+        Post(new
+        {
+            @event = "taskbarMode.changed",
+            data = _taskbarModeService.GetState()
+        });
+        Post(new
+        {
+            @event = "tray.snapshot",
+            data = _trayStatusService.GetSnapshot()
+        });
+        Post(new
+        {
+            @event = "feed.snapshot",
+            data = _systemFeedService.GetSnapshot()
+        });
         Post(new
         {
             @event = "desktop.entriesChanged",
@@ -255,14 +226,6 @@ internal sealed class WebBridge : IDisposable
         JsonElement parameters,
         CancellationToken cancellationToken)
     {
-        if (_profile == WebBridgeProfile.GlobalSearch &&
-            !GlobalSearchMethods.Contains(method))
-        {
-            throw new BridgeFaultException(
-                "METHOD_NOT_AVAILABLE",
-                "This bridge method is not available on the global Quick Search surface.");
-        }
-
         if (!_terminalEnabled && method.StartsWith("terminal.", StringComparison.Ordinal))
         {
             throw new BridgeFaultException(
@@ -348,15 +311,17 @@ internal sealed class WebBridge : IDisposable
             "taskbar.activateWindow" => _taskbarService.Activate(GetRequiredWindowId(parameters)),
             "taskbar.toggleWindow" => _taskbarService.Toggle(GetRequiredWindowId(parameters)),
             "taskbar.closeWindow" => _taskbarService.Close(GetRequiredWindowId(parameters)),
+            "taskbar.toggleDesktop" => ToggleDesktop(
+                GetOptionalBoolean(
+                    parameters,
+                    "hasVisibleInternalWindow",
+                    defaultValue: false)),
             "taskbar.showFlyout" => ShowTaskbarFlyout(GetFlyoutRequest(parameters)),
             "taskbar.hideFlyout" => HideTaskbarFlyout(),
             "taskbarMode.getState" => _taskbarModeService.GetState(),
             "taskbarMode.setMode" => _taskbarModeService.SetRequestedMode(
                 GetRequiredTaskbarMode(parameters)),
             "taskbarMode.retry" => RetryTaskbarMode(),
-            "quickSearchShortcut.getState" => GetQuickSearchShortcutState(),
-            "quickSearchShortcut.setEnabled" => SetQuickSearchShortcutEnabled(
-                GetRequiredBoolean(parameters, "enabled")),
             "tray.getSnapshot" => _trayStatusService.GetSnapshot(),
             "tray.setVolume" => _trayStatusService.SetVolume(
                 GetRequiredBoundedInt(parameters, "volumePercent", 0, 100)),
@@ -367,6 +332,13 @@ internal sealed class WebBridge : IDisposable
             "feed.clear" => _systemFeedService.Clear(),
             "notifications.getState" => _notificationHistoryService.GetState(),
             "notifications.requestAccess" => _notificationHistoryService.RequestAccess(),
+            "session.getState" => GetSystemSessionActionService().GetState(),
+            "session.prepare" => GetSystemSessionActionService().Prepare(
+                GetRequiredString(parameters, "actionId")),
+            "session.commit" => GetSystemSessionActionService().Commit(
+                GetRequiredString(parameters, "actionId"),
+                GetRequiredString(parameters, "token")),
+            "session.cancel" => GetSystemSessionActionService().Cancel(),
             "windowAppearance.getState" => _windowAppearanceService.GetState(),
             "windowAppearance.setMode" => _windowAppearanceService.SetMode(
                 GetRequiredWindowAppearanceMode(parameters)),
@@ -391,57 +363,8 @@ internal sealed class WebBridge : IDisposable
             "lifecycle.runDiagnostics" => await RunDiagnosticsAsync(cancellationToken),
             "lifecycle.exitToWindows" => new { exiting = true },
             "lifecycle.showDesktop" => ShowDesktop(GetRequestedPanel(parameters)),
-            "surface.dismiss" => DismissSurface(
-                GetOptionalBoolean(parameters, "restoreForeground", defaultValue: true)),
             _ => throw new BridgeFaultException("METHOD_NOT_FOUND", $"Unknown bridge method: {method}")
         };
-    }
-
-    private QuickSearchShortcutState GetQuickSearchShortcutState()
-    {
-        if (_quickSearchShortcutSettings is null)
-        {
-            throw new BridgeFaultException(
-                "METHOD_NOT_AVAILABLE",
-                "Quick Search shortcut settings are unavailable on this renderer.");
-        }
-
-        return _quickSearchShortcutSettings.GetState();
-    }
-
-    private QuickSearchShortcutState SetQuickSearchShortcutEnabled(bool enabled)
-    {
-        if (_quickSearchShortcutSettings is null)
-        {
-            throw new BridgeFaultException(
-                "METHOD_NOT_AVAILABLE",
-                "Quick Search shortcut settings are unavailable on this renderer.");
-        }
-
-        try
-        {
-            return _quickSearchShortcutSettings.SetEnabled(enabled);
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException)
-        {
-            throw new BridgeFaultException(
-                "SETTINGS_WRITE_FAILED",
-                $"The Quick Search shortcut preference could not be saved. {exception.Message}");
-        }
-    }
-
-    private object DismissSurface(bool restoreForeground)
-    {
-        if (_dismissSurface is null)
-        {
-            throw new BridgeFaultException(
-                "METHOD_NOT_AVAILABLE",
-                "The current JARVIS surface cannot dismiss itself.");
-        }
-
-        _dismissSurface(restoreForeground);
-        return new { dismissed = true };
     }
 
     private async Task<object> RunFileOperationAsync(
@@ -499,6 +422,23 @@ internal sealed class WebBridge : IDisposable
         return new { shown = true, panel };
     }
 
+    private ShowDesktopToggleResult ToggleDesktop(bool hasVisibleInternalWindow)
+    {
+        _hideTaskbarFlyout?.Invoke();
+        var result = _taskbarService.ToggleDesktop(hasVisibleInternalWindow);
+        if (result.Action == "shown" ||
+            result.RestoreJarvisForeground)
+        {
+            _showDesktop(null);
+        }
+
+        HostLog.Info(
+            $"Show Desktop action {result.Action}; " +
+            $"{result.AffectedWindowCount} native window(s) affected; " +
+            $"restore available: {result.RestoreAvailable}.");
+        return result;
+    }
+
     private object ShowTaskbarFlyout(TaskbarFlyoutRequest request)
     {
         if (_showTaskbarFlyout is null)
@@ -532,7 +472,7 @@ internal sealed class WebBridge : IDisposable
                 {
                     if (!_disposed)
                     {
-                        if (_profile == WebBridgeProfile.Full && snapshot.SystemChanged)
+                        if (snapshot.SystemChanged)
                         {
                             Post(new { @event = "system.snapshot", data = snapshot.System });
                         }
@@ -938,6 +878,11 @@ internal sealed class WebBridge : IDisposable
 
         return targetElement.GetString()!;
     }
+
+    private SystemSessionActionService GetSystemSessionActionService() =>
+        _systemSessionActionService ?? throw new BridgeFaultException(
+            "METHOD_NOT_AVAILABLE",
+            "Windows session actions are available only on the JARVIS desktop surface.");
 
     private static string GetRequiredPath(JsonElement parameters)
     {
@@ -1417,7 +1362,7 @@ internal sealed class WebBridge : IDisposable
             panelElement.ValueKind == JsonValueKind.String)
         {
             var panel = panelElement.GetString();
-            if (panel is "command" or "start" or "quick-settings" or "notifications" or "explorer" or "settings" or "terminal")
+            if (panel is "command" or "start" or "quick-settings" or "date-time" or "notifications" or "session" or "explorer" or "settings" or "terminal")
             {
                 return panel;
             }
@@ -1500,30 +1445,21 @@ internal sealed class WebBridge : IDisposable
             _webView.WebMessageReceived -= OnWebMessageReceived;
             _shellService.ApplicationCatalogChanged -= OnApplicationCatalogChanged;
             _desktopService.EntriesChanged -= OnDesktopEntriesChanged;
-            if (_profile == WebBridgeProfile.Full)
+            _windowAppearanceService.StateChanged -= OnWindowAppearanceChanged;
+            _taskbarModeService.StateChanged -= OnTaskbarModeChanged;
+            _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
+            _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
+            _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
+            if (_terminalEnabled)
             {
-                _windowAppearanceService.StateChanged -= OnWindowAppearanceChanged;
-                _taskbarModeService.StateChanged -= OnTaskbarModeChanged;
-                _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
-                _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
-                _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
-                if (_terminalEnabled)
-                {
-                    _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;
-                    _terminalSessionService.SessionExited -= OnTerminalSessionExited;
-                }
+                _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;
+                _terminalSessionService.SessionExited -= OnTerminalSessionExited;
             }
         }
 
         _fileTransferCoordinator.Dispose();
         _shutdown.Dispose();
     }
-}
-
-internal enum WebBridgeProfile
-{
-    Full,
-    GlobalSearch
 }
 
 internal sealed class PendingTerminalOutput

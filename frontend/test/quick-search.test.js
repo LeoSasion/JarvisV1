@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getGlobalQuickSearchAction } from "../src/global-quick-search-model.js";
 import {
   createQuickSearchIndex,
+  getQuickSearchScopeShortcut,
   normalizeSearchText,
+  parseQuickSearchQuery,
   searchQuickIndex,
   segmentSearchMatch,
 } from "../src/quick-search.js";
@@ -106,44 +107,44 @@ test("empty Quick Access prioritizes bounded recent applications without changin
   assert.equal(searchQuickIndex(index, "file explorer")[0].label, "File Explorer");
 });
 
-test("global actions preserve opaque capabilities and JARVIS-owned panels", () => {
-  assert.deepEqual(getGlobalQuickSearchAction({
-    kind: "installed-app",
-    application: { applicationId: "opaque-application" },
-  }), {
-    type: "open-application",
-    applicationId: "opaque-application",
+test("Quick Search scopes parse bounded prefixes and filter result kinds", () => {
+  const index = createQuickSearchIndex(catalog);
+
+  assert.deepEqual(parseQuickSearchQuery(" APP:  power "), {
+    scope: "app",
+    query: "power",
   });
-  assert.deepEqual(getGlobalQuickSearchAction({
-    kind: "window",
-    window: { windowId: "0x42", active: false, minimized: true },
-  }), {
-    type: "activate-window",
-    windowId: "0x42",
+  assert.deepEqual(parseQuickSearchQuery("unknown: power"), {
+    scope: "all",
+    query: "unknown: power",
   });
-  assert.deepEqual(getGlobalQuickSearchAction({
-    kind: "desktop",
-    entry: { kind: "directory", path: "C:\\Users\\Pilot\\Desktop\\Projects" },
-  }), {
-    type: "show-desktop",
-    panel: "explorer",
-  });
-  assert.deepEqual(getGlobalQuickSearchAction({
-    kind: "app",
-    target: "jarvis-terminal:",
-  }), {
-    type: "show-desktop",
-    panel: "terminal",
-  });
+  assert.deepEqual(searchQuickIndex(index, "app: power").map((item) => item.kind), [
+    "installed-app",
+  ]);
+  assert.deepEqual(searchQuickIndex(index, "win: release").map((item) => item.kind), [
+    "window",
+  ]);
+  assert.deepEqual(searchQuickIndex(index, "file: 设计").map((item) => item.kind), [
+    "desktop",
+  ]);
+  assert.deepEqual(searchQuickIndex(index, "set: network").map((item) => item.kind), [
+    "setting",
+  ]);
 });
 
-test("an already-active window dismisses back to the captured foreground app", () => {
-  assert.deepEqual(getGlobalQuickSearchAction({
-    kind: "window",
-    window: { windowId: "0x42", active: true, minimized: false },
-  }), {
-    type: "dismiss",
-    restoreForeground: true,
-  });
-  assert.equal(getGlobalQuickSearchAction({ kind: "installed-app", application: {} }), null);
+test("an empty scope returns only bounded quick-access results from that scope", () => {
+  const index = createQuickSearchIndex(catalog);
+  const windows = searchQuickIndex(index, "win:");
+
+  assert.ok(windows.length > 0);
+  assert.ok(windows.every((item) => item.kind === "window"));
+});
+
+test("Quick Search scope shortcuts accept only unmodified Ctrl or Command digits", () => {
+  assert.equal(getQuickSearchScopeShortcut({ key: "1", ctrlKey: true }), "all");
+  assert.equal(getQuickSearchScopeShortcut({ key: "5", metaKey: true }), "set");
+  assert.equal(getQuickSearchScopeShortcut({ key: "6", ctrlKey: true }), null);
+  assert.equal(getQuickSearchScopeShortcut({ key: "2", ctrlKey: true, shiftKey: true }), null);
+  assert.equal(getQuickSearchScopeShortcut({ key: "3", altKey: true, ctrlKey: true }), null);
+  assert.equal(getQuickSearchScopeShortcut({ key: "4" }), null);
 });

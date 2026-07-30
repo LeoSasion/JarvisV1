@@ -5,25 +5,33 @@ const EMPTY_RECENT_APPLICATIONS = Object.freeze([]);
 const listeners = new Set();
 let storageListenerActive = false;
 
+export function normalizeRecentApplicationIds(value) {
+  if (!value || value.version !== 1 || !Array.isArray(value.applicationIds)) {
+    return EMPTY_RECENT_APPLICATIONS;
+  }
+
+  const seen = new Set();
+  const applicationIds = [];
+  for (const applicationId of value.applicationIds) {
+    if (typeof applicationId !== "string" ||
+        !applicationId ||
+        applicationId.length > 64 ||
+        seen.has(applicationId)) continue;
+    seen.add(applicationId);
+    applicationIds.push(applicationId);
+    if (applicationIds.length >= MAX_RECENT_APPLICATIONS) break;
+  }
+  return applicationIds.length > 0
+    ? Object.freeze(applicationIds)
+    : EMPTY_RECENT_APPLICATIONS;
+}
+
 function readRecentApplicationIds() {
   if (typeof window === "undefined") return EMPTY_RECENT_APPLICATIONS;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.applicationIds)) {
-      return EMPTY_RECENT_APPLICATIONS;
-    }
-
-    const seen = new Set();
-    const applicationIds = [];
-    for (const applicationId of parsed.applicationIds) {
-      if (typeof applicationId !== "string" ||
-          applicationId.length > 64 ||
-          seen.has(applicationId)) continue;
-      seen.add(applicationId);
-      applicationIds.push(applicationId);
-      if (applicationIds.length >= MAX_RECENT_APPLICATIONS) break;
-    }
-    return Object.freeze(applicationIds);
+    return normalizeRecentApplicationIds(
+      JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"),
+    );
   } catch {
     return EMPTY_RECENT_APPLICATIONS;
   }
@@ -80,5 +88,21 @@ export function recordRecentApplication(applicationId) {
     // Recency remains available for this session when browser storage is disabled.
   }
 
+  emitChange();
+}
+
+export function clearRecentApplications() {
+  if (recentApplicationIds.length === 0) return;
+  recentApplicationIds = EMPTY_RECENT_APPLICATIONS;
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 1,
+        applicationIds: [],
+      }));
+    }
+  } catch {
+    // The current session still clears immediately.
+  }
   emitChange();
 }

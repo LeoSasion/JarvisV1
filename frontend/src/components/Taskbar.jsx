@@ -33,6 +33,16 @@ import {
 } from "../pinned-application-model.js";
 import { quickLaunchItems } from "../quick-search-catalog.js";
 import { buildStartMenuApplications } from "../start-menu-model.js";
+import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
+import {
+  getTaskbarAccessibleLabel,
+  getTaskbarKeyboardTarget,
+} from "../taskbar-accessibility-model.js";
+import {
+  filterTaskbarFlyoutEntries,
+  getTaskbarFlyoutKeyboardTarget,
+  getTaskbarOverflowSummary,
+} from "../taskbar-flyout-model.js";
 import {
   getRunningGroupKey,
   getTaskbarContextActionIds,
@@ -40,6 +50,12 @@ import {
   partitionWindowsByPinnedApplications,
   reconcileRunningTaskbarOrder,
 } from "../taskbar-grouping.js";
+import {
+  acceptsTaskbarHoverPointer,
+  getTaskbarHoverPreviewTarget,
+  TASKBAR_HOVER_DISMISS_DELAY_MS,
+  TASKBAR_HOVER_PREVIEW_DELAY_MS,
+} from "../taskbar-hover-preview.js";
 
 const processDisplayNames = {
   applicationframehost: "Windows app",
@@ -190,18 +206,47 @@ function getContextActionLabel(action, item) {
   return "Unpin from JARVIS";
 }
 
-function TaskbarLocalFlyout({ flyout, onActivate, onCloseWindow, onContextAction, onDismiss }) {
+function TaskbarLocalFlyout({
+  flyout,
+  onActivate,
+  onCloseWindow,
+  onContextAction,
+  onDismiss,
+  onPointerEnter,
+  onPointerLeave,
+}) {
+  const flyoutRef = useRef(null);
+  const entryRefs = useRef(new Map());
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  useDialogFocusTrap(flyoutRef, flyout.source !== "hover", {
+    onEscape: onDismiss,
+  });
+
   if (flyout.mode === "context") {
     return (
-      <section className="taskbar-flyout-mock is-context" aria-label={`${flyout.item.label} commands`}>
+      <section
+        ref={flyoutRef}
+        className="taskbar-flyout-mock is-context"
+        role="dialog"
+        aria-modal="false"
+        aria-label={`${flyout.item.label} commands`}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+      >
         <header>
           <span>APP COMMANDS</span>
           <small>{flyout.item.label}</small>
           <button type="button" onClick={onDismiss} aria-label="Close taskbar commands"><DismissRegular /></button>
         </header>
         <div className="taskbar-context-actions">
-          {flyout.actions.map((action) => (
-            <button type="button" key={action} onClick={() => onContextAction(flyout.item, action)}>
+          {flyout.actions.map((action, index) => (
+            <button
+              type="button"
+              key={action}
+              data-dialog-initial-focus={index === 0 ? "true" : undefined}
+              onClick={() => onContextAction(flyout.item, action)}
+            >
               {getContextActionLabel(action, flyout.item)}
             </button>
           ))}
@@ -215,6 +260,7 @@ function TaskbarLocalFlyout({ flyout, onActivate, onCloseWindow, onContextAction
       key: window.windowId,
       label: window.title,
       meta: `${window.processName} · ${window.minimized ? "MINIMIZED" : window.active ? "ACTIVE" : "READY"}`,
+      searchText: `${window.title} ${window.processName}`,
       window,
       item: flyout.item,
     }))
@@ -222,22 +268,100 @@ function TaskbarLocalFlyout({ flyout, onActivate, onCloseWindow, onContextAction
       key: item.id,
       label: item.label,
       meta: item.selectedWindow?.title ?? (item.isPinned ? "PINNED APPLICATION" : "RUNNING APPLICATION"),
+      searchText: `${item.label} ${item.selectedWindow?.title ?? ""} ${item.windows.map((window) => `${window.title} ${window.processName}`).join(" ")}`,
       window: item.selectedWindow ?? null,
       item,
     }));
+  const visibleEntries = flyout.mode === "overflow"
+    ? filterTaskbarFlyoutEntries(entries, query)
+    : entries;
+  const selectedIndex = visibleEntries.length > 0
+    ? Math.min(activeIndex, visibleEntries.length - 1)
+    : 0;
+  const overflowSummary = getTaskbarOverflowSummary(entries, visibleEntries);
+  const focusEntryAt = (index) => {
+    const entry = visibleEntries[index];
+    if (!entry) return;
+    setActiveIndex(index);
+    window.requestAnimationFrame(() => entryRefs.current.get(entry.key)?.focus());
+  };
+  const handleEntryKeyDown = (event, index) => {
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    focusEntryAt(getTaskbarFlyoutKeyboardTarget(
+      visibleEntries.length,
+      index,
+      event.key,
+    ));
+  };
 
   return (
-    <section className={`taskbar-flyout-mock is-${flyout.mode}`} aria-label={flyout.mode === "windows" ? "Window previews" : "Taskbar overflow"}>
+    <section
+      ref={flyoutRef}
+      className={`taskbar-flyout-mock is-${flyout.mode}`}
+      role="dialog"
+      aria-modal="false"
+      aria-label={flyout.mode === "windows" ? "Window previews" : "Taskbar overflow"}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+    >
       <header>
         <span>{flyout.mode === "windows" ? "WINDOW GROUP" : "TASK OVERFLOW"}</span>
-        <small>{entries.length} {flyout.mode === "windows" ? "OPEN WINDOWS" : "APPLICATIONS"}</small>
+        <small>{visibleEntries.length} {flyout.mode === "windows" ? "OPEN WINDOWS" : "VISIBLE APPLICATIONS"}</small>
         <button type="button" onClick={onDismiss} aria-label="Close taskbar flyout"><DismissRegular /></button>
       </header>
+      {flyout.mode === "overflow" ? (
+        <div className="taskbar-overflow-tools">
+          <label>
+            <SearchRegular aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              maxLength={64}
+              placeholder="Filter overflow applications"
+              aria-label="Filter taskbar overflow applications"
+              data-dialog-initial-focus="true"
+              onChange={(event) => {
+                setQuery(event.target.value.slice(0, 64));
+                setActiveIndex(0);
+              }}
+              onKeyDown={(event) => {
+                if (!["ArrowDown", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                focusEntryAt(getTaskbarFlyoutKeyboardTarget(
+                  visibleEntries.length,
+                  selectedIndex,
+                  event.key,
+                ));
+              }}
+            />
+          </label>
+          <code>{overflowSummary.label}</code>
+        </div>
+      ) : null}
       <div className="taskbar-flyout-grid">
-        {entries.map((entry) => (
-          <article key={entry.key} className={entry.window?.active ? "is-active" : ""}>
+        {visibleEntries.map((entry, index) => (
+          <article
+            key={entry.key}
+            className={[
+              entry.window?.active ? "is-active" : "",
+              index === selectedIndex ? "is-keyboard-active" : "",
+            ].filter(Boolean).join(" ")}
+          >
             {flyout.mode === "windows" ? <div className="mock-window-thumbnail" aria-hidden="true"><WindowAppsRegular /></div> : null}
-            <button type="button" className="mock-window-main" onClick={() => onActivate(entry.item, entry.window)}>
+            <button
+              ref={(element) => {
+                if (element) entryRefs.current.set(entry.key, element);
+                else entryRefs.current.delete(entry.key);
+              }}
+              type="button"
+              className="mock-window-main"
+              data-dialog-initial-focus={flyout.mode === "windows" && index === 0 ? "true" : undefined}
+              tabIndex={index === selectedIndex ? 0 : -1}
+              onFocus={() => setActiveIndex(index)}
+              onKeyDown={(event) => handleEntryKeyDown(event, index)}
+              onClick={() => onActivate(entry.item, entry.window)}
+            >
               <TaskbarAppIcon item={entry.item} />
               <span><strong>{entry.label}</strong><small>{entry.meta}</small></span>
             </button>
@@ -254,6 +378,12 @@ function TaskbarLocalFlyout({ flyout, onActivate, onCloseWindow, onContextAction
             ) : null}
           </article>
         ))}
+        {visibleEntries.length === 0 ? (
+          <p className="taskbar-flyout-empty" role="status">
+            <SearchRegular />
+            <span><strong>NO OVERFLOW MATCH</strong><small>Try another application or window name.</small></span>
+          </p>
+        ) : null}
       </div>
     </section>
   );
@@ -266,10 +396,12 @@ export function Taskbar({
   onOpenCommand,
   onOpenStart,
   onOpenQuickSettings,
+  onOpenDateTime,
   onOpenNotifications,
   onShowFlyout,
   onHideFlyout,
   onCloseWindow,
+  onToggleShowDesktop,
 }) {
   const clock = usePlatformClock();
   const platformKind = usePlatformKind();
@@ -282,9 +414,14 @@ export function Taskbar({
   const applicationCatalog = useApplicationCatalog(needsApplicationCatalog);
   const appsRef = useRef(null);
   const taskbarItemsRef = useRef([]);
+  const taskbarButtonRefs = useRef(new Map());
+  const hoverPreviewTimerRef = useRef(null);
+  const hoverDismissTimerRef = useRef(null);
+  const mockFlyoutRef = useRef(null);
   const [runningOrder, setRunningOrder] = useState([]);
   const [draggedPinnedId, setDraggedPinnedId] = useState(null);
   const [mockFlyout, setMockFlyout] = useState(null);
+  const [focusedTaskbarItemId, setFocusedTaskbarItemId] = useState(null);
   const menuApplications = useMemo(() => buildStartMenuApplications(
     quickLaunchItems,
     applicationCatalog.applications,
@@ -300,6 +437,9 @@ export function Taskbar({
     taskbarItemsRef.current = taskbarItems;
   }, [taskbarItems]);
   useEffect(() => {
+    mockFlyoutRef.current = mockFlyout;
+  }, [mockFlyout]);
+  useEffect(() => {
     const currentIds = taskbarItems
       .filter((item) => !item.isPinned)
       .map((item) => item.id);
@@ -309,6 +449,27 @@ export function Taskbar({
   const hasOverflow = taskbarItems.length > capacity;
   const visibleItems = hasOverflow ? taskbarItems.slice(0, capacity - 1) : taskbarItems;
   const overflowItems = hasOverflow ? taskbarItems.slice(capacity - 1) : [];
+  const focusableTaskbarIds = useMemo(
+    () => [
+      ...(hasOverflow ? taskbarItems.slice(0, capacity - 1) : taskbarItems)
+        .map((item) => item.id),
+      ...(hasOverflow ? ["taskbar:overflow"] : []),
+    ],
+    [capacity, hasOverflow, taskbarItems],
+  );
+  useEffect(() => {
+    setFocusedTaskbarItemId((current) => (
+      focusableTaskbarIds.includes(current)
+        ? current
+        : focusableTaskbarIds[0] ?? null
+    ));
+  }, [focusableTaskbarIds]);
+  const focusTaskbarItemAt = useCallback((index) => {
+    const id = focusableTaskbarIds[index];
+    if (!id) return;
+    setFocusedTaskbarItemId(id);
+    window.requestAnimationFrame(() => taskbarButtonRefs.current.get(id)?.focus());
+  }, [focusableTaskbarIds]);
   const hasActiveWindow = taskbar.windows.some((window) => window.active)
     || internalWindows.some((window) => window.active);
   const networkAvailable = tray.network.available;
@@ -325,21 +486,115 @@ export function Taskbar({
     };
   }, []);
 
+  const cancelHoverPreview = useCallback(() => {
+    if (hoverPreviewTimerRef.current === null) return;
+    window.clearTimeout(hoverPreviewTimerRef.current);
+    hoverPreviewTimerRef.current = null;
+  }, []);
+
+  const cancelHoverDismiss = useCallback(() => {
+    if (hoverDismissTimerRef.current === null) return;
+    window.clearTimeout(hoverDismissTimerRef.current);
+    hoverDismissTimerRef.current = null;
+  }, []);
+
+  const scheduleHoverMockDismiss = useCallback(() => {
+    cancelHoverDismiss();
+    if (mockFlyoutRef.current?.source !== "hover") return;
+    hoverDismissTimerRef.current = window.setTimeout(() => {
+      hoverDismissTimerRef.current = null;
+      if (mockFlyoutRef.current?.source !== "hover") return;
+      mockFlyoutRef.current = null;
+      setMockFlyout(null);
+    }, TASKBAR_HOVER_DISMISS_DELAY_MS);
+  }, [cancelHoverDismiss]);
+
+  const scheduleHoverPreview = useCallback((event, item) => {
+    cancelHoverPreview();
+    cancelHoverDismiss();
+    if (
+      !acceptsTaskbarHoverPointer(event.pointerType, draggedPinnedId)
+      || (mockFlyoutRef.current && mockFlyoutRef.current.source !== "hover")
+      || !getTaskbarHoverPreviewTarget(item, platformKind)
+    ) {
+      return;
+    }
+
+    const itemId = item.id;
+    const anchorElement = event.currentTarget;
+    hoverPreviewTimerRef.current = window.setTimeout(() => {
+      hoverPreviewTimerRef.current = null;
+      if (!anchorElement.isConnected) return;
+      const currentItem = taskbarItemsRef.current.find((candidate) =>
+        candidate.id === itemId);
+      const target = getTaskbarHoverPreviewTarget(currentItem, platformKind);
+      if (!target) return;
+
+      if (target.kind === "mock") {
+        const nextFlyout = {
+          mode: "windows",
+          item: currentItem,
+          source: "hover",
+        };
+        mockFlyoutRef.current = nextFlyout;
+        setMockFlyout(nextFlyout);
+        return;
+      }
+
+      if (mockFlyoutRef.current?.source === "hover") {
+        mockFlyoutRef.current = null;
+        setMockFlyout(null);
+      }
+      onShowFlyout({
+        mode: "windows",
+        windowIds: target.windowIds,
+        ...getFlyoutAnchor(anchorElement),
+      });
+    }, TASKBAR_HOVER_PREVIEW_DELAY_MS);
+  }, [
+    cancelHoverDismiss,
+    cancelHoverPreview,
+    draggedPinnedId,
+    getFlyoutAnchor,
+    onShowFlyout,
+    platformKind,
+  ]);
+
+  const handleHoverPreviewLeave = useCallback(() => {
+    cancelHoverPreview();
+    scheduleHoverMockDismiss();
+  }, [cancelHoverPreview, scheduleHoverMockDismiss]);
+
+  useEffect(() => () => {
+    cancelHoverPreview();
+    cancelHoverDismiss();
+  }, [cancelHoverDismiss, cancelHoverPreview]);
+
   const showWindowGroup = useCallback((event, item) => {
+    cancelHoverPreview();
+    cancelHoverDismiss();
     const request = {
       mode: "windows",
       windowIds: item.windows.map((window) => window.windowId),
       ...getFlyoutAnchor(event.currentTarget),
     };
     if (platformKind === "mock" || item.windows.some((window) => window.internalWindowId)) {
-      setMockFlyout({ mode: "windows", item });
+      setMockFlyout({ mode: "windows", item, source: "manual" });
       return;
     }
     onShowFlyout(request);
-  }, [getFlyoutAnchor, onShowFlyout, platformKind]);
+  }, [
+    cancelHoverDismiss,
+    cancelHoverPreview,
+    getFlyoutAnchor,
+    onShowFlyout,
+    platformKind,
+  ]);
 
   const showOverflow = useCallback((event) => {
     event.preventDefault();
+    cancelHoverPreview();
+    cancelHoverDismiss();
     onHideFlyout();
     if (platformKind !== "mock" && !overflowItems.some((item) =>
       item.windows.some((window) => window.internalWindowId))) {
@@ -355,19 +610,31 @@ export function Taskbar({
       return;
     }
     setMockFlyout({ mode: "overflow", items: overflowItems });
-  }, [getFlyoutAnchor, onHideFlyout, onShowFlyout, overflowItems, platformKind]);
+  }, [
+    cancelHoverDismiss,
+    cancelHoverPreview,
+    getFlyoutAnchor,
+    onHideFlyout,
+    onShowFlyout,
+    overflowItems,
+    platformKind,
+  ]);
 
   const activateMockFlyoutWindow = useCallback((item, window) => {
+    cancelHoverDismiss();
     setMockFlyout(null);
     onAppClick(item, window);
-  }, [onAppClick]);
+  }, [cancelHoverDismiss, onAppClick]);
 
   const closeMockFlyoutWindow = useCallback((windowId) => {
+    cancelHoverDismiss();
     setMockFlyout(null);
     onCloseWindow(windowId);
-  }, [onCloseWindow]);
+  }, [cancelHoverDismiss, onCloseWindow]);
 
   const executeContextAction = useCallback(async (item, action) => {
+    cancelHoverPreview();
+    cancelHoverDismiss();
     setMockFlyout(null);
     onHideFlyout();
     if (action === "launch") {
@@ -381,7 +648,13 @@ export function Taskbar({
     if (action === "unpin" && item.isPinned) {
       unpinApplication(item.id);
     }
-  }, [onAppClick, onCloseWindow, onHideFlyout]);
+  }, [
+    cancelHoverDismiss,
+    cancelHoverPreview,
+    onAppClick,
+    onCloseWindow,
+    onHideFlyout,
+  ]);
 
   useEffect(() => {
     if (platformKind === "mock") return undefined;
@@ -398,6 +671,8 @@ export function Taskbar({
   }, [executeContextAction, platformKind]);
 
   const handleItemClick = useCallback((event, item) => {
+    cancelHoverPreview();
+    cancelHoverDismiss();
     if (event.shiftKey && item.isPinned) {
       setMockFlyout(null);
       onHideFlyout();
@@ -411,18 +686,28 @@ export function Taskbar({
     setMockFlyout(null);
     onHideFlyout();
     onAppClick(item, item.selectedWindow);
-  }, [onAppClick, onHideFlyout, showWindowGroup]);
+  }, [
+    cancelHoverDismiss,
+    cancelHoverPreview,
+    onAppClick,
+    onHideFlyout,
+    showWindowGroup,
+  ]);
 
   const handleItemAuxClick = useCallback((event, item) => {
     if (event.button !== 1 || !item.isPinned) return;
     event.preventDefault();
+    cancelHoverPreview();
+    cancelHoverDismiss();
     setMockFlyout(null);
     onHideFlyout();
     onAppClick(item, null, { forceLaunch: true });
-  }, [onAppClick, onHideFlyout]);
+  }, [cancelHoverDismiss, cancelHoverPreview, onAppClick, onHideFlyout]);
 
   const showTaskbarContext = useCallback((event, item) => {
     event.preventDefault();
+    cancelHoverPreview();
+    cancelHoverDismiss();
     const actions = getTaskbarContextActionIds(item);
     if (actions.length === 0) return;
     const request = {
@@ -434,12 +719,18 @@ export function Taskbar({
       ...getFlyoutAnchor(event.currentTarget),
     };
     if (platformKind === "mock" || item.windows.some((window) => window.internalWindowId)) {
-      setMockFlyout({ mode: "context", item, actions });
+      setMockFlyout({ mode: "context", item, actions, source: "manual" });
       return;
     }
     setMockFlyout(null);
     onShowFlyout(request);
-  }, [getFlyoutAnchor, onShowFlyout, platformKind]);
+  }, [
+    cancelHoverDismiss,
+    cancelHoverPreview,
+    getFlyoutAnchor,
+    onShowFlyout,
+    platformKind,
+  ]);
 
   const reorderPinnedApps = useCallback((targetId) => {
     if (!draggedPinnedId || draggedPinnedId === targetId) return;
@@ -461,7 +752,7 @@ export function Taskbar({
         type="button"
         className="taskbar-search"
         onClick={onOpenCommand}
-        title="Search apps and windows · Ctrl+Alt+J from any application"
+        title="Search apps and windows"
       >
         <SearchRegular />
         <span>Search</span>
@@ -494,13 +785,28 @@ export function Taskbar({
           return (
             <button
               key={id}
+              ref={(element) => {
+                if (element) taskbarButtonRefs.current.set(id, element);
+                else taskbarButtonRefs.current.delete(id);
+              }}
               type="button"
               className={className}
-              aria-label={title}
+              aria-label={getTaskbarAccessibleLabel(item, isActive)}
+              aria-current={isActive ? "true" : undefined}
               title={`${title}${item.isPinned ? " · drag to reorder" : ""}`}
+              tabIndex={
+                focusedTaskbarItemId
+                  ? focusedTaskbarItemId === id ? 0 : -1
+                  : visibleItems[0]?.id === id ? 0 : -1
+              }
               draggable={item.isPinned}
               aria-keyshortcuts={item.isPinned ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
+              onFocus={() => setFocusedTaskbarItemId(id)}
+              onPointerEnter={(event) => scheduleHoverPreview(event, item)}
+              onPointerLeave={handleHoverPreviewLeave}
               onDragStart={(event) => {
+                cancelHoverPreview();
+                cancelHoverDismiss();
                 setDraggedPinnedId(id);
                 event.dataTransfer.effectAllowed = "move";
                 event.dataTransfer.setData("text/plain", id);
@@ -516,6 +822,16 @@ export function Taskbar({
               }}
               onDragEnd={() => setDraggedPinnedId(null)}
               onKeyDown={(event) => {
+                if (!event.altKey &&
+                    ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                  event.preventDefault();
+                  focusTaskbarItemAt(getTaskbarKeyboardTarget(
+                    focusableTaskbarIds.length,
+                    focusableTaskbarIds.indexOf(id),
+                    event.key,
+                  ));
+                  return;
+                }
                 if (!item.isPinned || !event.altKey) return;
                 if (event.key === "ArrowLeft") {
                   event.preventDefault();
@@ -537,10 +853,25 @@ export function Taskbar({
         })}
         {hasOverflow ? (
           <button
+            ref={(element) => {
+              if (element) taskbarButtonRefs.current.set("taskbar:overflow", element);
+              else taskbarButtonRefs.current.delete("taskbar:overflow");
+            }}
             type="button"
             className="taskbar-overflow-button is-running"
             aria-label={`More taskbar applications (${overflowItems.length})`}
             title={`${overflowItems.length} more taskbar applications`}
+            tabIndex={focusedTaskbarItemId === "taskbar:overflow" ? 0 : -1}
+            onFocus={() => setFocusedTaskbarItemId("taskbar:overflow")}
+            onKeyDown={(event) => {
+              if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              focusTaskbarItemAt(getTaskbarKeyboardTarget(
+                focusableTaskbarIds.length,
+                focusableTaskbarIds.indexOf("taskbar:overflow"),
+                event.key,
+              ));
+            }}
             onClick={showOverflow}
           >
             <MoreHorizontalRegular />
@@ -570,20 +901,42 @@ export function Taskbar({
           <AudioIcon />
           <PowerIcon />
         </button>
-        <span className="tray-clock"><strong>{clock.time}</strong><small>{clock.shortDate}</small></span>
+        <button
+          type="button"
+          className="tray-clock"
+          aria-label={`Open date and time · ${clock.longDate}, ${clock.time}`}
+          title="Date and time"
+          onClick={onOpenDateTime}
+        >
+          <strong>{clock.time}</strong>
+          <small>{clock.shortDate}</small>
+        </button>
         <button className="tray-notifications" type="button" aria-label={`JARVIS system feed${alertCount ? ` (${alertCount} unread)` : ""}`} title="JARVIS System Feed" onClick={onOpenNotifications}>
           <AlertRegular />
           {alertCount ? <small>{alertCount}</small> : null}
         </button>
       </div>
+      <button
+        type="button"
+        className="taskbar-show-desktop"
+        aria-label="Show desktop"
+        title="Show desktop"
+        onClick={onToggleShowDesktop}
+      />
       <span className="taskbar-edge-track" aria-hidden="true" />
       {mockFlyout ? (
         <TaskbarLocalFlyout
+          key={`${mockFlyout.mode}:${mockFlyout.item?.id ?? "overflow"}`}
           flyout={mockFlyout}
           onActivate={activateMockFlyoutWindow}
           onCloseWindow={closeMockFlyoutWindow}
           onContextAction={executeContextAction}
-          onDismiss={() => setMockFlyout(null)}
+          onDismiss={() => {
+            cancelHoverDismiss();
+            setMockFlyout(null);
+          }}
+          onPointerEnter={cancelHoverDismiss}
+          onPointerLeave={scheduleHoverMockDismiss}
         />
       ) : null}
     </footer>

@@ -2,9 +2,14 @@ import {
   AlertRegular,
   ArrowClockwiseRegular,
   ArrowExitRegular,
+  CalendarMonthRegular,
   CheckmarkCircleRegular,
+  ChevronLeftRegular,
+  ChevronRightRegular,
+  ClockRegular,
   DismissRegular,
   GlobeRegular,
+  OpenRegular,
   PinOffRegular,
   PinRegular,
   PlugConnectedRegular,
@@ -49,6 +54,7 @@ import {
   useApplicationCatalog,
   useDisplayTopology,
   useNotificationHistory,
+  usePlatformClock,
   useSystemSnapshot,
   useSystemFeed,
   useTaskbarModeState,
@@ -56,7 +62,18 @@ import {
   useTrayStatus,
   useWindowAppearanceState,
 } from "../hooks/usePlatformData.js";
+import {
+  CALENDAR_WEEKDAYS,
+  createCalendarMonth,
+  isTimestampOnLocalDate,
+  moveCalendarDate,
+  parseLocalDateKey,
+  shiftCalendarMonth,
+  toLocalDateKey,
+} from "../date-time-panel-model.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
+import { clearRecentApplications } from "../recent-applications.js";
+import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { usePinnedApplicationRefs } from "../hooks/usePinnedApplications.js";
 import {
   getPinnedApplicationKey,
@@ -75,9 +92,32 @@ import {
 } from "../quick-search-catalog.js";
 import { normalizeSearchText } from "../quick-search.js";
 import {
+  createExitChallenge,
+  EXIT_TO_WINDOWS_ACTION,
+  isSessionChallengeExpired,
+  normalizeSessionChallenge,
+  normalizeSessionControlState,
+} from "../session-control-model.js";
+import {
+  filterSystemFeed,
+  getSystemFeedFilterShortcut,
+  getSystemFeedFilterSummary,
+} from "../system-feed-filter-model.js";
+import { createVolumeCommitScheduler } from "../volume-commit-model.js";
+
+const SESSION_ACTION_ICONS = Object.freeze({
+  "exit-jarvis": ArrowExitRegular,
+  lock: ShieldRegular,
+  "sign-out": ArrowExitRegular,
+  restart: ArrowClockwiseRegular,
+  "shut-down": PowerRegular,
+});
+import {
   buildStartMenuApplications,
   createStartMenuVirtualRows,
   filterStartMenuApplications,
+  getStartPanelCommand,
+  getStartViewNavigation,
   getStartMenuVirtualWindow,
   groupStartMenuApplications,
 } from "../start-menu-model.js";
@@ -93,6 +133,12 @@ import {
   subscribeVisualTheme,
   visualThemes,
 } from "../theme-system.js";
+import {
+  getInterfacePreferencesSnapshot,
+  resetInterfacePreferences,
+  setInterfacePreferences,
+  subscribeInterfacePreferences,
+} from "../interface-preferences.js";
 import {
   getWindowCompatibilityReasonLabel,
   normalizeWindowAppearanceProcessName,
@@ -157,6 +203,18 @@ const taskbarModeOptions = [
     description: "实验模式；隐藏原生任务栏，第三方托盘功能可能不可用。",
   },
 ];
+
+const interfaceMotionOptions = Object.freeze([
+  Object.freeze({ id: "system", label: "SYSTEM", detail: "Follow Windows motion preference" }),
+  Object.freeze({ id: "reduced", label: "REDUCED", detail: "Minimize animation and transitions" }),
+  Object.freeze({ id: "full", label: "FULL", detail: "Use the complete JARVIS motion profile" }),
+]);
+
+const interfaceEmissionOptions = Object.freeze([
+  Object.freeze({ id: "standard", label: "STANDARD", detail: "Approved layered glow profile" }),
+  Object.freeze({ id: "subtle", label: "SUBTLE", detail: "Lower halo for long sessions" }),
+  Object.freeze({ id: "minimal", label: "MINIMAL", detail: "Keep luminous lines, suppress bloom" }),
+]);
 
 function getWindowsReleaseLabel(windows11, osBuild) {
   if (!windows11) return "WIN10";
@@ -427,13 +485,16 @@ function StartPanel({
   onLaunch,
   onLaunchInstalled,
   onActivateWindow,
-  onExit,
+  onOpenSession,
 }) {
   const taskbar = useTaskbarSnapshot();
   const system = useSystemSnapshot();
   const applicationCatalog = useApplicationCatalog();
   const recentApplicationIds = useRecentApplicationIds();
   const pinnedApplicationRefs = usePinnedApplicationRefs();
+  const searchRef = useRef(null);
+  const pinnedViewRef = useRef(null);
+  const allViewRef = useRef(null);
   const [query, setQuery] = useState("");
   const [view, setView] = useState("pinned");
   const deferredQuery = useDeferredValue(query);
@@ -511,14 +572,48 @@ function StartPanel({
   const catalogStatusTitle = applicationCatalog.indexedAtUtc
     ? `Indexed ${formatFeedTime(applicationCatalog.indexedAtUtc)} · ${applicationCatalog.refreshReason}`
     : "The Windows application catalog has not finished indexing.";
+  const setStartView = useCallback((nextView, focus = false) => {
+    setQuery("");
+    setView(nextView);
+    if (focus) {
+      window.requestAnimationFrame(() => {
+        (nextView === "all" ? allViewRef : pinnedViewRef).current?.focus();
+      });
+    }
+  }, []);
+  const handleStartKeyboard = useCallback((event) => {
+    const command = getStartPanelCommand(event);
+    if (!command) return;
+    event.preventDefault();
+    if (command === "focus-search") {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    } else {
+      setStartView(command === "view-all" ? "all" : "pinned", true);
+    }
+  }, [setStartView]);
+  const handleViewKeyboard = useCallback((event) => {
+    const nextView = getStartViewNavigation(view, event.key);
+    if (!nextView) return;
+    event.preventDefault();
+    setStartView(nextView, true);
+  }, [setStartView, view]);
 
   return (
-    <section className="shell-panel start-panel" role="dialog" aria-modal="false" aria-label="JARVIS Start">
+    <section
+      className="shell-panel start-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label="JARVIS Start"
+      onKeyDownCapture={handleStartKeyboard}
+    >
       <PanelHeader eyebrow="WINDOWS CONTROL" title="START" onClose={onClose} />
       <div className="start-search">
         <SearchRegular />
         <input
+          ref={searchRef}
           autoFocus
+          data-dialog-initial-focus="true"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search all apps and running windows"
@@ -529,20 +624,24 @@ function StartPanel({
 
       <div className="start-view-switch" role="tablist" aria-label="Start menu view">
         <button
+          ref={pinnedViewRef}
           type="button"
           role="tab"
           aria-selected={view === "pinned"}
           className={view === "pinned" ? "is-active" : ""}
-          onClick={() => { setQuery(""); setView("pinned"); }}
+          onClick={() => setStartView("pinned")}
+          onKeyDown={handleViewKeyboard}
         >
           <span>PINNED</span><small>{pinnedApplications.length}</small>
         </button>
         <button
+          ref={allViewRef}
           type="button"
           role="tab"
           aria-selected={view === "all"}
           className={view === "all" ? "is-active" : ""}
-          onClick={() => { setQuery(""); setView("all"); }}
+          onClick={() => setStartView("all")}
+          onKeyDown={handleViewKeyboard}
         >
           <span>ALL APPS</span><small>{menuApplications.length}</small>
         </button>
@@ -598,7 +697,19 @@ function StartPanel({
 
             {recentApplications.length > 0 ? (
               <>
-                <div className="start-section-heading"><span>RECENTLY OPENED</span><small>{recentApplications.length} LOCAL</small></div>
+                <div className="start-section-heading">
+                  <span>RECENTLY OPENED</span>
+                  <span className="start-heading-actions">
+                    <small>{recentApplications.length} LOCAL</small>
+                    <button
+                      type="button"
+                      onClick={clearRecentApplications}
+                      aria-label="Clear recently opened applications"
+                    >
+                      CLEAR
+                    </button>
+                  </span>
+                </div>
                 <div className="start-recent-list">
                   {recentApplications.map((application) => (
                     <StartMenuApplicationRow
@@ -652,7 +763,7 @@ function StartPanel({
       <footer className="start-footer">
         <span><strong>{system.status.machineName}</strong><small>{system.status.osDescription}</small></span>
         <button type="button" onClick={() => onLaunch({ label: "JARVIS Settings", target: "jarvis-settings:" })}><SettingsRegular /><span>Settings</span></button>
-        <button type="button" className="is-exit" onClick={onExit}><ArrowExitRegular /><span>Exit to Windows</span></button>
+        <button type="button" className="is-exit" onClick={onOpenSession}><PowerRegular /><span>Session controls</span></button>
       </footer>
     </section>
   );
@@ -661,6 +772,7 @@ function StartPanel({
 function QuickSettingsPanel({ onClose, onLaunch }) {
   const system = useSystemSnapshot();
   const tray = useTrayStatus();
+  const volumeCommitRef = useRef(null);
   const [volume, setVolume] = useState(tray.audio.volumePercent ?? 0);
   const [audioError, setAudioError] = useState("");
   const cpu = system.resources.find((resource) => resource.id === "cpu");
@@ -677,14 +789,23 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
     }
   }, [audio.volumePercent]);
 
-  const commitVolume = async () => {
-    setAudioError("");
-    try {
-      await setTrayVolume(Math.round(volume));
-    } catch (error) {
-      setAudioError(error.message);
-    }
-  };
+  useEffect(() => {
+    const scheduler = createVolumeCommitScheduler(async (nextVolume) => {
+      setAudioError("");
+      try {
+        await setTrayVolume(nextVolume);
+      } catch (error) {
+        setAudioError(error.message);
+      }
+    });
+    volumeCommitRef.current = scheduler;
+    return () => {
+      scheduler.cancel();
+      volumeCommitRef.current = null;
+    };
+  }, []);
+
+  const commitVolume = () => volumeCommitRef.current?.flush(volume);
 
   const toggleMute = async () => {
     setAudioError("");
@@ -719,7 +840,11 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
           disabled={!audio.available}
           aria-label="Windows output volume"
           aria-valuetext={audio.available ? `${volume} percent` : "Audio unavailable"}
-          onChange={(event) => setVolume(Number(event.target.value))}
+          onChange={(event) => {
+            const nextVolume = Number(event.target.value);
+            setVolume(nextVolume);
+            volumeCommitRef.current?.schedule(nextVolume);
+          }}
           onPointerUp={commitVolume}
           onKeyUp={commitVolume}
         />
@@ -754,6 +879,20 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
 function NotificationsPanel({ onClose, onLaunch }) {
   const feed = useSystemFeed();
   const notificationHistory = useNotificationHistory();
+  const [feedFilter, setFeedFilter] = useState("all");
+  const [feedQuery, setFeedQuery] = useState("");
+  const deferredFeedQuery = useDeferredValue(feedQuery);
+  const visibleFeedItems = useMemo(
+    () => filterSystemFeed(feed.items, {
+      filter: feedFilter,
+      query: deferredFeedQuery,
+    }),
+    [deferredFeedQuery, feed.items, feedFilter],
+  );
+  const feedSummary = useMemo(
+    () => getSystemFeedFilterSummary(feed.items, visibleFeedItems),
+    [feed.items, visibleFeedItems],
+  );
   const actionTargets = {
     "open-network-settings": { label: "Network settings", target: "ms-settings:network-status" },
     "open-sound-settings": { label: "Sound settings", target: "ms-settings:sound" },
@@ -762,7 +901,18 @@ function NotificationsPanel({ onClose, onLaunch }) {
   };
 
   return (
-    <section className="shell-panel shell-notifications-panel" role="dialog" aria-modal="false" aria-label="JARVIS system feed">
+    <section
+      className="shell-panel shell-notifications-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label="JARVIS system feed"
+      onKeyDown={(event) => {
+        const nextFilter = getSystemFeedFilterShortcut(event);
+        if (!nextFilter) return;
+        event.preventDefault();
+        setFeedFilter(nextFilter);
+      }}
+    >
       <PanelHeader eyebrow="CURRENT SESSION · MAX 50 EVENTS" title="JARVIS SYSTEM FEED" onClose={onClose} />
       <div className={`windows-history-status is-${notificationHistory.historyAvailable ? "ready" : "limited"}`}>
         <span><WindowAppsRegular /></span>
@@ -776,13 +926,48 @@ function NotificationsPanel({ onClose, onLaunch }) {
           ? "CHECKING"
           : notificationHistory.accessStatus.toUpperCase()}</code>
       </div>
+      <div className="system-feed-controls" role="toolbar" aria-label="Filter JARVIS system feed">
+        {[
+          ["all", "ALL"],
+          ["unread", "UNREAD"],
+          ["attention", "ATTENTION"],
+          ["status", "STATUS"],
+        ].map(([id, label], index) => (
+          <button
+            key={id}
+            type="button"
+            className={feedFilter === id ? "is-active" : ""}
+            aria-pressed={feedFilter === id}
+            aria-keyshortcuts={`Control+${index + 1}`}
+            title={`Ctrl+${index + 1}`}
+            data-dialog-initial-focus={index === 0 ? "true" : undefined}
+            onClick={() => setFeedFilter(id)}
+          >
+            <span>{label}</span><kbd>{index + 1}</kbd>
+          </button>
+        ))}
+        <label>
+          <SearchRegular aria-hidden="true" />
+          <input
+            value={feedQuery}
+            maxLength={96}
+            placeholder="Filter events"
+            aria-label="Filter system feed text"
+            onChange={(event) => setFeedQuery(event.target.value)}
+          />
+        </label>
+        <code>{feedSummary.label}</code>
+      </div>
       <div className="shell-notification-list">
         {feed.loading ? <p className="system-feed-empty">Connecting to the JARVIS event stream…</p> : null}
         {feed.error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{feed.error}</p> : null}
         {!feed.loading && !feed.error && feed.items.length === 0
           ? <p className="system-feed-empty">No JARVIS events in this session.</p>
           : null}
-        {feed.items.map((item) => {
+        {!feed.loading && !feed.error && feed.items.length > 0 && visibleFeedItems.length === 0
+          ? <p className="system-feed-empty">No events match the current feed filter.</p>
+          : null}
+        {visibleFeedItems.map((item) => {
           const target = actionTargets[item.actionId];
           const Item = target ? "button" : "div";
           const Icon = item.severity === "ok" ? CheckmarkCircleRegular : item.severity === "info" ? WindowAppsRegular : AlertRegular;
@@ -802,7 +987,7 @@ function NotificationsPanel({ onClose, onLaunch }) {
         })}
       </div>
       <footer className="notification-footer">
-        <span>{feed.unreadCount} UNREAD · CURRENT SESSION ONLY</span>
+        <span>{feedSummary.visibleUnread} VISIBLE UNREAD · {feedSummary.label}</span>
         <button type="button" disabled={feed.unreadCount === 0} onClick={() => void markSystemFeedRead()}>MARK ALL READ</button>
         <button type="button" disabled={feed.items.length === 0} onClick={() => void clearSystemFeed()}>CLEAR</button>
       </footer>
@@ -810,128 +995,498 @@ function NotificationsPanel({ onClose, onLaunch }) {
   );
 }
 
-function QuickSearchShortcutSetting({ onToast }) {
-  const [shortcutState, setShortcutState] = useState(null);
-  const [status, setStatus] = useState("loading");
-  const [error, setError] = useState("");
-  const mountedRef = useRef(true);
+function DateTimePanel({ onClose, onLaunch }) {
+  const clock = usePlatformClock();
+  const feed = useSystemFeed();
+  const todayKey = toLocalDateKey(clock.dateTime) ??
+    toLocalDateKey(new Date());
+  const today = parseLocalDateKey(todayKey) ?? new Date();
+  const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
+  const [visibleMonth, setVisibleMonth] = useState(() => ({
+    year: today.getFullYear(),
+    month: today.getMonth(),
+  }));
+  const calendarRef = useRef(null);
+  const pendingFocusDateRef = useRef(null);
+  const eventTimestamps = useMemo(
+    () => feed.items.map((item) => item.timestamp),
+    [feed.items],
+  );
+  const calendar = useMemo(() => createCalendarMonth({
+    ...visibleMonth,
+    todayKey,
+    eventTimestamps,
+  }), [
+    eventTimestamps,
+    todayKey,
+    visibleMonth,
+  ]);
+  const selectedDate = parseLocalDateKey(selectedDateKey) ?? today;
+  const selectedDateLabel = selectedDate.toLocaleDateString("en-US", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).toUpperCase();
+  const selectedEvents = useMemo(
+    () => feed.items
+      .filter((item) =>
+        isTimestampOnLocalDate(item.timestamp, selectedDateKey))
+      .slice(0, 5),
+    [feed.items, selectedDateKey],
+  );
 
   useEffect(() => {
-    mountedRef.current = true;
-    platform.quickSearchShortcut.getState()
+    const dateKey = pendingFocusDateRef.current;
+    if (!dateKey) return undefined;
+    pendingFocusDateRef.current = null;
+    const frame = window.requestAnimationFrame(() => {
+      calendarRef.current
+        ?.querySelector(`[data-date-key="${dateKey}"]`)
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [calendar, selectedDateKey]);
+
+  const selectDate = (dateKey, focus = false) => {
+    const date = parseLocalDateKey(dateKey);
+    if (!date) return;
+    if (focus) pendingFocusDateRef.current = dateKey;
+    setSelectedDateKey(dateKey);
+    setVisibleMonth({
+      year: date.getFullYear(),
+      month: date.getMonth(),
+    });
+  };
+
+  const navigateMonth = (delta) => {
+    const next = shiftCalendarMonth(
+      visibleMonth.year,
+      visibleMonth.month,
+      delta,
+    );
+    const selectedDay = selectedDate.getDate();
+    const lastDay = new Date(
+      next.year,
+      next.month + 1,
+      0,
+    ).getDate();
+    const target = new Date(
+      next.year,
+      next.month,
+      Math.min(selectedDay, lastDay),
+      12,
+    );
+    selectDate(toLocalDateKey(target), true);
+  };
+
+  const handleCalendarKeyDown = (event, dateKey) => {
+    const command = event.shiftKey
+      ? {
+          PageUp: "previousYear",
+          PageDown: "nextYear",
+        }[event.key]
+      : {
+          ArrowLeft: "previousDay",
+          ArrowRight: "nextDay",
+          ArrowUp: "previousWeek",
+          ArrowDown: "nextWeek",
+          Home: "weekStart",
+          End: "weekEnd",
+          PageUp: "previousMonth",
+          PageDown: "nextMonth",
+        }[event.key];
+    if (!command) return;
+    event.preventDefault();
+    const target = moveCalendarDate(dateKey, command);
+    if (target) selectDate(target, true);
+  };
+
+  const goToToday = () => selectDate(todayKey, true);
+
+  return (
+    <section
+      className="shell-panel date-time-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label="Date and time"
+    >
+      <PanelHeader
+        eyebrow="LOCAL SYSTEM TIME · CURRENT SESSION"
+        title="DATE & TIME"
+        onClose={onClose}
+      />
+
+      <div className="date-time-hero">
+        <span className="date-time-orbit" aria-hidden="true">
+          <ClockRegular />
+          <i />
+        </span>
+        <span>
+          <strong>{clock.time}</strong>
+          <small>{clock.longDate}</small>
+        </span>
+        <code>LOCAL</code>
+      </div>
+
+      <div className="date-time-calendar-header">
+        <span>
+          <small>CALENDAR MATRIX</small>
+          <strong>{calendar.monthLabel}</strong>
+        </span>
+        <div>
+          <button
+            type="button"
+            onClick={() => navigateMonth(-1)}
+            aria-label="Previous month"
+            title="Previous month · Page Up"
+          >
+            <ChevronLeftRegular />
+          </button>
+          <button type="button" className="is-today" onClick={goToToday}>
+            TODAY
+          </button>
+          <button
+            type="button"
+            onClick={() => navigateMonth(1)}
+            aria-label="Next month"
+            title="Next month · Page Down"
+          >
+            <ChevronRightRegular />
+          </button>
+        </div>
+      </div>
+
+      <div
+        ref={calendarRef}
+        className="date-time-calendar"
+        role="grid"
+        aria-label={calendar.monthLabel}
+      >
+        <div className="date-time-weekdays" role="row">
+          {CALENDAR_WEEKDAYS.map((weekday) => (
+            <span key={weekday} role="columnheader">{weekday}</span>
+          ))}
+        </div>
+        <div className="date-time-days">
+          {calendar.cells.map((cell) => {
+            const selected = cell.key === selectedDateKey;
+            return (
+              <button
+                key={cell.key}
+                type="button"
+                role="gridcell"
+                className={[
+                  cell.inMonth ? "" : "is-adjacent",
+                  cell.today ? "is-today" : "",
+                  selected ? "is-selected" : "",
+                  cell.eventCount ? "has-events" : "",
+                ].filter(Boolean).join(" ")}
+                aria-selected={selected}
+                aria-label={`${cell.key}${cell.eventCount ? `, ${cell.eventCount} session events` : ""}`}
+                tabIndex={selected ? 0 : -1}
+                data-date-key={cell.key}
+                onClick={() => selectDate(cell.key)}
+                onKeyDown={(event) =>
+                  handleCalendarKeyDown(event, cell.key)}
+              >
+                <span>{cell.day}</span>
+                {cell.eventCount ? (
+                  <small aria-hidden="true">
+                    {Math.min(cell.eventCount, 9)}
+                  </small>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <section
+        className="date-time-agenda"
+        aria-labelledby="date-time-agenda-title"
+      >
+        <header>
+          <span>
+            <small>JARVIS SESSION ACTIVITY</small>
+            <strong id="date-time-agenda-title">{selectedDateLabel}</strong>
+          </span>
+          <code>{selectedEvents.length.toString().padStart(2, "0")}</code>
+        </header>
+        {selectedEvents.length ? (
+          <div className="date-time-event-list">
+            {selectedEvents.map((item) => (
+              <article key={item.id} className={`is-${item.severity}`}>
+                <i aria-hidden="true" />
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{item.detail || "No additional detail."}</small>
+                </span>
+                <time dateTime={item.timestamp ?? undefined}>
+                  {item.timestamp
+                    ? new Date(item.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                    : "--:--"}
+                </time>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="date-time-empty">
+            <CalendarMonthRegular />
+            <span>
+              <strong>NO SESSION EVENTS</strong>
+              <small>JARVIS has no recorded activity for this local date.</small>
+            </span>
+          </div>
+        )}
+      </section>
+
+      <footer className="date-time-footer">
+        <span>Calendar accounts are not connected.</span>
+        <button
+          type="button"
+          onClick={() => onLaunch({
+            label: "Date & time settings",
+            target: "ms-settings:dateandtime",
+          })}
+        >
+          <OpenRegular />
+          OPEN WINDOWS SETTINGS
+        </button>
+      </footer>
+    </section>
+  );
+}
+
+function SessionControlPanel({ onClose, onExit, onToast }) {
+  const sessionActionRefs = useRef(new Map());
+  const lastSessionActionRef = useRef(null);
+  const cancelConfirmationRef = useRef(null);
+  const [sessionState, setSessionState] = useState(() =>
+    normalizeSessionControlState(null));
+  const [status, setStatus] = useState("loading");
+  const [challenge, setChallenge] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    platform.session.getState()
       .then((result) => {
-        if (!mountedRef.current) return;
-        setShortcutState(result);
+        if (!active) return;
+        setSessionState(normalizeSessionControlState(result));
         setStatus("ready");
       })
       .catch((nextError) => {
-        if (!mountedRef.current) return;
+        if (!active) return;
         setError(nextError.message);
         setStatus("error");
       });
+
     return () => {
-      mountedRef.current = false;
+      active = false;
+      void platform.session.cancel().catch(() => {});
     };
   }, []);
 
   useEffect(() => {
-    if (shortcutState?.status !== "starting" || status === "error") return undefined;
-    let requestPending = false;
-    const timer = window.setInterval(async () => {
-      if (requestPending) return;
-      requestPending = true;
-      try {
-        const result = await platform.quickSearchShortcut.getState();
-        if (!mountedRef.current) return;
-        setShortcutState(result);
-        setStatus("ready");
-      } catch (nextError) {
-        if (!mountedRef.current) return;
-        setError(nextError.message);
-        setStatus("error");
-      } finally {
-        requestPending = false;
-      }
-    }, 350);
-    return () => window.clearInterval(timer);
-  }, [shortcutState?.status, status]);
+    if (!challenge) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      cancelConfirmationRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [challenge]);
 
-  const savePreference = async (enabled, retry = false) => {
-    if (status === "saving") return;
-    setStatus("saving");
+  const restoreSessionActionFocus = () => {
+    const actionId = lastSessionActionRef.current;
+    window.requestAnimationFrame(() => {
+      sessionActionRefs.current.get(actionId)?.focus();
+    });
+  };
+
+  const beginAction = async (action) => {
+    lastSessionActionRef.current = action.id;
     setError("");
+    if (action.local) {
+      setChallenge(createExitChallenge());
+      return;
+    }
+
+    setBusy(true);
     try {
-      const result = await platform.quickSearchShortcut.setEnabled(enabled);
-      if (!mountedRef.current) return;
-      setShortcutState(result);
-      setStatus("ready");
-      onToast?.(
-        result.enabled
-          ? result.status === "starting"
-            ? "Global Quick Search renderer is starting"
-            : result.registered
-            ? "Global Quick Search shortcut enabled · Ctrl+Alt+J"
-            : "Quick Search is enabled but the Windows shortcut is unavailable"
-          : "Global Quick Search disabled · desktop Ctrl+Space remains available",
-      );
-    } catch (nextError) {
-      if (!mountedRef.current) return;
-      setError(nextError.message);
-      setStatus("error");
-      if (retry) {
-        onToast?.("Quick Search shortcut retry failed");
+      const result = await platform.session.prepare(action.id);
+      const normalized = normalizeSessionChallenge(result, action.id);
+      if (!normalized) {
+        throw new Error("Windows returned an invalid confirmation capability.");
       }
+      setChallenge(normalized);
+    } catch (nextError) {
+      setError(nextError.message);
+    } finally {
+      setBusy(false);
     }
   };
 
-  const enabled = Boolean(shortcutState?.enabled);
-  const registered = Boolean(shortcutState?.registered);
-  const starting = shortcutState?.status === "starting";
-  const unavailable = shortcutState?.status === "unavailable";
-  const detail = status === "loading"
-    ? "Reading the current-user shortcut preference…"
-    : !enabled
-      ? "System-wide shortcut disabled. Desktop Ctrl+Space remains available."
-      : starting
-        ? "Preparing the isolated search renderer before Windows shortcut registration…"
-      : registered
-        ? `${shortcutState.shortcut} opens Quick Search above Windows applications.`
-        : `${shortcutState?.failureReason ?? "Windows did not register the shortcut."} Desktop Ctrl+Space remains available.`;
+  const cancelChallenge = async () => {
+    setChallenge(null);
+    setError("");
+    restoreSessionActionFocus();
+    try {
+      await platform.session.cancel();
+    } catch {
+      // Native challenges expire quickly; cancellation failure is non-blocking.
+    }
+  };
+
+  const confirmAction = async () => {
+    if (!challenge || busy) return;
+    if (isSessionChallengeExpired(challenge)) {
+      setChallenge(null);
+      setError("Confirmation expired. Select the action again.");
+      restoreSessionActionFocus();
+      return;
+    }
+    if (challenge.local) {
+      await onExit();
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try {
+      const result = await platform.session.commit(
+        challenge.actionId,
+        challenge.token,
+      );
+      setChallenge(null);
+      onToast(result.message ?? "Windows accepted the session action.");
+      onClose();
+    } catch (nextError) {
+      setChallenge(null);
+      setError(nextError.message);
+      restoreSessionActionFocus();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const actions = [EXIT_TO_WINDOWS_ACTION, ...sessionState.actions];
+  const ChallengeIcon = challenge
+    ? SESSION_ACTION_ICONS[challenge.actionId] ?? PowerRegular
+    : PowerRegular;
 
   return (
-    <div className={`runtime-setting-row quick-search-shortcut-row ${unavailable ? "is-attention" : ""}`}>
-      <span className="runtime-setting-icon"><SearchRegular /></span>
-      <span className="runtime-setting-copy">
-        <strong>GLOBAL QUICK SEARCH</strong>
-        <small>{detail}</small>
-        {shortcutState?.configurationWarning ? (
-          <small className="runtime-setting-warning">{shortcutState.configurationWarning}</small>
-        ) : null}
-        {error ? <small className="runtime-setting-error" role="alert">{error}</small> : null}
-        {unavailable ? (
-          <button
-            type="button"
-            className="quick-search-shortcut-retry"
-            disabled={status === "saving"}
-            onClick={() => void savePreference(true, true)}
-          >
-            RETRY REGISTRATION
-          </button>
-        ) : null}
-      </span>
-      <button
-        type="button"
-        className={`runtime-switch ${enabled ? "is-on" : ""} ${unavailable ? "needs-repair" : ""}`}
-        role="switch"
-        aria-label="Enable global Quick Search shortcut"
-        aria-checked={enabled}
-        disabled={!shortcutState || status === "saving"}
-        onClick={() => void savePreference(!enabled)}
-      >
-        <span />
-        <strong>{status === "saving" ? "SAVING" : starting ? "STARTING" : enabled ? "ON" : "OFF"}</strong>
-      </button>
-    </div>
+    <section
+      className="shell-panel session-control-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label="Session controls"
+    >
+      <PanelHeader
+        eyebrow="RECOVERY-BOUND · LOCAL WINDOWS SESSION"
+        title="SESSION CONTROL"
+        onClose={onClose}
+      />
+
+      <div className="session-control-status">
+        <span className="session-control-orbit" aria-hidden="true">
+          <PowerRegular />
+          <i />
+        </span>
+        <div>
+          <small>CONTROL BOUNDARY</small>
+          <strong>{sessionState.available ? "WINDOWS READY" : "JARVIS RECOVERY ONLY"}</strong>
+          <p>Every Windows session action requires a short-lived, single-use confirmation.</p>
+        </div>
+        <code>{status === "loading" ? "CHECKING" : sessionState.available ? "GUARDED" : "LIMITED"}</code>
+      </div>
+
+      {!challenge ? (
+        <div className="session-control-grid" aria-busy={busy || status === "loading"}>
+          {actions.map((action) => {
+            const Icon = SESSION_ACTION_ICONS[action.id] ?? PowerRegular;
+            const disabled = busy ||
+              (action.local ? false : status !== "ready" || !sessionState.available);
+            return (
+              <button
+                key={action.id}
+                ref={(element) => {
+                  if (element) sessionActionRefs.current.set(action.id, element);
+                  else sessionActionRefs.current.delete(action.id);
+                }}
+                type="button"
+                className={[
+                  action.local ? "is-primary" : "",
+                  action.destructive ? "is-destructive" : "",
+                ].filter(Boolean).join(" ")}
+                disabled={disabled}
+                onClick={() => void beginAction(action)}
+              >
+                <span><Icon /></span>
+                <span>
+                  <strong>{action.label}</strong>
+                  <small>{action.detail}</small>
+                </span>
+                <code>{action.local ? "SAFE EXIT" : action.destructive ? "SYSTEM" : "SESSION"}</code>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <section
+          className={`session-confirmation ${challenge.destructive ? "is-destructive" : ""}`}
+          role="alertdialog"
+          aria-modal="false"
+          aria-labelledby="session-confirmation-title"
+        >
+          <span className="session-confirmation-icon" aria-hidden="true">
+            <ChallengeIcon />
+          </span>
+          <div>
+            <small>EXPLICIT CONFIRMATION REQUIRED</small>
+            <strong id="session-confirmation-title">{challenge.title}</strong>
+            <p>{challenge.detail}</p>
+            <code>{challenge.local
+              ? "JARVIS WILL CLOSE · WINDOWS STAYS ACTIVE"
+              : `SINGLE-USE CAPABILITY · ${sessionState.confirmationTimeoutSeconds} SECONDS`}</code>
+          </div>
+          <div>
+            <button
+              ref={cancelConfirmationRef}
+              type="button"
+              data-dialog-initial-focus="true"
+              disabled={busy}
+              onClick={() => void cancelChallenge()}
+            >
+              CANCEL
+            </button>
+            <button
+              type="button"
+              className={challenge.destructive ? "is-destructive" : "is-confirm"}
+              disabled={busy}
+              onClick={() => void confirmAction()}
+            >
+              {busy ? "REQUESTING" : `CONFIRM ${challenge.title}`}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {error ? (
+        <p className="runtime-settings-error session-control-error" role="alert">
+          <AlertRegular />
+          {error}
+        </p>
+      ) : null}
+
+      <footer className="session-control-footer">
+        <span><ShieldRegular /> CTRL+SHIFT+Q ALWAYS RESTORES WINDOWS</span>
+        <small>No force-close flag is exposed to JARVIS.</small>
+      </footer>
+    </section>
   );
 }
 
@@ -1095,8 +1650,6 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
               <strong>{status === "saving" ? "SAVING" : startupNeedsRepair ? "REPAIR" : startupEnabled ? "ON" : "OFF"}</strong>
             </button>
           </div>
-
-          <QuickSearchShortcutSetting onToast={onToast} />
 
           <div className="runtime-setting-row is-readonly">
             <span className="runtime-setting-icon"><ShieldRegular /></span>
@@ -1446,6 +1999,19 @@ function InterfacePreferences({ onToast }) {
     getUiAudioSnapshot,
     getUiAudioSnapshot,
   );
+  const interfacePreferences = useSyncExternalStore(
+    subscribeInterfacePreferences,
+    getInterfacePreferencesSnapshot,
+    getInterfacePreferencesSnapshot,
+  );
+
+  const resetInterface = () => {
+    setVisualTheme("nexus");
+    setUiAudioEnabled(false);
+    setUiAudioVolume(0.14);
+    resetInterfacePreferences();
+    onToast?.("Interface preferences restored to safe defaults");
+  };
 
   return (
     <section className="interface-preferences" aria-labelledby="interface-preferences-title">
@@ -1454,7 +2020,7 @@ function InterfacePreferences({ onToast }) {
           <strong id="interface-preferences-title">INTERFACE SIGNAL</strong>
           <small>LAYERED EMISSION · ACCESSIBLE AUDIO</small>
         </span>
-        <code>{themeId.toUpperCase()}</code>
+        <code>{themeId.toUpperCase()} · {interfacePreferences.emission.toUpperCase()}</code>
       </header>
 
       <div className="theme-choice-grid" role="radiogroup" aria-label="JARVIS visual theme">
@@ -1474,6 +2040,50 @@ function InterfacePreferences({ onToast }) {
             <span><strong>{theme.label}</strong><small>{theme.description}</small></span>
           </button>
         ))}
+      </div>
+
+      <div className="interface-option-group">
+        <header>
+          <span><strong>MOTION PROFILE</strong><small>ACCESSIBILITY · LOCAL PREFERENCE</small></span>
+          <code>{interfacePreferences.motion.toUpperCase()}</code>
+        </header>
+        <div className="interface-option-grid" role="radiogroup" aria-label="JARVIS motion preference">
+          {interfaceMotionOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={option.id === interfacePreferences.motion}
+              className={option.id === interfacePreferences.motion ? "is-selected" : ""}
+              onClick={() => setInterfacePreferences({ motion: option.id })}
+            >
+              <strong>{option.label}</strong>
+              <small>{option.detail}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="interface-option-group">
+        <header>
+          <span><strong>EMISSION LEVEL</strong><small>LINE LEGIBILITY REMAINS UNCHANGED</small></span>
+          <code>{interfacePreferences.emission.toUpperCase()}</code>
+        </header>
+        <div className="interface-option-grid" role="radiogroup" aria-label="JARVIS emission preference">
+          {interfaceEmissionOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="radio"
+              aria-checked={option.id === interfacePreferences.emission}
+              className={option.id === interfacePreferences.emission ? "is-selected" : ""}
+              onClick={() => setInterfacePreferences({ emission: option.id })}
+            >
+              <strong>{option.label}</strong>
+              <small>{option.detail}</small>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="audio-preference-row">
@@ -1503,6 +2113,17 @@ function InterfacePreferences({ onToast }) {
           <strong>{audio.enabled ? "ON" : "OFF"}</strong>
         </button>
       </div>
+      <button
+        type="button"
+        className="interface-reset-button"
+        onClick={resetInterface}
+      >
+        <ArrowClockwiseRegular />
+        <span>
+          <strong>RESET INTERFACE</strong>
+          <small>Theme, motion, emission, and local interaction audio only.</small>
+        </span>
+      </button>
     </section>
   );
 }
@@ -1798,23 +2419,18 @@ export function ShellPanelLayer({
   onLaunch,
   onLaunchInstalled,
   onActivateWindow,
+  onOpenPanel,
   onExit,
   onToast,
 }) {
-  useEffect(() => {
-    if (!panel) return undefined;
-    const handleEscape = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose, panel]);
+  const panelRef = useRef(null);
+  useDialogFocusTrap(panelRef, Boolean(panel), { onEscape: onClose });
 
   if (!panel) return null;
 
   return (
     <div className={`shell-panel-layer is-${panel}`} onMouseDown={onClose}>
-      <div onMouseDown={(event) => event.stopPropagation()}>
+      <div ref={panelRef} onMouseDown={(event) => event.stopPropagation()}>
         {panel === "start" ? (
           <StartPanel
             onClose={onClose}
@@ -1822,11 +2438,19 @@ export function ShellPanelLayer({
             onLaunch={onLaunch}
             onLaunchInstalled={onLaunchInstalled}
             onActivateWindow={onActivateWindow}
-            onExit={onExit}
+            onOpenSession={() => onOpenPanel("session")}
           />
         ) : null}
         {panel === "quick-settings" ? <QuickSettingsPanel onClose={onClose} onLaunch={onLaunch} /> : null}
+        {panel === "date-time" ? <DateTimePanel onClose={onClose} onLaunch={onLaunch} /> : null}
         {panel === "notifications" ? <NotificationsPanel onClose={onClose} onLaunch={onLaunch} /> : null}
+        {panel === "session" ? (
+          <SessionControlPanel
+            onClose={onClose}
+            onExit={onExit}
+            onToast={onToast}
+          />
+        ) : null}
         {panel === "settings" ? <RuntimeSettingsPanel onClose={onClose} onToast={onToast} /> : null}
       </div>
     </div>

@@ -47,28 +47,45 @@ test("mock tray rejects out-of-range volume and emits real snapshots", async () 
   assert.equal(changed.simulation, true);
 });
 
-test("mock global Quick Search preference is reversible and reflected in diagnostics", async () => {
+test("mock Show Desktop restores only the windows from the active session", async () => {
   const mock = createMockPlatform();
-  const disabled = await mock.quickSearchShortcut.setEnabled(false);
-  assert.deepEqual(disabled, {
-    enabled: false,
-    registered: false,
-    status: "disabled",
-    shortcut: "Ctrl+Alt+J",
-    failureReason: null,
-    configurationWarning: null,
-  });
+  const before = await mock.taskbar.getSnapshot();
+  const originallyVisibleIds = before.windows
+    .filter((window) => !window.minimized)
+    .map((window) => window.windowId);
 
-  const disabledDiagnostics = await mock.lifecycle.runDiagnostics();
-  const disabledCheck = disabledDiagnostics.checks.find(
-    (check) => check.id === "global-quick-search-hotkey",
+  const shown = await mock.taskbar.toggleDesktop();
+  assert.equal(shown.action, "shown");
+  assert.equal(shown.affectedWindowCount, originallyVisibleIds.length);
+  const minimized = await mock.taskbar.getSnapshot();
+  assert.equal(minimized.windows
+    .filter((window) => originallyVisibleIds.includes(window.windowId))
+    .every((window) => window.minimized), true);
+
+  const restored = await mock.taskbar.toggleDesktop();
+  assert.equal(restored.action, "restored");
+  const after = await mock.taskbar.getSnapshot();
+  assert.equal(after.windows
+    .filter((window) => originallyVisibleIds.includes(window.windowId))
+    .every((window) => !window.minimized), true);
+});
+
+test("mock session actions require a matching single-use confirmation", async () => {
+  const mock = createMockPlatform();
+  const state = await mock.session.getState();
+  assert.deepEqual(
+    state.actions.map((action) => action.id),
+    ["lock", "sign-out", "restart", "shut-down"],
   );
-  assert.equal(disabledCheck.status, "READY");
-  assert.match(disabledCheck.detail, /desktop Ctrl\+Space remains available/u);
 
-  const enabled = await mock.quickSearchShortcut.setEnabled(true);
-  assert.equal(enabled.enabled, true);
-  assert.equal(enabled.registered, true);
+  const challenge = await mock.session.prepare("restart");
+  const result = await mock.session.commit(challenge.actionId, challenge.token);
+  assert.equal(result.accepted, true);
+  assert.equal(result.mock, true);
+  await assert.rejects(
+    () => mock.session.commit(challenge.actionId, challenge.token),
+    /confirmation expired/u,
+  );
 });
 
 test("desktop icons fill down before starting the next column", () => {

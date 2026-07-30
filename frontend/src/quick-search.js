@@ -1,5 +1,45 @@
 const MAX_RESULTS = 9;
 const SEARCH_SEPARATORS = /[^\p{L}\p{N}._:/\\-]+/gu;
+const QUICK_SEARCH_SCOPE_PATTERN = /^(app|win|file|set):\s*/iu;
+const QUICK_SEARCH_SCOPE_KINDS = Object.freeze({
+  app: Object.freeze(["app", "installed-app"]),
+  win: Object.freeze(["window"]),
+  file: Object.freeze(["desktop"]),
+  set: Object.freeze(["setting"]),
+});
+
+export const quickSearchScopes = Object.freeze([
+  Object.freeze({ id: "all", prefix: "", label: "ALL", detail: "Everything" }),
+  Object.freeze({ id: "app", prefix: "app:", label: "APPS", detail: "Installed applications" }),
+  Object.freeze({ id: "win", prefix: "win:", label: "WINDOWS", detail: "Open windows" }),
+  Object.freeze({ id: "file", prefix: "file:", label: "FILES", detail: "Desktop items" }),
+  Object.freeze({ id: "set", prefix: "set:", label: "SETTINGS", detail: "Windows settings" }),
+]);
+
+export function getQuickSearchScopeShortcut(eventLike) {
+  if (
+    !eventLike ||
+    !(eventLike.ctrlKey || eventLike.metaKey) ||
+    eventLike.altKey ||
+    eventLike.shiftKey
+  ) {
+    return null;
+  }
+  const index = Number.parseInt(String(eventLike.key ?? ""), 10) - 1;
+  return Number.isInteger(index) && quickSearchScopes[index]
+    ? quickSearchScopes[index].id
+    : null;
+}
+
+export function parseQuickSearchQuery(value) {
+  const source = String(value ?? "").slice(0, 160).trimStart();
+  const match = source.match(QUICK_SEARCH_SCOPE_PATTERN);
+  if (!match) return { scope: "all", query: source.trim() };
+  return {
+    scope: match[1].toLocaleLowerCase(),
+    query: source.slice(match[0].length).trim(),
+  };
+}
 
 export function normalizeSearchText(value) {
   return String(value ?? "")
@@ -219,10 +259,13 @@ export function createQuickSearchIndex({
 }
 
 export function searchQuickIndex(index, query, limit = MAX_RESULTS) {
-  const normalizedQuery = normalizeSearchText(query);
+  const parsed = parseQuickSearchQuery(query);
+  const normalizedQuery = normalizeSearchText(parsed.query);
+  const allowedKinds = QUICK_SEARCH_SCOPE_KINDS[parsed.scope] ?? null;
   const scored = [];
 
   index.forEach((item) => {
+    if (allowedKinds && !allowedKinds.includes(item.kind)) return;
     const score = scoreSearchItem(item, normalizedQuery);
     if (score <= 0) return;
     scored.push({ item, score });

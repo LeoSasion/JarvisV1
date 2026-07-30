@@ -8,7 +8,7 @@ export const WORKSPACE_COMMAND_STORAGE_KEY = "jarvis.workspace.command.v1";
 
 const RUNTIME_VERSION = 1;
 const validWindowIds = new Set(WORKSPACE_WINDOW_IDS);
-const validActions = new Set(["toggle", "close"]);
+const validActions = new Set(["toggle", "close", "minimize", "restore"]);
 const localRuntimeEvent = "jarvis:workspace-runtime";
 const localCommandEvent = "jarvis:workspace-command";
 

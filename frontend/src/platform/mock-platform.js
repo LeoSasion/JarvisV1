@@ -19,7 +19,6 @@ const WINDOW_APPEARANCE_PROTECTED_PROCESSES = new Set([
 ]);
 const TASKBAR_MODE_STORAGE_KEY = "jarvis.taskbar.mode.v1";
 const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
-const QUICK_SEARCH_SHORTCUT_STORAGE_KEY = "jarvis.quickSearchShortcut.enabled.v1";
 const MOCK_STYLED_WINDOW_COUNTS = {
   off: 0,
   conservative: 4,
@@ -146,41 +145,6 @@ function createMockTaskbarModeState(mode, options = {}) {
     retryAllowed: options.retryAllowed ?? false,
     recoveryFailureCount: options.recoveryFailureCount ?? 0,
     retryAfterUtc: options.retryAfterUtc ?? null,
-  };
-}
-
-function readMockQuickSearchShortcutEnabled() {
-  try {
-    const settings = JSON.parse(
-      globalThis.localStorage?.getItem(QUICK_SEARCH_SHORTCUT_STORAGE_KEY) ?? "null",
-    );
-    return settings?.version === 1 && typeof settings.enabled === "boolean"
-      ? settings.enabled
-      : true;
-  } catch {
-    return true;
-  }
-}
-
-function persistMockQuickSearchShortcutEnabled(enabled) {
-  try {
-    globalThis.localStorage?.setItem(
-      QUICK_SEARCH_SHORTCUT_STORAGE_KEY,
-      JSON.stringify({ version: 1, enabled }),
-    );
-  } catch {
-    // The in-memory shortcut preference remains usable when storage is disabled.
-  }
-}
-
-function createMockQuickSearchShortcutState(enabled) {
-  return {
-    enabled,
-    registered: enabled,
-    status: enabled ? "registered" : "disabled",
-    shortcut: "Ctrl+Alt+J",
-    failureReason: null,
-    configurationWarning: null,
   };
 }
 
@@ -484,9 +448,6 @@ export function createMockPlatform() {
     windowAppearanceRules,
   );
   let taskbarModeState = createMockTaskbarModeState(readMockTaskbarMode());
-  let quickSearchShortcutState = createMockQuickSearchShortcutState(
-    readMockQuickSearchShortcutEnabled(),
-  );
   let traySnapshot = {
     timestamp: new Date().toISOString(),
     audio: {
@@ -514,6 +475,38 @@ export function createMockPlatform() {
     unreadCount: 1,
     capacity: 50,
   };
+  const mockSessionActions = [
+    {
+      id: "lock",
+      label: "LOCK DEVICE",
+      detail: "Return to the Windows sign-in screen without closing applications.",
+      consequence: "Your applications remain open and the current user session stays active.",
+      destructive: false,
+    },
+    {
+      id: "sign-out",
+      label: "SIGN OUT",
+      detail: "End the current Windows user session.",
+      consequence: "Open applications may block sign-out so you can save unsaved work.",
+      destructive: true,
+    },
+    {
+      id: "restart",
+      label: "RESTART",
+      detail: "Restart Windows using the standard local shutdown service.",
+      consequence: "Open applications may block restart so you can save unsaved work.",
+      destructive: true,
+    },
+    {
+      id: "shut-down",
+      label: "SHUT DOWN",
+      detail: "Shut down this PC using the standard local shutdown service.",
+      consequence: "Open applications may block shutdown so you can save unsaved work.",
+      destructive: true,
+    },
+  ];
+  let mockSessionChallenge = null;
+  let mockSessionTokenSequence = 0;
   let runtimeInfo = {
     productName: "JARVIS Night Shell",
     version: "0.1.0-mock",
@@ -537,6 +530,7 @@ export function createMockPlatform() {
     ...mockTaskbarSnapshot,
     windows: mockTaskbarSnapshot.windows.map((window) => ({ ...window })),
   };
+  let showDesktopRestoreWindows = [];
   let applicationCatalogRevision = 1;
   let desktopRevision = 1;
   let mockClipboard = {
@@ -1187,6 +1181,64 @@ export function createMockPlatform() {
         emit("taskbar.snapshot", taskbarSnapshot);
         return { closed: taskbarSnapshot.windows.length < before, mock: true, windowId };
       },
+      async toggleDesktop(options = {}) {
+        const visibleWindows = taskbarSnapshot.windows.filter((window) => !window.minimized);
+        const hasVisibleWindow =
+          visibleWindows.length > 0 ||
+          options.hasVisibleInternalWindow === true;
+        const restoreById = new Map(
+          showDesktopRestoreWindows.map((window) => [window.windowId, window]),
+        );
+        const restorableWindows = taskbarSnapshot.windows.filter((window) =>
+          window.minimized && restoreById.has(window.windowId));
+
+        if (!hasVisibleWindow && restorableWindows.length > 0) {
+          const restoredIds = new Set(restorableWindows.map((window) => window.windowId));
+          const foregroundWindow = restorableWindows.find((window) =>
+            restoreById.get(window.windowId)?.wasActive) ?? restorableWindows[0];
+          taskbarSnapshot = {
+            ...taskbarSnapshot,
+            windows: taskbarSnapshot.windows.map((window) => restoredIds.has(window.windowId)
+              ? {
+                ...window,
+                minimized: false,
+                active: window.windowId === foregroundWindow.windowId,
+              }
+              : window),
+            foregroundWindowId: foregroundWindow.windowId,
+          };
+          showDesktopRestoreWindows = [];
+          emit("taskbar.snapshot", taskbarSnapshot);
+          return {
+            action: "restored",
+            affectedWindowCount: restoredIds.size,
+            restoreAvailable: false,
+            restoreJarvisForeground: false,
+            mock: true,
+          };
+        }
+
+        const minimizedIds = new Set(visibleWindows.map((window) => window.windowId));
+        showDesktopRestoreWindows = visibleWindows.map((window) => ({
+          windowId: window.windowId,
+          wasActive: window.active === true,
+        }));
+        taskbarSnapshot = {
+          ...taskbarSnapshot,
+          windows: taskbarSnapshot.windows.map((window) => minimizedIds.has(window.windowId)
+            ? { ...window, minimized: true, active: false }
+            : window),
+          foregroundWindowId: null,
+        };
+        emit("taskbar.snapshot", taskbarSnapshot);
+        return {
+          action: "shown",
+          affectedWindowCount: minimizedIds.size,
+          restoreAvailable: minimizedIds.size > 0,
+          restoreJarvisForeground: false,
+          mock: true,
+        };
+      },
       async showFlyout(options) {
         return { shown: true, mock: true, ...options };
       },
@@ -1224,16 +1276,6 @@ export function createMockPlatform() {
           taskbarModeState.requestedMode,
           "mock manual-retry",
         );
-      },
-    },
-    quickSearchShortcut: {
-      async getState() {
-        return { ...quickSearchShortcutState };
-      },
-      async setEnabled(enabled) {
-        persistMockQuickSearchShortcutEnabled(Boolean(enabled));
-        quickSearchShortcutState = createMockQuickSearchShortcutState(Boolean(enabled));
-        return { ...quickSearchShortcutState };
       },
     },
     tray: {
@@ -1295,6 +1337,58 @@ export function createMockPlatform() {
         };
         emit("feed.snapshot", systemFeedSnapshot);
         return systemFeedSnapshot;
+      },
+    },
+    session: {
+      async getState() {
+        return {
+          available: true,
+          confirmationTimeoutSeconds: 15,
+          actions: mockSessionActions.map((action) => ({ ...action })),
+        };
+      },
+      async prepare(actionId) {
+        const action = mockSessionActions.find((candidate) => candidate.id === actionId);
+        if (!action) {
+          const error = new Error("This session action is not allowed.");
+          error.code = "SESSION_ACTION_NOT_ALLOWED";
+          throw error;
+        }
+        mockSessionTokenSequence += 1;
+        mockSessionChallenge = {
+          actionId,
+          title: action.label,
+          detail: action.consequence,
+          token: mockSessionTokenSequence.toString(16).padStart(64, "0"),
+          expiresAtUtc: new Date(Date.now() + 15_000).toISOString(),
+          destructive: action.destructive,
+        };
+        return { ...mockSessionChallenge };
+      },
+      async commit(actionId, token) {
+        const pending = mockSessionChallenge;
+        mockSessionChallenge = null;
+        if (
+          !pending ||
+          pending.actionId !== actionId ||
+          pending.token !== token ||
+          Date.parse(pending.expiresAtUtc) < Date.now()
+        ) {
+          const error = new Error("The session-action confirmation expired.");
+          error.code = "SESSION_CONFIRMATION_EXPIRED";
+          throw error;
+        }
+        return {
+          accepted: true,
+          actionId,
+          message: `${pending.title} simulated in browser preview.`,
+          mock: true,
+        };
+      },
+      async cancel() {
+        const cancelled = mockSessionChallenge !== null;
+        mockSessionChallenge = null;
+        return { cancelled, mock: true };
       },
     },
     windowAppearance: {
@@ -1403,8 +1497,6 @@ export function createMockPlatform() {
       },
       async runDiagnostics() {
         const startupHealthy = !runtimeInfo.startupEnabled || runtimeInfo.startupCommandCurrent;
-        const quickSearchHealthy = !quickSearchShortcutState.enabled ||
-          quickSearchShortcutState.registered;
         const checks = [
           { id: "windows-recovery", label: "WINDOWS RECOVERY", status: "READY", detail: "Explorer and the native Windows taskbar are available.", verifiedFiles: 0 },
           {
@@ -1416,15 +1508,6 @@ export function createMockPlatform() {
           },
           { id: "taskbar-synchronization", label: "TASKBAR SYNCHRONIZATION", status: "READY", detail: "6/6 Windows event hooks are active with 75 ms coalescing; 1000 ms polling remains as recovery fallback. Current virtual desktop filtering is active; 0 off-desktop windows are omitted. No primary-monitor fullscreen foreground window is currently detected.", verifiedFiles: 0 },
           { id: "global-safety-hotkey", label: "GLOBAL SAFETY EXIT", status: "READY", detail: "Ctrl+Shift+Q is registered system-wide for safe JARVIS exit.", verifiedFiles: 0 },
-          {
-            id: "global-quick-search-hotkey",
-            label: "GLOBAL QUICK SEARCH",
-            status: quickSearchHealthy ? "READY" : "ATTENTION",
-            detail: quickSearchShortcutState.enabled
-              ? "Ctrl+Alt+J is registered system-wide for the JARVIS local search HUD."
-              : "The system-wide shortcut is disabled in JARVIS Settings; desktop Ctrl+Space remains available.",
-            verifiedFiles: 0,
-          },
           { id: "native-window-appearance", label: "WINDOW APPEARANCE", status: "READY", detail: `${windowAppearanceState.effectiveMode.toUpperCase()} mode is active; event hooks, integrity guard, persistence, and DWM state tracking are ready.`, verifiedFiles: 0 },
           { id: "webview2", label: "WEBVIEW2 RUNTIME", status: "READY", detail: `Evergreen runtime ${runtimeInfo.webView2Version}.`, verifiedFiles: 0 },
           { id: "installation", label: "INSTALLATION MODE", status: "READY", detail: "Development mode does not require an installer registration.", verifiedFiles: 0 },
@@ -1443,14 +1526,6 @@ export function createMockPlatform() {
       },
       async showDesktop(options = {}) {
         return { shown: false, mock: true, ...options };
-      },
-    },
-    surface: {
-      async dismiss(restoreForeground = true) {
-        window.dispatchEvent(new CustomEvent("jarvis:mock-surface-dismissed", {
-          detail: { restoreForeground },
-        }));
-        return { dismissed: true, mock: true, restoreForeground };
       },
     },
   };

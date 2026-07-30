@@ -20,12 +20,20 @@ import {
 } from "../hooks/usePlatformData.js";
 import {
   createQuickSearchIndex,
+  getQuickSearchScopeShortcut,
+  parseQuickSearchQuery,
+  quickSearchScopes,
   searchQuickIndex,
   segmentSearchMatch,
 } from "../quick-search.js";
+import {
+  clearQuickSearchHistory,
+  recordQuickSearchQuery,
+} from "../quick-search-history.js";
 import { quickLaunchItems, quickSettingItems } from "../quick-search-catalog.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
+import { useQuickSearchHistory } from "../hooks/useQuickSearchHistory.js";
 
 function QuickSearchIcon({ result }) {
   if (result.iconDataUrl) {
@@ -71,6 +79,7 @@ export function CommandOverlay({
   const desktop = useDesktopEntries();
   const taskbar = useTaskbarSnapshot();
   const recentApplicationIds = useRecentApplicationIds();
+  const queryHistory = useQuickSearchHistory();
 
   useDialogFocusTrap(dialogRef, open, { initialFocusRef: inputRef, onEscape: onClose });
 
@@ -92,6 +101,12 @@ export function CommandOverlay({
     () => searchQuickIndex(searchIndex, deferredValue),
     [deferredValue, searchIndex],
   );
+  const parsedQuery = useMemo(
+    () => parseQuickSearchQuery(deferredValue),
+    [deferredValue],
+  );
+  const activeScope = quickSearchScopes.find((scope) => scope.id === parsedQuery.scope)
+    ?? quickSearchScopes[0];
   const selectedIndex = results.length > 0
     ? Math.min(activeIndex, results.length - 1)
     : 0;
@@ -105,7 +120,7 @@ export function CommandOverlay({
       ? "INDEXING START MENU"
       : desktop.loading
         ? "INDEXING DESKTOP"
-        : `${results.length} RESULTS`;
+      : `${results.length} RESULTS · ${activeScope.label}`;
 
   useEffect(() => {
     if (!open || !selectedOptionId) return;
@@ -116,10 +131,33 @@ export function CommandOverlay({
 
   const execute = (result) => {
     if (!result || busy) return;
+    recordQuickSearchQuery(value);
     onExecute(result);
   };
 
+  const selectScope = (scope) => {
+    const nextValue = scope.id === "all"
+      ? parsedQuery.query
+      : `${scope.prefix}${parsedQuery.query ? ` ${parsedQuery.query}` : " "}`;
+    setValue(nextValue.slice(0, 160));
+    setActiveIndex(0);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const reuseQuery = (query) => {
+    setValue(query);
+    setActiveIndex(0);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
   const handleInputKeyDown = (event) => {
+    const shortcutScope = getQuickSearchScopeShortcut(event);
+    if (shortcutScope) {
+      event.preventDefault();
+      const scope = quickSearchScopes.find((candidate) => candidate.id === shortcutScope);
+      if (scope) selectScope(scope);
+      return;
+    }
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setActiveIndex((current) => results.length > 0 ? (current + 1) % results.length : 0);
@@ -188,8 +226,51 @@ export function CommandOverlay({
           <button type="submit" className="run-command" aria-label="Open selected result" disabled={!selectedResult || busy}><ArrowRightRegular /></button>
         </form>
 
+        <div className="command-search-tools" aria-label="Quick search scopes">
+          <span>SCOPE</span>
+          {quickSearchScopes.map((scope, index) => (
+            <button
+              key={scope.id}
+              type="button"
+              className={scope.id === activeScope.id ? "is-active" : ""}
+              aria-pressed={scope.id === activeScope.id}
+              aria-keyshortcuts={`Control+${index + 1}`}
+              title={`Ctrl+${index + 1} · ${scope.prefix || "No prefix"} · ${scope.detail}`}
+              onClick={() => selectScope(scope)}
+            >
+              <span>{scope.label}</span>
+              <kbd>{index + 1}</kbd>
+            </button>
+          ))}
+          <small>TYPE A PREFIX TO FILTER LOCALLY</small>
+        </div>
+
+        {!value.trim() && queryHistory.length > 0 ? (
+          <div className="command-query-history" aria-label="Recent Quick Search queries">
+            <span>RECENT</span>
+            {queryHistory.slice(0, 4).map((query) => (
+              <button
+                key={query}
+                type="button"
+                title={`Reuse ${query}`}
+                onClick={() => reuseQuery(query)}
+              >
+                {query}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="command-history-clear"
+              aria-label="Clear recent Quick Search queries"
+              onClick={clearQuickSearchHistory}
+            >
+              CLEAR
+            </button>
+          </div>
+        ) : null}
+
         <div className="command-results-heading">
-          <span>{value.trim() ? "BEST MATCHES" : "QUICK ACCESS"}</span>
+          <span>{value.trim() ? `${activeScope.label} MATCHES` : "QUICK ACCESS"}</span>
           <small id="jarvis-quick-search-status" aria-live="polite" aria-atomic="true">
             {resultStatus}
           </small>
@@ -216,7 +297,7 @@ export function CommandOverlay({
             >
               <span className="command-result-icon" aria-hidden="true"><QuickSearchIcon result={result} /></span>
               <span className="command-result-copy">
-                <strong><QuickSearchLabel label={result.label} query={deferredValue} /></strong>
+                <strong><QuickSearchLabel label={result.label} query={parsedQuery.query} /></strong>
                 <small>{result.detail}</small>
               </span>
               <span className="command-result-category">{result.category}</span>

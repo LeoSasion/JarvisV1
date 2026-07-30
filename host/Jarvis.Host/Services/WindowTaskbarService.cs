@@ -35,10 +35,14 @@ internal sealed class WindowTaskbarService : IDisposable
     private const uint MaxAppUserModelIdLength = 512;
 
     private readonly object _iconCacheLock = new();
+    private readonly object _showDesktopLock = new();
     private readonly VirtualDesktopWindowFilter _virtualDesktopFilter = new();
     private readonly Dictionary<string, string> _iconCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, ProcessIconCacheEntry> _processIconCache = new();
     private readonly Dictionary<int, ProcessApplicationCacheEntry> _processApplicationCache = new();
+    private IReadOnlyList<ShowDesktopRestoreTarget> _showDesktopTargets =
+        Array.Empty<ShowDesktopRestoreTarget>();
+    private bool _showDesktopRestoreJarvisForeground;
 
     public WindowTaskbarSnapshot Capture()
     {
@@ -126,6 +130,178 @@ internal sealed class WindowTaskbarService : IDisposable
         }
 
         return new WindowCloseResult(windowId, "close-requested");
+    }
+
+    public ShowDesktopToggleResult ToggleDesktop(bool hasVisibleInternalWindow)
+    {
+        lock (_showDesktopLock)
+        {
+            var visibleTargets = CaptureVisibleShowDesktopTargets(
+                out var jarvisWasForeground);
+            var targetStates = _showDesktopTargets
+                .Select(InspectShowDesktopTarget)
+                .ToArray();
+            var decision = ShowDesktopSessionPolicy.Decide(
+                targetStates,
+                hasVisibleEligibleWindow:
+                    visibleTargets.Count > 0 ||
+                    hasVisibleInternalWindow);
+
+            if (decision.Action == ShowDesktopSessionAction.Restore)
+            {
+                return RestoreShowDesktopTargets(targetStates);
+            }
+
+            _showDesktopTargets = Array.Empty<ShowDesktopRestoreTarget>();
+            _showDesktopRestoreJarvisForeground = false;
+            var minimizedTargets = new List<ShowDesktopRestoreTarget>(visibleTargets.Count);
+            foreach (var target in visibleTargets)
+            {
+                if (ShowWindowAsync(target.Window, SwMinimize))
+                {
+                    minimizedTargets.Add(target);
+                }
+            }
+
+            _showDesktopTargets = minimizedTargets.ToArray();
+            _showDesktopRestoreJarvisForeground = jarvisWasForeground;
+            return new ShowDesktopToggleResult(
+                Action: "shown",
+                AffectedWindowCount: minimizedTargets.Count,
+                RestoreAvailable: minimizedTargets.Count > 0,
+                RestoreJarvisForeground: false);
+        }
+    }
+
+    private ShowDesktopToggleResult RestoreShowDesktopTargets(
+        IReadOnlyList<ShowDesktopTargetState> targetStates)
+    {
+        var restorableTargets = _showDesktopTargets
+            .Zip(targetStates)
+            .Where(pair => pair.Second == ShowDesktopTargetState.Minimized)
+            .Select(pair => pair.First)
+            .ToArray();
+        var restoredWindows = new HashSet<IntPtr>();
+        var pendingTargets = new List<ShowDesktopRestoreTarget>();
+        var restoreJarvisForeground = _showDesktopRestoreJarvisForeground;
+
+        foreach (var target in restorableTargets.Reverse())
+        {
+            if (ShowWindowAsync(target.Window, SwRestore))
+            {
+                restoredWindows.Add(target.Window);
+            }
+            else
+            {
+                pendingTargets.Add(target);
+            }
+        }
+
+        _showDesktopTargets = pendingTargets.ToArray();
+        _showDesktopRestoreJarvisForeground =
+            pendingTargets.Count > 0 &&
+            restoreJarvisForeground;
+        if (!restoreJarvisForeground)
+        {
+            var foregroundTarget = restorableTargets.FirstOrDefault(
+                target => target.WasForeground && restoredWindows.Contains(target.Window)) ??
+                restorableTargets.FirstOrDefault(
+                    target => restoredWindows.Contains(target.Window));
+            if (foregroundTarget is not null)
+            {
+                _ = SetForegroundWindow(foregroundTarget.Window);
+            }
+        }
+
+        return new ShowDesktopToggleResult(
+            Action: restoredWindows.Count > 0 ? "restored" : "restore-failed",
+            AffectedWindowCount: restoredWindows.Count,
+            RestoreAvailable: pendingTargets.Count > 0,
+            RestoreJarvisForeground:
+                restoreJarvisForeground &&
+                restoredWindows.Count > 0);
+    }
+
+    private List<ShowDesktopRestoreTarget> CaptureVisibleShowDesktopTargets(
+        out bool jarvisWasForeground)
+    {
+        var foreground = GetForegroundWindow();
+        _ = GetWindowThreadProcessId(foreground, out var foregroundProcessId);
+        jarvisWasForeground = foregroundProcessId == Environment.ProcessId;
+        var targets = new List<ShowDesktopRestoreTarget>();
+        _ = EnumWindows((window, _) =>
+        {
+            if (IsIconic(window) ||
+                !TryGetEligibleProcessId(window, out var processId) ||
+                !ShowDesktopSessionPolicy.IsWithinControlScope(
+                    _virtualDesktopFilter.Query(window)) ||
+                !TryGetProcessStartTimeUtcTicks(processId, out var processStartTimeUtcTicks))
+            {
+                return true;
+            }
+
+            targets.Add(new ShowDesktopRestoreTarget(
+                window,
+                processId,
+                processStartTimeUtcTicks,
+                WasForeground: window == foreground));
+            return true;
+        }, IntPtr.Zero);
+        return targets;
+    }
+
+    private ShowDesktopTargetState InspectShowDesktopTarget(
+        ShowDesktopRestoreTarget target)
+    {
+        var windowExists = IsWindow(target.Window);
+        var processId = 0U;
+        var processStartTimeUtcTicks = 0L;
+        var withinCurrentDesktopScope = false;
+        var minimized = false;
+        if (windowExists)
+        {
+            _ = GetWindowThreadProcessId(target.Window, out processId);
+            _ = TryGetProcessStartTimeUtcTicks(
+                processId,
+                out processStartTimeUtcTicks);
+            withinCurrentDesktopScope = ShowDesktopSessionPolicy.IsWithinControlScope(
+                _virtualDesktopFilter.Query(target.Window));
+            minimized = IsIconic(target.Window);
+        }
+
+        return ShowDesktopSessionPolicy.ClassifyTarget(
+            target,
+            windowExists,
+            processId,
+            processStartTimeUtcTicks,
+            minimized,
+            withinCurrentDesktopScope);
+    }
+
+    private static bool TryGetProcessStartTimeUtcTicks(
+        uint processId,
+        out long processStartTimeUtcTicks)
+    {
+        processStartTimeUtcTicks = 0;
+        if (processId == 0 || processId == Environment.ProcessId)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(checked((int)processId));
+            processStartTimeUtcTicks = process.StartTime.ToUniversalTime().Ticks;
+            return processStartTimeUtcTicks > 0;
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException or
+                InvalidOperationException or
+                System.ComponentModel.Win32Exception or
+                OverflowException)
+        {
+            return false;
+        }
     }
 
     private static WindowToggleResult ActivateResolved(string windowId, IntPtr window)
@@ -565,6 +741,12 @@ internal sealed class WindowTaskbarService : IDisposable
 
     public void Dispose()
     {
+        lock (_showDesktopLock)
+        {
+            _showDesktopTargets = Array.Empty<ShowDesktopRestoreTarget>();
+            _showDesktopRestoreJarvisForeground = false;
+        }
+
         _virtualDesktopFilter.Dispose();
         lock (_iconCacheLock)
         {
@@ -749,3 +931,9 @@ internal sealed record TaskbarWindowSnapshot(
 internal sealed record WindowToggleResult(string WindowId, string Action);
 
 internal sealed record WindowCloseResult(string WindowId, string Action);
+
+internal sealed record ShowDesktopToggleResult(
+    string Action,
+    int AffectedWindowCount,
+    bool RestoreAvailable,
+    bool RestoreJarvisForeground);

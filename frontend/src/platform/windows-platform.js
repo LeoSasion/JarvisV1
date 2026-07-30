@@ -142,6 +142,7 @@ export function createWindowsPlatform(webview) {
       activateWindow: (windowId) => request("taskbar.activateWindow", { windowId }),
       toggleWindow: (windowId) => request("taskbar.toggleWindow", { windowId }),
       closeWindow: (windowId) => request("taskbar.closeWindow", { windowId }),
+      toggleDesktop: (options = {}) => request("taskbar.toggleDesktop", options),
       showFlyout: (options) => request("taskbar.showFlyout", options),
       hideFlyout: () => request("taskbar.hideFlyout"),
     },
@@ -149,10 +150,6 @@ export function createWindowsPlatform(webview) {
       getState: () => request("taskbarMode.getState"),
       setMode: (mode) => request("taskbarMode.setMode", { mode }),
       retry: () => request("taskbarMode.retry"),
-    },
-    quickSearchShortcut: {
-      getState: () => request("quickSearchShortcut.getState"),
-      setEnabled: (enabled) => request("quickSearchShortcut.setEnabled", { enabled }),
     },
     tray: {
       getSnapshot: () => request("tray.getSnapshot"),
@@ -163,6 +160,12 @@ export function createWindowsPlatform(webview) {
       getSnapshot: () => request("feed.getSnapshot"),
       markAllRead: () => request("feed.markAllRead"),
       clear: () => request("feed.clear"),
+    },
+    session: {
+      getState: () => request("session.getState"),
+      prepare: (actionId) => request("session.prepare", { actionId }),
+      commit: (actionId, token) => request("session.commit", { actionId, token }),
+      cancel: () => request("session.cancel"),
     },
     windowAppearance: {
       getState: () => request("windowAppearance.getState"),
@@ -184,10 +187,6 @@ export function createWindowsPlatform(webview) {
       runDiagnostics: () => request("lifecycle.runDiagnostics", {}, 120_000),
       exitToWindows: () => request("lifecycle.exitToWindows"),
       showDesktop: (options = {}) => request("lifecycle.showDesktop", options),
-    },
-    surface: {
-      dismiss: (restoreForeground = true) =>
-        request("surface.dismiss", { restoreForeground }),
     },
   };
 }

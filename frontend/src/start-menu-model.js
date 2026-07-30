@@ -8,8 +8,29 @@ const latinInitialPattern = /^[A-Z]$/;
 const digitInitialPattern = /^\d$/;
 const eastAsianInitialPattern = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
 const wordBoundaryPattern = /[\s._\-()[\]{}]+/;
+const START_VIEWS = Object.freeze(["pinned", "all"]);
 export const START_MENU_GROUP_ROW_HEIGHT = 34;
 export const START_MENU_APPLICATION_ROW_HEIGHT = 57;
+
+export function getStartPanelCommand(eventLike) {
+  if (!eventLike || eventLike.altKey || eventLike.shiftKey) return null;
+  if (!eventLike.ctrlKey && !eventLike.metaKey) return null;
+  const key = String(eventLike.key ?? "").toLocaleLowerCase();
+  if (key === "f") return "focus-search";
+  if (key === "1") return "view-pinned";
+  if (key === "2") return "view-all";
+  return null;
+}
+
+export function getStartViewNavigation(currentView, key) {
+  const index = START_VIEWS.indexOf(currentView);
+  if (index < 0) return null;
+  if (key === "Home") return START_VIEWS[0];
+  if (key === "End") return START_VIEWS.at(-1);
+  if (key === "ArrowLeft") return START_VIEWS[Math.max(0, index - 1)];
+  if (key === "ArrowRight") return START_VIEWS[Math.min(START_VIEWS.length - 1, index + 1)];
+  return null;
+}
 
 function getApplicationGroupLabel(label) {
   const initial = String(label ?? "").normalize("NFKC").trim().charAt(0).toUpperCase();

@@ -45,6 +45,7 @@ public partial class TaskbarFlyoutWindow : Window
 
     private HwndSource? _windowSource;
     private PixelRect _bounds;
+    private int _anchorHalfWidth = 36;
     private int _outsideTicks;
     private bool _isClosing;
 
@@ -413,6 +414,9 @@ public partial class TaskbarFlyoutWindow : Window
 
         var dpi = GetDpiForWindow(handle);
         var scale = (dpi == 0 ? 96u : dpi) / 96d;
+        _anchorHalfWidth = Math.Max(
+            36,
+            checked((int)Math.Round(36 * scale)));
         if (_mode == "context")
         {
             PositionContextMenu(scale);
@@ -585,9 +589,14 @@ public partial class TaskbarFlyoutWindow : Window
             return;
         }
 
-        var insideFlyout = _bounds.Contains(cursor.X, cursor.Y);
-        var insideTaskbar = _taskbarBounds.Contains(cursor.X, cursor.Y);
-        _outsideTicks = insideFlyout || insideTaskbar ? 0 : _outsideTicks + 1;
+        var shouldKeepOpen = TaskbarFlyoutPointerPolicy.ShouldKeepOpen(
+            _bounds,
+            _taskbarBounds,
+            _anchorScreenX,
+            _anchorHalfWidth,
+            cursor.X,
+            cursor.Y);
+        _outsideTicks = shouldKeepOpen ? 0 : _outsideTicks + 1;
         if (_outsideTicks >= 5)
         {
             CloseSafely();
@@ -724,10 +733,4 @@ public partial class TaskbarFlyoutWindow : Window
         [MarshalAs(UnmanagedType.Bool)]
         public bool SourceClientAreaOnly;
     }
-}
-
-internal static class PixelRectExtensions
-{
-    public static bool Contains(this PixelRect rect, int x, int y) =>
-        x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom;
 }

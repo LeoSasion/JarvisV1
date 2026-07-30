@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { CommandOverlay } from "./components/CommandOverlay.jsx";
 import { CoreStage } from "./components/CoreStage.jsx";
 import { DesktopShortcuts } from "./components/DesktopShortcuts.jsx";
@@ -9,6 +9,10 @@ import { TopStatusBar } from "./components/TopStatusBar.jsx";
 import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
+import {
+  getVisibleInternalWindowIds,
+  planInternalShowDesktopToggle,
+} from "./show-desktop-model.js";
 import { subscribeWorkspaceCommands } from "./workspace-runtime-channel.js";
 
 const FileExplorerWindow = lazy(() => import("./components/FileExplorerWindow.jsx")
@@ -31,6 +35,7 @@ export function App() {
     close: closeWorkspaceWindow,
     activate: activateWorkspaceWindow,
     minimize: minimizeWorkspaceWindow,
+    restore: restoreWorkspaceWindow,
     toggleMaximize: toggleMaximizeWorkspaceWindow,
     toggleFromTaskbar: toggleWorkspaceWindowFromTaskbar,
     commitBounds: commitWorkspaceWindowBounds,
@@ -44,6 +49,7 @@ export function App() {
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
   const [toast, setToast] = useState("");
+  const showDesktopRestoreIdsRef = useRef([]);
 
   const showToast = useCallback((message) => setToast(message), []);
   const finishBoot = useCallback(() => setBootActive(false), []);
@@ -153,8 +159,21 @@ export function App() {
       closeWorkspaceWindow(id);
       return;
     }
+    if (action === "minimize") {
+      minimizeWorkspaceWindow(id);
+      return;
+    }
+    if (action === "restore") {
+      restoreWorkspaceWindow(id);
+      return;
+    }
     toggleWorkspaceWindowFromTaskbar(id);
-  }), [closeWorkspaceWindow, toggleWorkspaceWindowFromTaskbar]);
+  }), [
+    closeWorkspaceWindow,
+    minimizeWorkspaceWindow,
+    restoreWorkspaceWindow,
+    toggleWorkspaceWindowFromTaskbar,
+  ]);
 
   useEffect(() => {
     const handleOpenPanel = (event) => {
@@ -172,7 +191,7 @@ export function App() {
         openTerminal();
         return;
       }
-      if (["start", "quick-settings", "notifications", "settings"].includes(panel)) {
+      if (["start", "quick-settings", "date-time", "notifications", "session", "settings"].includes(panel)) {
         setCommandOpen(false);
         setShellPanel(panel);
       }
@@ -314,11 +333,58 @@ export function App() {
     toggleWorkspaceWindowFromTaskbar,
   ]);
 
+  const toggleShowDesktop = useCallback(async () => {
+    await hideTaskbarFlyout();
+    const visibleInternalWindowIds = getVisibleInternalWindowIds(internalTaskbarWindows);
+    try {
+      const result = await platform.taskbar.toggleDesktop({
+        hasVisibleInternalWindow: visibleInternalWindowIds.length > 0,
+      });
+      const plan = planInternalShowDesktopToggle(
+        internalTaskbarWindows,
+        showDesktopRestoreIdsRef.current,
+        result,
+      );
+      plan.commands.forEach(({ id, action }) => {
+        if (action === "minimize") {
+          minimizeWorkspaceWindow(id);
+        } else {
+          restoreWorkspaceWindow(id);
+        }
+      });
+      showDesktopRestoreIdsRef.current = plan.nextRestoreIds;
+      if (result.action === "shown") {
+        setCommandOpen(false);
+        setShellPanel(null);
+        showToast("Desktop shown");
+      } else if (result.action === "restored") {
+        showToast("Previous windows restored");
+      } else {
+        showToast("Some windows could not be restored");
+      }
+    } catch (error) {
+      showToast(`Unable to toggle desktop: ${error.message}`);
+    }
+  }, [
+    hideTaskbarFlyout,
+    internalTaskbarWindows,
+    minimizeWorkspaceWindow,
+    restoreWorkspaceWindow,
+    showToast,
+  ]);
+
   const openShellPanel = useCallback(async (panel) => {
     await hideTaskbarFlyout();
     setCommandOpen(false);
     setShellPanel((current) => current === panel ? null : panel);
   }, [hideTaskbarFlyout]);
+  const openSessionPanel = useCallback(() => {
+    void openShellPanel("session");
+  }, [openShellPanel]);
+  const navigateShellPanel = useCallback((panel) => {
+    setCommandOpen(false);
+    setShellPanel(panel);
+  }, []);
 
   const launchShellApp = useCallback(async ({ label, target }) => {
     if (target.toLowerCase() === "jarvis-settings:") {
@@ -403,7 +469,7 @@ export function App() {
       <div className="ambient-field" aria-hidden="true" />
       <TopStatusBar
         onOpenCommand={openCommand}
-        onPower={exitToWindows}
+        onPower={openSessionPanel}
       />
 
       <section className="desktop-workspace" aria-label="JARVIS desktop workspace">
@@ -513,10 +579,12 @@ export function App() {
           onOpenCommand={openCommand}
           onOpenStart={() => openShellPanel("start")}
           onOpenQuickSettings={() => openShellPanel("quick-settings")}
+          onOpenDateTime={() => openShellPanel("date-time")}
           onOpenNotifications={() => openShellPanel("notifications")}
           onShowFlyout={showTaskbarFlyout}
           onHideFlyout={hideTaskbarFlyout}
           onCloseWindow={closeTaskbarWindow}
+          onToggleShowDesktop={toggleShowDesktop}
         />
       )}
 
@@ -529,6 +597,7 @@ export function App() {
             onLaunch={launchShellApp}
             onLaunchInstalled={launchInstalledApplication}
             onActivateWindow={activateShellWindow}
+            onOpenPanel={navigateShellPanel}
             onExit={exitToWindows}
             onToast={showToast}
           />

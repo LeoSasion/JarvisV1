@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
+import {
+  getVisibleInternalWindowIds,
+  planInternalShowDesktopToggle,
+} from "./show-desktop-model.js";
 import {
   readWorkspaceRuntime,
   sendWorkspaceCommand,
@@ -11,6 +15,7 @@ import {
 export function TaskbarSurface() {
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [internalWindows, setInternalWindows] = useState(readWorkspaceRuntime);
+  const showDesktopRestoreIdsRef = useRef([]);
   const taskbarMode = new URLSearchParams(window.location.search).get("taskbarMode") ?? "full";
 
   useEffect(() => subscribeWorkspaceRuntime(setInternalWindows), []);
@@ -53,6 +58,27 @@ export function TaskbarSurface() {
       // A window may close on its own before the native request arrives.
     }
   }, [showDesktopPanel]);
+
+  const toggleShowDesktop = useCallback(async () => {
+    await hideTaskbarFlyout();
+    const visibleInternalWindowIds = getVisibleInternalWindowIds(internalWindows);
+    try {
+      const result = await platform.taskbar.toggleDesktop({
+        hasVisibleInternalWindow: visibleInternalWindowIds.length > 0,
+      });
+      const plan = planInternalShowDesktopToggle(
+        internalWindows,
+        showDesktopRestoreIdsRef.current,
+        result,
+      );
+      plan.commands.forEach(({ id, action }) => {
+        sendWorkspaceCommand(id, action);
+      });
+      showDesktopRestoreIdsRef.current = plan.nextRestoreIds;
+    } catch {
+      // Show Desktop is a convenience action; task switching remains available.
+    }
+  }, [hideTaskbarFlyout, internalWindows]);
 
   const handleAppClick = useCallback(async (item, runningWindow = null, options = {}) => {
     const builtinId = item.pinnedApplication?.id;
@@ -108,10 +134,12 @@ export function TaskbarSurface() {
         onOpenCommand={() => showDesktopPanel("command")}
         onOpenStart={() => showDesktopPanel("start")}
         onOpenQuickSettings={() => showDesktopPanel("quick-settings")}
+        onOpenDateTime={() => showDesktopPanel("date-time")}
         onOpenNotifications={() => showDesktopPanel("notifications")}
         onShowFlyout={showTaskbarFlyout}
         onHideFlyout={hideTaskbarFlyout}
         onCloseWindow={closeTaskbarWindow}
+        onToggleShowDesktop={toggleShowDesktop}
       />
     </main>
   );

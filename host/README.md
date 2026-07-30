@@ -91,12 +91,26 @@ but `Shell_TrayWnd` remains hidden, run
 `Jarvis.Host` process is alive; use the global `Ctrl+Shift+Q` safety exit first
 and allow the watchdog to finish whenever possible.
 
-The replacement taskbar opens JARVIS-native Start, quick-settings, and
-notification panels on the desktop host. Start can filter and launch the
-explicitly allowlisted Windows applications or switch to a currently running
-window. Quick settings uses the live system snapshot for network adapter,
-power-source, CPU, memory, and uptime status; its controls open the matching
-Windows Settings pages rather than mutating system settings directly.
+The replacement taskbar opens JARVIS-native Start, quick-settings,
+date-and-time, Session Control, and notification panels on the desktop host.
+Start can filter and launch the explicitly allowlisted Windows applications or
+switch to a currently running window. Quick settings uses the live system
+snapshot for network adapter, power-source, CPU, memory, and uptime status; its
+controls open the matching Windows Settings pages rather than mutating system
+settings directly.
+The taskbar clock opens a Monday-first six-week calendar backed by the same
+minute-level local clock projection. Selecting a date filters the bounded,
+session-only JARVIS System Feed; it does not request a calendar account or
+invent appointments. Date and time changes are handed off to the allowlisted
+Windows Settings page.
+
+Session Control keeps Exit to Windows as the safest primary action. Lock, sign
+out, restart, and shutdown are fixed native actions: the renderer first requests
+a 15-second single-use confirmation capability and must commit the same action
+with that exact token. Executable paths and arguments remain host-only, and
+restart/shutdown never add the force-close flag, preserving Windows unsaved-work
+protections. Browser preview mode only simulates acceptance and cannot touch the
+Windows session.
 
 Running-window synchronization uses out-of-context Windows accessibility event
 hooks for foreground, create/destroy, show/hide, location, title, minimize, and
@@ -123,18 +137,33 @@ grouped windows, and unpin from the JARVIS registry. The native flyout returns a
 validated action identifier to the originating renderer; it never accepts an
 executable path or command line from WebView2.
 
+Holding the mouse over a running taskbar item for 450 ms opens the same
+no-activate DWM preview used by grouped-window clicks. The renderer resolves the
+item again when the dwell timer fires and sends at most 24 current opaque window
+IDs. Touch, pen, pinned-item drag, empty pins, and mixed native/internal groups
+do not start a native hover preview. The flyout remains open only while the
+pointer is inside it or a DPI-scaled corridor around its originating taskbar
+item; moving to the tray or another non-preview target dismisses it after the
+existing grace period.
+
+Full replacement also exposes the familiar narrow Show Desktop target at the
+far-right edge. The first click minimizes only eligible, non-minimized windows
+on the current virtual desktop plus visible JARVIS workspace windows. The second
+click restores only windows recorded by that same session. Every native restore
+revalidates the HWND, PID, process start time, minimized state, and virtual
+desktop scope, so a stale or reused handle is never restored. Opening another
+window deliberately breaks the old toggle session. Hybrid mode keeps this
+control hidden because Explorer's preserved notification area already owns its
+native Show Desktop target.
+
 JARVIS quick search combines the explicit application allowlist with a cached
 index of `.lnk` entries under the current-user and common Start Menu Programs
 directories plus packaged applications exposed by the Windows AppsFolder.
-Uninstall and removal shortcuts are excluded from this launcher surface. The
-same index is available above ordinary applications through an independent,
-task-switcher-hidden WebView2 HUD. Its current-user `Ctrl+Alt+J` preference is
-managed from JARVIS Settings. The shortcut is registered only after the
-renderer is ready; disabling it unregisters the hotkey and disposes that hidden
-renderer. Its bridge profile exposes only bounded list, open, activate,
-show-desktop, and self-dismiss methods.
-The Windows key and secure-desktop input remain untouched. The
-renderer receives opaque application capability IDs rather than shortcut paths
+Uninstall and removal shortcuts are excluded from this launcher surface. Search
+opens only from the JARVIS desktop and replacement taskbar; the host does not
+register a system-wide search shortcut or create a hidden search renderer.
+The Windows key and secure-desktop input remain untouched. The renderer receives
+opaque application capability IDs rather than shortcut paths
 or AppUserModelIDs. Shortcut entries also expose only normalized executable process
 names obtained through the Shell Link target, while running packaged apps expose
 the same opaque capability generated from their process AppUserModelID. This lets
@@ -150,9 +179,14 @@ process name such as `msedge`. After the taskbar is ready, the host opens the
 same DWM-backed grouped-window flyout used by taskbar clicks. The variable is
 unset in normal operation and does not change production behavior.
 The equivalent one-run switch is `--taskbar-diagnostic-flyout=msedge`.
-Set `JARVIS_DIAGNOSTIC_SHELL_PANEL` to `start`, `quick-settings`,
-`notifications`, or `command` to open that desktop panel after startup for
-native visual QA. This variable is also unset in normal operation.
+Set `JARVIS_TASKBAR_DIAGNOSTIC_SHOW_DESKTOP_SEQUENCE=1` only for a controlled
+native QA run. Once full replacement is ready, the host invokes the same
+`WindowTaskbarService` path as the far-right control, waits 500 ms, and invokes
+it again. The host log records the hide and restore action plus the affected
+window counts. The variable is unset in normal operation.
+Set `JARVIS_DIAGNOSTIC_SHELL_PANEL` to `start`, `quick-settings`, `date-time`,
+`notifications`, `session`, or `command` to open that desktop panel after
+startup for native visual QA. This variable is also unset in normal operation.
 
 `Ctrl+Shift+Q` is registered as a system-wide safety shortcut, so it returns to
 Windows even while another normal application is focused. If registration is
@@ -261,17 +295,23 @@ Supported methods:
 - `taskbar.getSnapshot`
 - `taskbar.toggleWindow` with `{ "windowId": "0x..." }`
 - `taskbar.closeWindow` with `{ "windowId": "0x..." }`
+- `taskbar.toggleDesktop` with an optional bounded
+  `{ "hasVisibleInternalWindow": true|false }` renderer-state hint
 - `taskbar.showFlyout` with an anchor position and `windows`, `overflow`, or
   validated task-item `context` mode
 - `taskbar.hideFlyout`
+- `session.getState`
+- `session.prepare` with `{ "actionId": "lock|sign-out|restart|shut-down" }`
+- `session.commit` with the prepared `{ "actionId": "...", "token": "..." }`
+- `session.cancel`
 - `windowAppearance.getState`
 - `windowAppearance.setMode` with `{ "mode": "off|conservative|enhanced|immersive" }`
 - `shell.listApplications`
 - `shell.openApplication` with `{ "applicationId": "..." }`
 - `shell.open` with `{ "target": "..." }`
 - `lifecycle.showDesktop` with optional `{ "panel": "start" }`; supported
-  panels are `start`, `quick-settings`, `notifications`, `command`, `explorer`,
-  `terminal`, and `settings`
+  panels are `start`, `quick-settings`, `date-time`, `notifications`, `session`,
+  `command`, `explorer`, `terminal`, and `settings`
 - `lifecycle.getRuntimeInfo`
 - `lifecycle.setStartupEnabled` with `{ "enabled": true }`
 - `lifecycle.runDiagnostics`

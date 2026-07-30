@@ -46,6 +46,7 @@ public partial class TaskbarWindow : Window
     private bool _allowClose;
     private bool _isClosing;
     private bool _diagnosticFlyoutShown;
+    private bool _diagnosticShowDesktopSequenceStarted;
     private bool _reportedReady;
     private bool _reportedFailure;
     private bool _surfaceRevealed;
@@ -154,6 +155,7 @@ public partial class TaskbarWindow : Window
         IsHitTestVisible = true;
         _ = ShowTaskbarOverlaysAsync();
         _ = ShowDiagnosticFlyoutAfterSurfaceReadyAsync();
+        _ = RunDiagnosticShowDesktopSequenceAfterSurfaceReadyAsync();
     }
 
     public void CloseFromHost()
@@ -630,6 +632,47 @@ public partial class TaskbarWindow : Window
         catch (Exception ex)
         {
             HostLog.Error("Taskbar diagnostic toggle sequence failed.", ex);
+        }
+    }
+
+    private async Task RunDiagnosticShowDesktopSequenceAfterSurfaceReadyAsync()
+    {
+        if (_diagnosticShowDesktopSequenceStarted ||
+            !string.Equals(
+                Environment.GetEnvironmentVariable(
+                    "JARVIS_TASKBAR_DIAGNOSTIC_SHOW_DESKTOP_SEQUENCE"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _diagnosticShowDesktopSequenceStarted = true;
+        try
+        {
+            await Task.Delay(500, _healthShutdown.Token);
+            var showResult = _taskbarService.ToggleDesktop(
+                hasVisibleInternalWindow: false);
+            HostLog.Info(
+                "Show Desktop diagnostic hide action: " +
+                $"{showResult.Action}; affected={showResult.AffectedWindowCount}; " +
+                $"restoreAvailable={showResult.RestoreAvailable}.");
+
+            await Task.Delay(500, _healthShutdown.Token);
+            var restoreResult = _taskbarService.ToggleDesktop(
+                hasVisibleInternalWindow: false);
+            HostLog.Info(
+                "Show Desktop diagnostic restore action: " +
+                $"{restoreResult.Action}; affected={restoreResult.AffectedWindowCount}; " +
+                $"restoreAvailable={restoreResult.RestoreAvailable}.");
+        }
+        catch (OperationCanceledException) when (_healthShutdown.IsCancellationRequested)
+        {
+            // The diagnostic sequence is abandoned during normal shutdown.
+        }
+        catch (Exception ex)
+        {
+            HostLog.Error("Show Desktop diagnostic sequence failed.", ex);
         }
     }
 

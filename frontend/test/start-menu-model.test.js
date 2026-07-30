@@ -4,6 +4,8 @@ import {
   buildStartMenuApplications,
   createStartMenuVirtualRows,
   filterStartMenuApplications,
+  getStartPanelCommand,
+  getStartViewNavigation,
   getStartMenuVirtualWindow,
   groupStartMenuApplications,
 } from "../src/start-menu-model.js";
@@ -90,4 +92,20 @@ test("search remains deterministic for a ten-thousand application catalog", () =
 
   assert.equal(matches[0].applicationId, "app-9999");
   assert.equal(matches.length, 1);
+});
+
+test("routes only bounded Start keyboard commands", () => {
+  assert.equal(getStartPanelCommand({ key: "f", ctrlKey: true }), "focus-search");
+  assert.equal(getStartPanelCommand({ key: "1", ctrlKey: true }), "view-pinned");
+  assert.equal(getStartPanelCommand({ key: "2", metaKey: true }), "view-all");
+  assert.equal(getStartPanelCommand({ key: "f", ctrlKey: true, shiftKey: true }), null);
+  assert.equal(getStartPanelCommand({ key: "x", ctrlKey: true }), null);
+});
+
+test("Start view navigation clamps to Pinned and All Apps", () => {
+  assert.equal(getStartViewNavigation("pinned", "ArrowRight"), "all");
+  assert.equal(getStartViewNavigation("all", "ArrowLeft"), "pinned");
+  assert.equal(getStartViewNavigation("pinned", "ArrowLeft"), "pinned");
+  assert.equal(getStartViewNavigation("all", "End"), "all");
+  assert.equal(getStartViewNavigation("missing", "Home"), null);
 });

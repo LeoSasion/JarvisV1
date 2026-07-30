@@ -22,7 +22,6 @@ public partial class MainWindow : Window
 
     private readonly TaskbarReplacementSession _taskbarReplacement = new();
     private readonly TaskbarModeService _taskbarModeService = new();
-    private readonly QuickSearchShortcutSettingsService _quickSearchShortcutSettings = new();
     private readonly WindowTaskbarService _taskbarService = new();
     private readonly DesktopService _desktopService = new();
     private readonly ShellService _shellService;
@@ -31,18 +30,17 @@ public partial class MainWindow : Window
     private readonly AudioEndpointService _audioEndpointService;
     private readonly TrayStatusService _trayStatusService;
     private readonly SystemFeedService _systemFeedService;
+    private readonly SystemSessionActionService _systemSessionActionService = new();
     private readonly TaskbarLifecycleMachine _taskbarLifecycle = new();
     private readonly TaskbarRebindEpoch _taskbarRebindEpoch = new();
     private readonly TaskbarRecoveryCircuit _taskbarRecoveryCircuit = new();
     private readonly NativeWindowAppearanceService _windowAppearanceService;
     private GlobalSafetyHotkey? _safetyHotkey;
-    private GlobalQuickSearchHotkey? _quickSearchHotkey;
     private WebBridge? _bridge;
     private HwndSource? _windowSource;
     private TaskbarWindow? _taskbarWindow;
     private WindowSwitcherWindow? _windowSwitcherWindow;
     private WindowSwitcherController? _windowSwitcherController;
-    private QuickSearchWindow? _quickSearchWindow;
     private CancellationTokenSource? _taskbarRebindCancellation;
     private CancellationTokenSource? _taskbarStabilityCancellation;
     private bool _isClosing;
@@ -64,7 +62,6 @@ public partial class MainWindow : Window
         _taskbarModeService.RequestedModeChanged += OnRequestedTaskbarModeChanged;
         _taskbarModeService.RetryRequested += OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged += OnTaskbarModeStateChanged;
-        _quickSearchShortcutSettings.EnabledChanged += OnQuickSearchShortcutPreferenceChanged;
         _snapshotFeed.SnapshotAvailable += OnRuntimeSnapshotAvailable;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
@@ -216,11 +213,10 @@ public partial class MainWindow : Window
                 _windowAppearanceService,
                 _snapshotFeed,
                 _taskbarModeService,
-                CaptureTaskbarLifecycle,
-                _quickSearchShortcutSettings),
+                CaptureTaskbarLifecycle),
             RequestSafeExit,
             ShowDesktop,
-            quickSearchShortcutSettings: _quickSearchShortcutSettings);
+            systemSessionActionService: _systemSessionActionService);
         _bridge.Attach();
 
         WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
@@ -256,7 +252,6 @@ public partial class MainWindow : Window
 
             _desktopReady = true;
             ReconcileWindowSwitcherRuntime("desktop-ready");
-            ReconcileGlobalQuickSearchShortcut();
             HostLog.Info("Desktop surface is ready; evaluating the requested taskbar mode.");
             QueueTaskbarRebind("desktop-ready", TimeSpan.Zero);
             _ = ShowDiagnosticShellPanelAsync();
@@ -301,7 +296,7 @@ public partial class MainWindow : Window
         }
 
         var normalizedPanel = requestedPanel.Trim().ToLowerInvariant();
-        if (normalizedPanel is not ("start" or "quick-settings" or "notifications" or "command" or "explorer" or "settings" or "terminal"))
+        if (normalizedPanel is not ("start" or "quick-settings" or "date-time" or "notifications" or "session" or "command" or "explorer" or "settings" or "terminal"))
         {
             HostLog.Warning($"Ignored unsupported diagnostic shell panel: {requestedPanel}.");
             return;
@@ -678,127 +673,6 @@ public partial class MainWindow : Window
         controller?.Dispose();
         window?.CloseFromHost();
         HostLog.Info($"JARVIS window-switcher runtime released ({reason}).");
-    }
-
-    private void EnsureQuickSearch()
-    {
-        if (_isClosing ||
-            !_quickSearchShortcutSettings.Enabled ||
-            _quickSearchWindow is not null)
-        {
-            return;
-        }
-
-        _quickSearchWindow = new QuickSearchWindow(
-            _snapshotFeed,
-            _desktopService,
-            _shellService,
-            _terminalSessionService,
-            _taskbarService,
-            _windowAppearanceService,
-            _taskbarModeService,
-            _trayStatusService,
-            _systemFeedService,
-            ReconcileGlobalQuickSearchShortcut,
-            HandleGlobalQuickSearchFailure,
-            ShowDesktop);
-
-        // Warm WebView2 while the search surface is fully transparent. The
-        // shortcut is registered only after the renderer reports ready.
-        _quickSearchWindow.Show();
-    }
-
-    private void RegisterGlobalQuickSearchHotkey()
-    {
-        if (_isClosing ||
-            !_quickSearchShortcutSettings.Enabled ||
-            _quickSearchWindow?.IsReady != true ||
-            _quickSearchHotkey is not null)
-        {
-            return;
-        }
-
-        _quickSearchHotkey = new GlobalQuickSearchHotkey(this, ToggleGlobalQuickSearch);
-        if (_quickSearchHotkey.Register())
-        {
-            _quickSearchShortcutSettings.ReportRuntimeSettled();
-            return;
-        }
-
-        _quickSearchHotkey.Dispose();
-        _quickSearchHotkey = null;
-        _quickSearchShortcutSettings.ReportRuntimeSettled();
-    }
-
-    private void OnQuickSearchShortcutPreferenceChanged()
-    {
-        if (Dispatcher.CheckAccess())
-        {
-            ReconcileGlobalQuickSearchShortcut();
-            return;
-        }
-
-        Dispatcher.Invoke(ReconcileGlobalQuickSearchShortcut);
-    }
-
-    private void ReconcileGlobalQuickSearchShortcut()
-    {
-        if (_isClosing || !_desktopReady)
-        {
-            return;
-        }
-
-        if (!_quickSearchShortcutSettings.Enabled)
-        {
-            _quickSearchHotkey?.Dispose();
-            _quickSearchHotkey = null;
-            _quickSearchWindow?.Dismiss(restoreForeground: false);
-            _quickSearchWindow?.CloseFromHost();
-            _quickSearchWindow = null;
-            HostLog.Info(
-                "Global Ctrl+Alt+J Quick Search is disabled; its hidden renderer was released.");
-            return;
-        }
-
-        if (_quickSearchWindow is null)
-        {
-            _quickSearchShortcutSettings.ReportRuntimeStarting();
-            EnsureQuickSearch();
-            return;
-        }
-
-        if (_quickSearchWindow.IsReady)
-        {
-            RegisterGlobalQuickSearchHotkey();
-        }
-    }
-
-    private void HandleGlobalQuickSearchFailure(string status)
-    {
-        HostLog.Warning($"JARVIS global Quick Search is unavailable: {status}.");
-        _quickSearchShortcutSettings.ReportRuntimeSettled();
-        _quickSearchHotkey?.Dispose();
-        _quickSearchHotkey = null;
-        GlobalQuickSearchHotkey.ReportUnavailable(status);
-        var failedWindow = _quickSearchWindow;
-        _quickSearchWindow = null;
-        failedWindow?.CloseFromHost();
-    }
-
-    private void ToggleGlobalQuickSearch()
-    {
-        if (_isClosing || _quickSearchWindow?.IsReady != true)
-        {
-            return;
-        }
-
-        _ = Dispatcher.BeginInvoke(() =>
-        {
-            if (!_isClosing && _quickSearchWindow?.IsReady == true)
-            {
-                _ = _quickSearchWindow.ToggleAsync();
-            }
-        });
     }
 
     private void OnTaskbarModeStateChanged(TaskbarModeState state)
@@ -1350,17 +1224,12 @@ public partial class MainWindow : Window
         _taskbarModeService.RequestedModeChanged -= OnRequestedTaskbarModeChanged;
         _taskbarModeService.RetryRequested -= OnTaskbarRetryRequested;
         _taskbarModeService.StateChanged -= OnTaskbarModeStateChanged;
-        _quickSearchShortcutSettings.EnabledChanged -= OnQuickSearchShortcutPreferenceChanged;
         _snapshotFeed.SnapshotAvailable -= OnRuntimeSnapshotAvailable;
         _windowSource?.RemoveHook(WindowProcedure);
         _windowSource = null;
         _bridge?.Dispose();
         _safetyHotkey?.Dispose();
         _safetyHotkey = null;
-        _quickSearchHotkey?.Dispose();
-        _quickSearchHotkey = null;
-        _quickSearchWindow?.CloseFromHost();
-        _quickSearchWindow = null;
         ReleaseWindowSwitcher("host shutdown");
         // Restore third-party DWM values and remove the recovery snapshot before
         // asking the taskbar watchdog to finish its own recovery pass.
@@ -1373,6 +1242,7 @@ public partial class MainWindow : Window
         _snapshotFeed.Dispose();
         _taskbarService.Dispose();
         _audioEndpointService.Dispose();
+        _systemSessionActionService.Dispose();
         _terminalSessionService.Dispose();
         _shellService.Dispose();
         _desktopService.Dispose();

@@ -20,6 +20,10 @@ import {
   sortDesktopEntries,
 } from "../desktop-layout.js";
 import {
+  advanceDesktopTypeahead,
+  getDesktopKeyboardTarget,
+} from "../desktop-keyboard-model.js";
+import {
   refreshDesktopEntries,
   useDesktopEntries,
 } from "../hooks/usePlatformData.js";
@@ -107,6 +111,7 @@ export function DesktopShortcuts({
   const selectionAnchorRef = useRef(null);
   const marqueeRef = useRef(null);
   const suppressClickRef = useRef(null);
+  const typeaheadRef = useRef({ query: "", timestamp: 0 });
   const [autoArrange, setAutoArrange] = useState(readAutoArrangePreference);
   const [alignToGrid, setAlignToGrid] = useState(
     () => readBooleanPreference(ALIGN_TO_GRID_STORAGE_KEY, true),
@@ -120,6 +125,7 @@ export function DesktopShortcuts({
   const [manualPositions, setManualPositions] = useState(readManualPositions);
   const [contextMenu, setContextMenu] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => selectedId ? [selectedId] : []);
+  const [focusedId, setFocusedId] = useState(selectedId ?? null);
   const [operationDialog, setOperationDialog] = useState(null);
   const [clipboardState, setClipboardState] = useState({ paths: [], mode: "copy" });
   const [marquee, setMarquee] = useState(null);
@@ -137,6 +143,22 @@ export function DesktopShortcuts({
     () => selectedShortcuts.map((entry) => entry.path).filter(Boolean),
     [selectedShortcuts],
   );
+  const keyboardPositions = useMemo(
+    () => orderedEntries.map((entry, index) => {
+      const position = autoArrange
+        ? getFallbackPosition(index, containerSize.height, iconMetrics)
+        : manualPositions[entry.id] ??
+          getFallbackPosition(index, containerSize.height, iconMetrics);
+      return { id: entry.id, x: position.x, y: position.y };
+    }),
+    [
+      autoArrange,
+      containerSize.height,
+      iconMetrics,
+      manualPositions,
+      orderedEntries,
+    ],
+  );
 
   useEffect(() => {
     setSelectedIds((current) => {
@@ -146,6 +168,32 @@ export function DesktopShortcuts({
       return [selectedId];
     });
   }, [orderedEntries, selectedId]);
+
+  useEffect(() => {
+    if (orderedEntries.length === 0) {
+      setFocusedId(null);
+      return;
+    }
+    setFocusedId((current) => (
+      orderedEntries.some((entry) => entry.id === current)
+        ? current
+        : selectedId && orderedEntries.some((entry) => entry.id === selectedId)
+          ? selectedId
+          : orderedEntries[0].id
+    ));
+  }, [orderedEntries, selectedId]);
+
+  const focusShortcutByIndex = useCallback((index, additive = false) => {
+    const shortcut = orderedEntries[index];
+    if (!shortcut) return;
+    setFocusedId(shortcut.id);
+    selectionAnchorRef.current = shortcut.id;
+    setSelectedIds((current) => (
+      additive ? [...new Set([...current, shortcut.id])] : [shortcut.id]
+    ));
+    onSelect(shortcut.id);
+    window.requestAnimationFrame(() => shortcutRefs.current.get(shortcut.id)?.focus());
+  }, [onSelect, orderedEntries]);
 
   const refreshClipboardState = useCallback(async () => {
     try {
@@ -721,6 +769,7 @@ export function DesktopShortcuts({
             ].filter(Boolean).join(" ")}
             aria-pressed={selected}
             title={shortcut.label}
+            tabIndex={focusedId === shortcut.id ? 0 : -1}
             draggable={Boolean(shortcut.path)}
             style={autoArrange ? undefined : {
               left: `${manualPosition.x}px`,
@@ -732,6 +781,7 @@ export function DesktopShortcuts({
                 event.preventDefault();
                 return;
               }
+              setFocusedId(shortcut.id);
               selectShortcut(event, shortcut.id, index);
             }}
             onDoubleClick={() => onOpen(shortcut)}
@@ -743,6 +793,7 @@ export function DesktopShortcuts({
                 selectionAnchorRef.current = shortcut.id;
                 onSelect(shortcut.id);
               }
+              setFocusedId(shortcut.id);
               openContextMenu(event.clientX, event.clientY, "item", shortcut.id);
             }}
             onDragStart={(event) => {
@@ -774,6 +825,23 @@ export function DesktopShortcuts({
             onPointerUp={(event) => finishShortcutMove(event, shortcut.id)}
             onPointerCancel={(event) => finishShortcutMove(event, shortcut.id)}
             onKeyDown={(event) => {
+              if ([
+                "ArrowLeft",
+                "ArrowRight",
+                "ArrowUp",
+                "ArrowDown",
+                "Home",
+                "End",
+              ].includes(event.key)) {
+                event.preventDefault();
+                const targetIndex = getDesktopKeyboardTarget(
+                  keyboardPositions,
+                  index,
+                  event.key,
+                );
+                focusShortcutByIndex(targetIndex, event.shiftKey);
+                return;
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 onOpen(shortcut);
@@ -794,6 +862,24 @@ export function DesktopShortcuts({
                   "item",
                   shortcut.id,
                 );
+                return;
+              }
+              if (!event.ctrlKey &&
+                  !event.metaKey &&
+                  !event.altKey &&
+                  event.key.length === 1) {
+                const next = advanceDesktopTypeahead(
+                  orderedEntries,
+                  index,
+                  typeaheadRef.current,
+                  event.key,
+                  Date.now(),
+                );
+                typeaheadRef.current = next;
+                if (next.index >= 0 && next.index !== index) {
+                  event.preventDefault();
+                  focusShortcutByIndex(next.index);
+                }
               }
             }}
           >

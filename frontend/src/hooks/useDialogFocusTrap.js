@@ -9,6 +9,16 @@ const FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
+export function getFocusLoopTargetIndex(activeIndex, itemCount, reverse = false) {
+  if (!Number.isInteger(itemCount) || itemCount <= 0) return -1;
+  if (!Number.isInteger(activeIndex) || activeIndex < 0 || activeIndex >= itemCount) {
+    return reverse ? itemCount - 1 : 0;
+  }
+  if (reverse && activeIndex === 0) return itemCount - 1;
+  if (!reverse && activeIndex === itemCount - 1) return 0;
+  return -1;
+}
+
 export function useDialogFocusTrap(containerRef, active, { initialFocusRef = null, onEscape = null } = {}) {
   const escapeHandlerRef = useRef(onEscape);
   escapeHandlerRef.current = onEscape;
@@ -21,7 +31,9 @@ export function useDialogFocusTrap(containerRef, active, { initialFocusRef = nul
     const previous = document.activeElement;
     const getFocusable = () => [...container.querySelectorAll(FOCUSABLE_SELECTOR)]
       .filter((element) => element.getClientRects().length > 0);
-    const initial = initialFocusRef?.current ?? getFocusable()[0];
+    const initial = initialFocusRef?.current ??
+      container.querySelector("[data-dialog-initial-focus='true']") ??
+      getFocusable()[0];
     initial?.focus();
     initial?.select?.();
 
@@ -38,14 +50,15 @@ export function useDialogFocusTrap(containerRef, active, { initialFocusRef = nul
         event.preventDefault();
         return;
       }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const activeIndex = focusable.indexOf(document.activeElement);
+      const targetIndex = getFocusLoopTargetIndex(
+        activeIndex,
+        focusable.length,
+        event.shiftKey,
+      );
+      if (targetIndex >= 0) {
         event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
+        focusable[targetIndex].focus();
       }
     };
 

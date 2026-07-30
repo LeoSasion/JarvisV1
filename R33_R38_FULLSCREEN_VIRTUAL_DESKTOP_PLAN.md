@@ -1,6 +1,6 @@
 # JARVIS V1 R33-R38 Fullscreen and Virtual Desktop Plan
 
-Status: `F11 CORRECTION IMPLEMENTED - INTERACTIVE RETEST PENDING`
+Status: `IMPLEMENTED - INTERACTIVE ACCEPTANCE PASSED`
 
 Baseline: `main @ 57ef7d1`
 
@@ -134,8 +134,10 @@ Primary references:
   JARVIS taskbar visible. The runtime log contained no fullscreen-suppression
   event. The correction now distinguishes a standard framed maximized window
   from a borderless F11 window whose browser retains `IsZoomed` or
-  `WS_MAXIMIZE`; deterministic regression coverage is included. A rebuilt
-  executable still requires one short interactive F11 retest.
+  `WS_MAXIMIZE`; deterministic regression coverage is included.
 - Post-correction safe lifecycle verification returned `READY`: Explorer
   remained alive, the native taskbar was visible before and after, and no
   JARVIS process remained.
+- User acceptance on the rebuilt executable then confirmed that entering F11
+  hides both the browser chrome and the JARVIS taskbar, and leaving F11 restores
+  the taskbar.
