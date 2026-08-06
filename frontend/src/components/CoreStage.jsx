@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { NeuralVectorField } from "./VectorMarks.jsx";
 
 export function CoreStage({ listening, onActivate }) {
   const stageRef = useRef(null);
@@ -63,21 +64,25 @@ export function CoreStage({ listening, onActivate }) {
       aria-label="JARVIS ambient core"
     >
       <div className="core-stage__media" aria-hidden="true">
-        <img
-          src="/assets/jarvis-night-shell-v1-background-master.png"
-          alt=""
-          className="core-stage__image"
-          draggable="false"
-        />
+        <NeuralVectorField active={listening} />
+        <div className="core-stage__readout">
+          <span>LOCAL VISUAL FRAME</span>
+          <strong>{listening ? "AGENT PROCESS ACTIVE" : "SYSTEM NOMINAL"}</strong>
+          <small>VECTOR FIELD // OWN PROCESS</small>
+        </div>
       </div>
       <button
         type="button"
         className="core-hotspot"
         onClick={onActivate}
-        aria-label="Open JARVIS quick search"
-        title="Open quick search"
+        aria-label="Open JARVIS Pi Agent"
+        title="Open Pi Agent"
       >
-        <span className="sr-only">Open JARVIS quick search</span>
+        <span className="core-hotspot__mark" aria-hidden="true"><i /><i /><i /><i /><b /></span>
+        <span className="core-hotspot__copy" aria-hidden="true">
+          <strong>PI AGENT</strong>
+          <small>{listening ? "PROCESS ACTIVE" : "OPEN CHANNEL"}</small>
+        </span>
       </button>
     </section>
   );

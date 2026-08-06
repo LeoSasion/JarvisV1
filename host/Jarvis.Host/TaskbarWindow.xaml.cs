@@ -40,7 +40,6 @@ public partial class TaskbarWindow : Window
     private WebBridge? _bridge;
     private TaskbarEdgeOverlayWindow? _edgeOverlayWindow;
     private TaskbarFlyoutWindow? _flyoutWindow;
-    private TaskbarLauncherOverlayWindow? _launcherOverlayWindow;
     private HwndSource? _windowSource;
     private Task? _healthTask;
     private bool _allowClose;
@@ -176,21 +175,15 @@ public partial class TaskbarWindow : Window
         {
             const string metricsScript = """
                 (() => {
-                  const image = document.querySelector('.jarvis-taskbar-surface .jarvis-launcher img');
-                  const rect = image?.getBoundingClientRect();
-                  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
                   return {
-                    CenterY: rect.top + rect.height / 2,
-                    Size: Math.max(rect.width, rect.height),
                     ViewportWidth: window.innerWidth,
                     ViewportHeight: window.innerHeight
                   };
                 })()
                 """;
             var json = await WebView.CoreWebView2.ExecuteScriptAsync(metricsScript);
-            var metrics = JsonSerializer.Deserialize<LauncherOverlayMetrics>(json);
+            var metrics = JsonSerializer.Deserialize<TaskbarOverlayMetrics>(json);
             if (metrics is null ||
-                metrics.Size <= 0 ||
                 metrics.ViewportWidth <= 0 ||
                 metrics.ViewportHeight <= 0 ||
                 !ShouldShowSurface() ||
@@ -201,16 +194,6 @@ public partial class TaskbarWindow : Window
 
             var verticalScale = _bounds.Height / metrics.ViewportHeight;
             var horizontalScale = _bounds.Width / metrics.ViewportWidth;
-            var size = Math.Max(1, checked((int)Math.Round(metrics.Size * horizontalScale)));
-            // The launcher belongs to the monitor, not to a responsive WebView grid column.
-            // Using the physical taskbar midpoint also avoids DPI and ultra-wide drift.
-            var centerX = _bounds.Left + _bounds.Width / 2;
-            var centerY = _bounds.Top + checked((int)Math.Round(metrics.CenterY * verticalScale));
-            var overlayBounds = new PixelRect(
-                centerX - size / 2,
-                centerY - size / 2,
-                centerX - size / 2 + size,
-                centerY - size / 2 + size);
             var edgeInset = Math.Max(1, checked((int)Math.Round(13 * horizontalScale)));
             var edgeHeight = Math.Max(5, checked((int)Math.Round(9 * verticalScale)));
             var edgeTop = _bounds.Top - edgeHeight / 2;
@@ -223,16 +206,6 @@ public partial class TaskbarWindow : Window
             if (!_edgeOverlayWindow.ShowAt(edgeBounds, NativeHandle))
             {
                 HostLog.Warning("The taskbar edge overlay could not be positioned.");
-            }
-
-            var assetPath = Path.Combine(
-                FrontendLocator.FindDistributionDirectory(),
-                "assets",
-                "jarvis-taskbar-core-launcher-v1.png");
-            _launcherOverlayWindow ??= new TaskbarLauncherOverlayWindow(assetPath);
-            if (!_launcherOverlayWindow.ShowAt(overlayBounds, NativeHandle))
-            {
-                HostLog.Warning("The taskbar launcher overlay could not be positioned.");
             }
         }
         catch (InvalidOperationException) when (_isClosing || !ShouldShowSurface())
@@ -248,11 +221,8 @@ public partial class TaskbarWindow : Window
 
     private void CloseTaskbarOverlays()
     {
-        var launcherOverlay = _launcherOverlayWindow;
         var edgeOverlay = _edgeOverlayWindow;
-        _launcherOverlayWindow = null;
         _edgeOverlayWindow = null;
-        launcherOverlay?.Close();
         edgeOverlay?.Close();
     }
 
@@ -756,9 +726,7 @@ public partial class TaskbarWindow : Window
         WebView.Dispose();
     }
 
-    private sealed record LauncherOverlayMetrics(
-        double CenterY,
-        double Size,
+    private sealed record TaskbarOverlayMetrics(
         double ViewportWidth,
         double ViewportHeight);
 

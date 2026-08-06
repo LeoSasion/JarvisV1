@@ -86,6 +86,7 @@ import {
   resolvePinnedApplications,
 } from "../pinned-application-model.js";
 import { platform } from "../platform/index.js";
+import { CoreNodeGlyph, JarvisMark } from "./VectorMarks.jsx";
 import {
   quickLaunchItems as startApps,
   quickSettingItems as quickSettings,
@@ -167,7 +168,7 @@ const windowAppearanceOptions = [
     title: "ENHANCED",
     label: "Win11 标题栏增强",
     tag: "推荐",
-    description: "安全外框 + 深色标题栏、青蓝边框与系统圆角。",
+    description: "安全外框 + 深色标题栏、橙色信号边框与系统圆角。",
   },
   {
     mode: "immersive",
@@ -247,7 +248,7 @@ function formatFeedTime(timestamp) {
 function PanelHeader({ eyebrow, title, onClose }) {
   return (
     <header className="shell-panel-header">
-      <img src="/assets/jarvis-top-brand-core-v1.png" alt="" />
+      <JarvisMark />
       <span><small>{eyebrow}</small><strong>{title}</strong></span>
       <button type="button" onClick={onClose} aria-label={`Close ${title}`}><DismissRegular /></button>
     </header>
@@ -1618,7 +1619,7 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
         aria-label="General runtime settings"
       >
         <div className="runtime-identity">
-          <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
+          <CoreNodeGlyph />
           <span>
             <small>RUNTIME CHANNEL</small>
             <strong>{runtime?.productName ?? "JARVIS Night Shell"}</strong>

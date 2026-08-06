@@ -15,6 +15,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        if (LifecycleProbeOptions.IsRequested(e.Args))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            _ = RunLifecycleProbeAsync(e.Args);
+            return;
+        }
+
         if (TaskbarWatchdog.TryParse(e.Args, out var watchdogTarget))
         {
             _mayRestoreTaskbar = true;
@@ -76,6 +83,18 @@ public partial class App : Application
         MainWindow = mainWindow;
         mainWindow.Closed += (_, _) => Shutdown();
         mainWindow.Show();
+    }
+
+    private async Task RunLifecycleProbeAsync(IReadOnlyList<string> arguments)
+    {
+        if (!LifecycleProbeOptions.TryParse(arguments, out var options, out _))
+        {
+            Shutdown(64);
+            return;
+        }
+
+        var exitCode = await LifecycleProbeRunner.RunAsync(options!);
+        Shutdown(exitCode);
     }
 
     private static string? TryGetWebViewVersion()

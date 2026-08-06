@@ -1,0 +1,5041 @@
+/*
+ * JARVIS SIGNAL SHELL — BLACK / WHITE / ORANGE
+ * The mature Windows interaction layer remains intact while every surface
+ * resolves to one flat, deterministic, high-contrast visual system.
+ */
+
+:root {
+  --void: #000000;
+  --surface-0: #020202;
+  --surface-1: #050505;
+  --surface-2: #080808;
+  --surface-canvas: #010101;
+  --ink-1: #f5f1e9;
+  --ink-2: #c0bbb3;
+  --ink-3: #837d75;
+  --structure-weak: rgba(245, 241, 233, 0.15);
+  --structure: rgba(245, 241, 233, 0.28);
+  --structure-strong: rgba(245, 241, 233, 0.54);
+  --signal: var(--energy-cyan);
+  --signal-hot: #ff6a00;
+  --signal-dim: color-mix(in srgb, var(--signal) 54%, transparent);
+  --signal-fill: color-mix(in srgb, var(--signal) 11%, transparent);
+  --signal-fill-strong: color-mix(in srgb, var(--signal) 18%, transparent);
+  --status-warning: #ff9b50;
+  --status-danger: #ff5a3c;
+  --glow-status: 0 0 6px color-mix(in srgb, var(--signal) 58%, transparent);
+  --glow-active: 0 0 14px color-mix(in srgb, var(--signal) 44%, transparent);
+  --stroke: 0.5px;
+  --rail-outline: 0.5px;
+  --accent-stroke: 1px;
+  --radius: 1px;
+  --font-display: "Bahnschrift SemiCondensed", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-data: "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  --font-body: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --type-meta: 10px;
+  --type-label: 11px;
+  --type-body: 13px;
+  --type-title: 30px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --top-height: 48px;
+  --taskbar-bottom: 0px;
+  --taskbar-bg: var(--void);
+  --taskbar-bg-raised: var(--surface-1);
+  --taskbar-line-dim: var(--structure-weak);
+  --taskbar-line: var(--structure);
+  --taskbar-line-hot: var(--signal);
+  --taskbar-hover-fill: var(--signal-fill);
+  --taskbar-active-fill: var(--signal-fill);
+  --taskbar-glow-soft: 0 0 16px color-mix(in srgb, var(--signal) 16%, transparent);
+  --taskbar-glow-line: var(--glow-status);
+  --taskbar-glow-active: var(--glow-status);
+  --taskbar-focus: 0 0 0 1px var(--signal);
+  font-variant-numeric: tabular-nums;
+}
+
+body {
+  background: var(--void);
+  font-family: var(--font-data);
+  color: var(--ink-2);
+}
+
+button,
+input,
+select,
+textarea {
+  border-radius: var(--radius);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--signal);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.jarvis-shell,
+.ambient-field {
+  background: var(--void);
+}
+
+.ambient-field {
+  background: var(--void);
+  opacity: 1;
+  box-shadow: none;
+}
+
+.jarvis-shell::before {
+  inset: 0;
+  border-color: var(--structure-weak);
+  clip-path: none;
+  box-shadow: none;
+}
+
+.hud-chassis {
+  left: 0;
+  right: 0;
+  border: 0;
+  border-block: var(--stroke) solid var(--structure-strong);
+  clip-path: none;
+  background: var(--void);
+  box-shadow: none;
+}
+
+/* Shared deterministic vector language */
+
+.vector-mark {
+  display: block;
+  overflow: visible;
+  color: var(--signal);
+  stroke: currentColor;
+  stroke-width: 1.15;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  shape-rendering: geometricPrecision;
+}
+
+.vector-mark path,
+.vector-mark rect {
+  vector-effect: non-scaling-stroke;
+}
+
+.vector-mark__dim {
+  opacity: 0.55;
+}
+
+.vector-mark__grid {
+  opacity: 0.38;
+}
+
+.vector-mark__signal {
+  opacity: 0.92;
+}
+
+.vector-mark__node {
+  fill: var(--signal-hot);
+  stroke: none;
+  filter: drop-shadow(var(--glow-status));
+}
+
+.vector-mark__point {
+  fill: var(--signal-hot);
+  stroke: none;
+}
+
+.agent-glyph.is-offline {
+  color: var(--ink-3);
+}
+
+.agent-glyph.is-attention {
+  color: var(--status-warning);
+}
+
+.jarvis-agent-launcher .agent-glyph.is-working .vector-mark__signal {
+  animation: vector-signal 1.4s steps(2, end) infinite;
+}
+
+@keyframes vector-signal {
+  50% { opacity: 0.2; }
+}
+
+/* Top command rail */
+
+.topbar {
+  top: 0;
+  height: var(--top-height);
+  display: grid;
+  grid-template-columns: minmax(390px, 1fr) minmax(520px, 1.25fr) auto;
+  align-items: stretch;
+  padding-inline: 20px;
+  background: var(--surface-0);
+  font-family: var(--font-data);
+}
+
+.topbar::after {
+  display: none;
+}
+
+.topbar__zone {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.topbar__command-bus {
+  position: relative;
+  justify-content: center;
+  background: var(--surface-1);
+  border-inline: var(--stroke) solid var(--structure);
+}
+
+.topbar__command-bus::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 196px;
+  height: 2px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-active);
+  transform: translateX(-50%);
+}
+
+.topbar__command-bus.is-unavailable::after,
+.topbar__command-bus.is-error::after {
+  background: var(--status-danger);
+  box-shadow: 0 0 10px rgba(255, 116, 100, 0.38);
+}
+
+.topbar__system {
+  justify-content: flex-end;
+}
+
+.top-cluster {
+  height: 100%;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-right: var(--stroke) solid var(--structure);
+  color: var(--ink-2);
+  font: 500 var(--type-meta)/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.brand-cluster {
+  min-width: 240px;
+  padding-left: 0;
+}
+
+.brand-orb,
+.agent-status-orb {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  object-fit: initial;
+  transform: none;
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.brand-name {
+  color: var(--ink-1);
+  font: 600 17px/1 var(--font-display);
+  letter-spacing: 0.09em;
+  text-shadow: none;
+}
+
+.brand-edition,
+.status-copy small {
+  color: var(--ink-2);
+  font: var(--type-meta)/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.mic-cluster > svg,
+.system-cluster > svg,
+.system-cluster .battery-copy svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mic-cluster {
+  min-width: 154px;
+  color: var(--ink-2);
+}
+
+.mic-cluster:hover,
+.mic-cluster:focus-visible {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+}
+
+.secure-cluster {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-width: 154px;
+}
+
+.secure-cluster > span {
+  color: var(--signal-hot);
+  font-size: 10px;
+  text-shadow: var(--glow-status);
+}
+
+.secure-cluster > strong {
+  color: var(--ink-1);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.agent-cluster {
+  min-width: 188px;
+  padding-inline: var(--space-4);
+  background: var(--signal-fill);
+}
+
+.agent-cluster:hover,
+.agent-cluster:focus-visible {
+  background: var(--signal-fill-strong);
+}
+
+.status-copy strong {
+  color: var(--ink-1);
+  font: 600 12px/1 var(--font-display);
+  letter-spacing: 0.08em;
+}
+
+.stop-cluster {
+  color: var(--status-danger);
+  border-right: 0;
+}
+
+.stop-cluster:disabled {
+  color: var(--ink-3);
+  opacity: 0.52;
+}
+
+.stop-token {
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.date-cluster {
+  color: var(--ink-2);
+  font-family: var(--font-data);
+  font-size: 9px;
+}
+
+.system-cluster {
+  padding-right: 0;
+  color: var(--ink-2);
+}
+
+.system-cluster time {
+  color: var(--ink-1);
+  font: 600 18px/1 var(--font-display);
+  letter-spacing: 0.06em;
+}
+
+/* Desktop vector field */
+
+.desktop-workspace {
+  top: calc(var(--top-height) + 9px);
+  right: 0;
+  bottom: calc(var(--taskbar-height) + 8px);
+  left: 0;
+  grid-template-columns: clamp(176px, 12%, 220px) minmax(0, 1fr) clamp(330px, 21%, 390px);
+  gap: 0;
+}
+
+.desktop-shortcuts {
+  padding: 20px 16px;
+  border-right: var(--stroke) solid var(--structure-weak);
+  background: color-mix(in srgb, var(--surface-0) 78%, transparent);
+}
+
+.desktop-shortcut {
+  color: var(--ink-2);
+}
+
+.desktop-shortcut:hover,
+.desktop-shortcut.is-selected {
+  border-color: var(--structure-strong);
+  background: var(--signal-fill-strong);
+}
+
+.desktop-shortcut.is-selected {
+  box-shadow: 3px 0 0 var(--signal-hot) inset, var(--glow-status);
+}
+
+.shortcut-icon {
+  filter: none;
+}
+
+.core-stage {
+  overflow: hidden;
+  contain: layout paint;
+  isolation: isolate;
+  background: var(--surface-canvas);
+  border-inline: var(--stroke) solid var(--structure-weak);
+}
+
+.core-stage__media {
+  inset: 0;
+  place-items: stretch;
+  transform: translate3d(
+    calc(var(--parallax-x) * 0.25),
+    calc(var(--parallax-y) * 0.25),
+    0
+  );
+  transition-duration: 180ms;
+}
+
+.neural-vector-field {
+  width: 100%;
+  height: 100%;
+  color: var(--signal);
+  opacity: 0.98;
+  shape-rendering: geometricPrecision;
+}
+
+.neural-vector-field line,
+.neural-vector-field path,
+.neural-vector-field polyline,
+.neural-vector-field rect {
+  vector-effect: non-scaling-stroke;
+}
+
+.neural-vector-field__grid {
+  fill: none;
+  stroke: var(--structure-weak);
+  stroke-width: 1;
+  stroke-dasharray: 1 16;
+  opacity: 0.12;
+}
+
+.neural-vector-field__datum {
+  fill: none;
+  stroke: var(--structure);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.neural-vector-field__edges {
+  stroke: color-mix(in srgb, var(--signal) 34%, var(--ink-3));
+  stroke-width: 1;
+  opacity: 0.34;
+}
+
+.neural-vector-field__routes,
+.neural-vector-field__signal-halo,
+.neural-vector-field__signal {
+  fill: none;
+  stroke-linejoin: miter;
+}
+
+.neural-vector-field__routes {
+  stroke: var(--signal-dim);
+  stroke-width: 1.25;
+  opacity: 0.86;
+}
+
+.neural-vector-field__signal-halo {
+  stroke: var(--signal);
+  stroke-width: 7;
+  opacity: 0.16;
+}
+
+.neural-vector-field__signal {
+  stroke: var(--signal-hot);
+  stroke-width: 1.65;
+  stroke-dasharray: 12 10;
+  opacity: 0.94;
+}
+
+.neural-vector-field__signal path:first-child {
+  animation: vector-flow 7.2s linear infinite;
+}
+
+.neural-vector-field__core {
+  fill: none;
+  stroke: var(--signal-hot);
+  stroke-width: 1.8;
+  filter: drop-shadow(var(--glow-status));
+}
+
+.neural-vector-field__core-axis {
+  stroke: var(--signal);
+  stroke-dasharray: 2 5;
+}
+
+.neural-vector-field__core rect,
+.neural-vector-field__nodes rect {
+  fill: var(--ink-2);
+  stroke: none;
+  opacity: 0.84;
+}
+
+.neural-vector-field__nodes rect.is-hot,
+.neural-vector-field__core rect {
+  fill: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+  opacity: 1;
+}
+
+.neural-vector-field__labels {
+  fill: var(--ink-2);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.13em;
+  opacity: 0.96;
+}
+
+.neural-vector-field.is-active .neural-vector-field__core path:first-child,
+.neural-vector-field.is-active .neural-vector-field__signal path:first-child {
+  stroke: var(--signal-hot);
+}
+
+.neural-vector-field.is-active .neural-vector-field__signal path:first-child {
+  animation-duration: 1.7s;
+}
+
+@keyframes vector-flow {
+  to { stroke-dashoffset: -44; }
+}
+
+.core-stage__readout {
+  position: absolute;
+  right: 28px;
+  bottom: 24px;
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+  color: var(--ink-2);
+  font: var(--type-meta)/1 var(--font-data);
+  letter-spacing: 0.1em;
+}
+
+.core-stage__readout strong {
+  color: var(--signal-hot);
+  font: 600 12px/1 var(--font-display);
+  letter-spacing: 0.08em;
+  text-shadow: var(--glow-status);
+}
+
+.core-stage__readout small {
+  color: var(--ink-2);
+  font: 10px/1 var(--font-data);
+}
+
+.core-hotspot {
+  top: 50%;
+  width: 164px;
+  aspect-ratio: auto;
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 2px solid var(--signal-hot);
+  border-radius: 0;
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+  box-shadow: none;
+}
+
+.core-hotspot:hover {
+  color: var(--signal-hot);
+  background: var(--surface-2);
+  border-color: var(--signal-hot);
+}
+
+.core-hotspot:focus-visible {
+  border-radius: 0;
+}
+
+.core-hotspot__mark {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  display: block;
+  filter: drop-shadow(var(--glow-status));
+}
+
+.core-hotspot__mark i {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-color: currentColor;
+  border-style: solid;
+}
+
+.core-hotspot__mark i:nth-child(1) { top: 0; left: 0; border-width: 1px 0 0 1px; }
+.core-hotspot__mark i:nth-child(2) { top: 0; right: 0; border-width: 1px 1px 0 0; }
+.core-hotspot__mark i:nth-child(3) { right: 0; bottom: 0; border-width: 0 1px 1px 0; }
+.core-hotspot__mark i:nth-child(4) { bottom: 0; left: 0; border-width: 0 0 1px 1px; }
+
+.core-hotspot__mark b {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+  transform: translate(-50%, -50%);
+}
+
+.core-hotspot__copy {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+
+.core-hotspot__copy strong {
+  color: var(--ink-1);
+  font: 600 13px/1 var(--font-display);
+  letter-spacing: 0.12em;
+}
+
+.core-hotspot__copy small {
+  color: var(--signal);
+  font: 10px/1 var(--font-data);
+  white-space: nowrap;
+}
+
+.jarvis-shell.has-open-window .core-stage,
+.jarvis-shell.has-open-window .desktop-shortcuts,
+.jarvis-shell.has-open-window .telemetry-rail {
+  opacity: 0.34;
+  filter: saturate(0.72) brightness(0.78);
+}
+
+.core-stage,
+.desktop-shortcuts,
+.telemetry-rail {
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+/* Continuous telemetry rail */
+
+.telemetry-rail {
+  gap: 14px;
+  padding: 12px 18px 0 16px;
+  border-left: var(--stroke) solid var(--structure);
+  background: color-mix(in srgb, var(--surface-0) 86%, transparent);
+}
+
+.hud-panel {
+  overflow: visible;
+  border: 0;
+  border-top: var(--stroke) solid var(--structure);
+  clip-path: none;
+  background: color-mix(in srgb, var(--surface-1) 58%, transparent);
+  box-shadow: none;
+}
+
+.hud-panel::after {
+  display: block;
+  top: -2px;
+  right: auto;
+  left: 0;
+  width: 58px;
+  height: 2px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.hud-panel__header {
+  height: 30px;
+  gap: var(--space-2);
+  padding: 0 8px;
+  border-bottom: var(--stroke) solid var(--structure);
+  color: var(--ink-1);
+  font: 600 var(--type-meta)/1 var(--font-data);
+  letter-spacing: 0.12em;
+}
+
+.hud-panel__tick {
+  width: 4px;
+  height: 4px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.hud-panel__body,
+.core-status-panel .hud-panel__body,
+.resources-panel .hud-panel__body {
+  height: calc(100% - 30px);
+}
+
+.core-status {
+  grid-template-columns: 82px minmax(0, 1fr);
+  padding: var(--space-3) var(--space-2);
+}
+
+.core-status > .vector-mark {
+  width: 72px;
+  height: 72px;
+  justify-self: start;
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.core-status__copy > strong {
+  color: var(--ink-1);
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+
+.core-status__copy > span,
+.core-status__copy > small {
+  font-family: var(--font-data);
+  font-size: var(--type-meta);
+}
+
+.resource-row,
+.process-grid,
+.notification-row,
+.health-status {
+  border-color: var(--structure-weak);
+  background: color-mix(in srgb, var(--surface-canvas) 62%, transparent);
+}
+
+.resource-row:hover,
+.process-grid:not(.process-grid--header):hover,
+.notification-row:hover {
+  background: var(--signal-fill-strong);
+}
+
+.resource-heading strong,
+.notification-copy strong,
+.process-name {
+  color: var(--ink-2);
+}
+
+.resource-heading b,
+.process-grid > span:not(.process-name) {
+  color: var(--ink-1);
+}
+
+.segment-bar i {
+  height: 2px;
+  background: var(--structure);
+  box-shadow: none;
+}
+
+.segment-bar i.is-on {
+  background: var(--signal-hot);
+  box-shadow: none;
+}
+
+.process-name i {
+  width: 5px;
+  height: 5px;
+  border-radius: 0;
+  background: var(--signal);
+  box-shadow: var(--glow-status);
+}
+
+.notification-row > svg,
+.health-status > svg,
+.explorer-entry-name svg {
+  filter: none;
+}
+
+.health-status strong {
+  color: var(--signal-hot);
+  text-shadow: var(--glow-status);
+}
+
+/* Flat system taskbar */
+
+.taskbar,
+.jarvis-taskbar-surface .taskbar {
+  bottom: 0;
+  border: 0;
+  border-top: var(--stroke) solid var(--structure-strong);
+  clip-path: none;
+  background: var(--surface-0);
+  box-shadow: none;
+}
+
+.taskbar::before {
+  inset: 0;
+  border: 0;
+  clip-path: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.taskbar::after {
+  display: none;
+}
+
+.taskbar-edge-track {
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--structure);
+  box-shadow: none;
+  opacity: 1;
+}
+
+.taskbar-edge-track::before,
+.taskbar-edge-track::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  height: 2px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-active);
+  transform: translateX(-50%);
+}
+
+.taskbar-edge-track::before {
+  width: clamp(170px, 15vw, 230px);
+}
+
+.taskbar-edge-track::after {
+  width: 6px;
+  height: 4px;
+}
+
+.taskbar-start,
+.taskbar-search,
+.taskbar-apps,
+.system-tray {
+  border-color: var(--structure);
+  background: var(--surface-0);
+  box-shadow: none;
+}
+
+.taskbar-start,
+.taskbar-search,
+.system-tray {
+  background: var(--surface-0);
+}
+
+.taskbar-search {
+  color: var(--ink-1);
+}
+
+.taskbar-apps {
+  container: taskbar-apps / inline-size;
+}
+
+.taskbar button:hover {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+}
+
+.taskbar-start-mark {
+  transform: none;
+  filter: drop-shadow(var(--glow-status));
+}
+
+.taskbar-start-mark i {
+  border-color: var(--signal-hot);
+  background: var(--signal-fill);
+}
+
+.taskbar-start button:hover .taskbar-start-mark,
+.taskbar-start button:focus-visible .taskbar-start-mark {
+  filter: none;
+}
+
+.taskbar-apps button {
+  border-right: var(--stroke) solid var(--structure-weak);
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+.taskbar-apps button:hover,
+.taskbar-apps button:focus-visible,
+.taskbar-apps button.is-active {
+  background: var(--signal-fill-strong);
+  box-shadow: none;
+}
+
+.taskbar-apps button > span {
+  color: var(--ink-2);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.taskbar-apps button.is-active > span {
+  color: var(--ink-1);
+}
+
+.taskbar-native-icon,
+.taskbar-apps button:hover .taskbar-native-icon,
+.taskbar-apps button.is-active .taskbar-native-icon,
+.taskbar-apps svg,
+.taskbar-apps button:hover svg,
+.taskbar-apps button.is-active svg {
+  filter: none;
+}
+
+.taskbar-apps button::after,
+.taskbar-apps button.is-running:not(.is-active)::after,
+.jarvis-agent-launcher::after {
+  display: none;
+}
+
+.taskbar-apps button.is-running:not(.is-active)::before {
+  content: "";
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  background: var(--ink-2);
+  transform: translateX(-50%);
+}
+
+.taskbar-apps button.is-active::after,
+.jarvis-agent-launcher.is-active::after {
+  bottom: 5px;
+  display: block;
+  width: 34px;
+  height: 2px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-active);
+}
+
+@container taskbar-apps (max-width: 520px) {
+  .taskbar-apps button > span {
+    display: none;
+  }
+
+  .taskbar-apps button {
+    padding-inline: 10px;
+  }
+}
+
+.jarvis-agent-launcher {
+  width: clamp(168px, 14vw, 216px);
+  height: 100%;
+  grid-template-columns: 30px minmax(0, 1fr) 7px;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
+  border: var(--stroke) solid var(--structure-strong);
+  clip-path: none;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.jarvis-agent-launcher:hover,
+.jarvis-agent-launcher:focus-visible,
+.jarvis-agent-launcher.is-active {
+  border-color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+  box-shadow: var(--glow-active);
+}
+
+.jarvis-agent-launcher.is-working {
+  color: var(--signal-hot);
+  background: var(--signal-fill-strong);
+}
+
+.jarvis-agent-launcher > .vector-mark {
+  width: 30px;
+  height: 30px;
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.jarvis-agent-launcher__copy strong {
+  color: var(--ink-1);
+  font: 600 13px/1 var(--font-display);
+  letter-spacing: 0.1em;
+}
+
+.jarvis-agent-launcher__copy small {
+  color: var(--signal);
+  font: 10px/1 var(--font-data);
+}
+
+.jarvis-agent-launcher > i,
+.agent-runtime-state i,
+.agent-footer span i {
+  width: 5px;
+  height: 5px;
+  border-radius: 0;
+  background: var(--ink-2);
+  box-shadow: none;
+}
+
+.jarvis-agent-launcher.is-running > i,
+.agent-runtime-state.is-ready i,
+.agent-runtime-state.is-running i,
+.agent-footer span i.is-ready,
+.agent-footer span i.is-running {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.tray-status-button,
+.tray-clock,
+.tray-notifications {
+  color: var(--ink-2);
+}
+
+.tray-clock strong {
+  color: var(--ink-1);
+  font-family: var(--font-display);
+  letter-spacing: 0.05em;
+}
+
+/* Explorer: true three-column technical workspace */
+
+.jarvis-explorer {
+  container: explorer / inline-size;
+  border-color: var(--structure-strong);
+  clip-path: none;
+  background: var(--surface-canvas);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.72);
+}
+
+.jarvis-explorer::after {
+  display: none;
+}
+
+.explorer-titlebar,
+.explorer-toolbar,
+.explorer-commandbar,
+.explorer-body,
+.explorer-navigation,
+.explorer-files,
+.explorer-inspector,
+.explorer-statusbar {
+  background: var(--surface-canvas);
+  box-shadow: none;
+}
+
+.explorer-titlebar {
+  border-bottom: 2px solid var(--structure-strong);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.explorer-titlebar > svg {
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.explorer-titlebar > strong {
+  color: var(--ink-1);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+.explorer-toolbar,
+.explorer-commandbar {
+  border-bottom-color: var(--structure);
+}
+
+.explorer-toolbar {
+  background: var(--surface-1);
+}
+
+.explorer-commandbar {
+  background: var(--surface-0);
+}
+
+.explorer-history-actions button,
+.explorer-view-actions button,
+.explorer-address-form,
+.explorer-search,
+.explorer-commandbar > button {
+  border-color: var(--structure);
+  background: var(--surface-canvas);
+  box-shadow: none;
+}
+
+.explorer-history-actions button:hover:not(:disabled),
+.explorer-view-actions button:hover,
+.explorer-view-actions button.is-active,
+.explorer-commandbar > button:hover:not(:disabled) {
+  color: var(--ink-1);
+  border-color: var(--structure-strong);
+  background: var(--signal-fill-strong);
+}
+
+.explorer-breadcrumbs,
+.explorer-search,
+.explorer-address-form {
+  color: var(--ink-2);
+  background: var(--surface-canvas);
+}
+
+.explorer-address-form:focus-within,
+.explorer-search:focus-within {
+  border-color: var(--signal-hot);
+  box-shadow: 0 0 0 1px var(--signal-dim) inset;
+}
+
+.explorer-scan-line {
+  animation: none;
+}
+
+.explorer-scan-line::before {
+  box-shadow: none;
+}
+
+.explorer-body {
+  grid-template-columns: 168px minmax(0, 1fr) 252px;
+  background: var(--surface-canvas);
+}
+
+.explorer-navigation {
+  border-right-color: var(--structure);
+  background: var(--surface-1);
+}
+
+.explorer-navigation h2,
+.explorer-list-heading {
+  color: var(--signal-hot);
+  font-family: var(--font-data);
+  font-size: var(--type-meta);
+  letter-spacing: 0.1em;
+}
+
+.explorer-navigation > button:hover,
+.explorer-navigation > button.is-active {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+  box-shadow: 3px 0 0 var(--signal-hot) inset;
+}
+
+.explorer-navigation > button.is-active svg {
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.explorer-drive i,
+.explorer-drive i::after {
+  box-shadow: none;
+}
+
+.explorer-files {
+  grid-template-rows: 78px 32px minmax(0, 1fr) 64px;
+  background: var(--surface-canvas);
+}
+
+.explorer-files.is-grid {
+  grid-template-rows: 78px minmax(0, 1fr) 64px;
+}
+
+.explorer-workspace-heading {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr;
+  align-items: end;
+  gap: 4px 18px;
+  padding: 12px 18px 10px;
+  border-bottom: var(--stroke) solid var(--structure);
+  background: var(--surface-0);
+}
+
+.explorer-workspace-heading > span {
+  grid-column: 1 / -1;
+  align-self: start;
+  color: var(--signal);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.12em;
+}
+
+.explorer-workspace-heading h1 {
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink-1);
+  font: 600 28px/1 var(--font-display);
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-workspace-heading small {
+  align-self: center;
+  color: var(--ink-2);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.explorer-list-heading {
+  border-bottom-color: var(--structure);
+  background: var(--surface-0);
+}
+
+.explorer-list-heading > button {
+  border-right-color: var(--structure-weak);
+}
+
+.explorer-entry > span {
+  border-right-color: transparent !important;
+}
+
+.explorer-entry > span:not(.explorer-entry-name) {
+  color: var(--ink-3);
+}
+
+.explorer-list-heading > button:hover,
+.explorer-list-heading > button:focus-visible,
+.explorer-list-heading > button.is-active {
+  background: var(--signal-fill-strong);
+  color: var(--signal-hot);
+}
+
+.explorer-entry {
+  position: relative;
+  height: 42px;
+  border-bottom-color: var(--structure-weak) !important;
+  color: var(--ink-2) !important;
+  font: var(--type-meta)/1 var(--font-data);
+  contain-intrinsic-size: 42px;
+}
+
+.explorer-entry:hover {
+  background: var(--signal-fill-strong) !important;
+  color: var(--ink-1) !important;
+}
+
+.explorer-entry.is-selected {
+  border: 1px solid var(--signal-hot) !important;
+  background: var(--surface-2) !important;
+  color: var(--ink-1) !important;
+  box-shadow: none;
+}
+
+.explorer-entry.is-selected .explorer-entry-name strong {
+  color: var(--signal-hot);
+}
+
+.explorer-entry:hover .explorer-entry-name svg,
+.explorer-entry.is-selected .explorer-entry-name svg {
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.explorer-entry.is-selected::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  width: 4px;
+  height: 4px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+  transform: translateY(-50%);
+}
+
+.explorer-entry-name {
+  padding-left: 18px !important;
+}
+
+.explorer-entry-name svg {
+  color: var(--ink-2);
+}
+
+.explorer-entry-name strong {
+  color: var(--ink-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.explorer-drive-strip {
+  min-width: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(168px, 1fr);
+  gap: 0;
+  overflow-x: auto;
+  border-top: var(--stroke) solid var(--structure-strong);
+  background: var(--surface-1);
+  scrollbar-width: thin;
+}
+
+.explorer-drive-strip > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 24px auto;
+  align-content: center;
+  gap: 5px 10px;
+  padding: 7px 14px;
+  border-right: var(--stroke) solid var(--structure-weak);
+  color: var(--ink-2);
+  background: var(--surface-1);
+  text-align: left;
+}
+
+.explorer-drive-strip > button:hover,
+.explorer-drive-strip > button.is-active {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+}
+
+.explorer-drive-strip > button > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.explorer-drive-strip svg {
+  width: 15px;
+  height: 15px;
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.explorer-drive-strip strong {
+  overflow: hidden;
+  font: 500 var(--type-meta)/1 var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-drive-strip > button > i {
+  width: 76px;
+  height: 2px;
+  align-self: center;
+  background: var(--structure);
+}
+
+.explorer-drive-strip > button > i b {
+  display: block;
+  width: var(--drive-usage);
+  height: 2px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.explorer-drive-strip small {
+  grid-column: 1 / -1;
+  color: var(--ink-2);
+  font: 9px/1 var(--font-data);
+  white-space: nowrap;
+}
+
+.jarvis-explorer .explorer-inspector {
+  display: block;
+  padding: 18px 16px;
+  border-left-color: var(--structure);
+  background: var(--surface-1);
+}
+
+.explorer-inspector-heading {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 18px;
+}
+
+.explorer-inspector-heading span {
+  color: var(--signal);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.11em;
+}
+
+.explorer-inspector-heading i {
+  width: 56px;
+  height: 2px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.explorer-preview-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 0 14px;
+  border-color: var(--structure-strong);
+  background: var(--signal-fill-strong);
+  box-shadow: none;
+}
+
+.explorer-preview-icon svg {
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.explorer-inspector > h2,
+.explorer-inspector > p {
+  text-align: left;
+}
+
+.explorer-inspector > h2 {
+  color: var(--ink-1);
+  font: 600 14px/1.4 var(--font-display);
+  letter-spacing: 0.06em;
+}
+
+.explorer-inspector > p,
+.explorer-inspector dt,
+.explorer-inspector dd,
+.explorer-inspector-empty span {
+  font-family: var(--font-data);
+  font-size: var(--type-meta);
+}
+
+.explorer-inspector-actions {
+  border-top: var(--stroke) solid var(--structure-weak);
+}
+
+.explorer-inspector-actions button {
+  min-height: 34px;
+  justify-content: flex-start;
+  border: 0;
+  border-bottom: var(--stroke) solid var(--structure-weak);
+  background: transparent;
+}
+
+.explorer-inspector-actions button:hover {
+  color: var(--ink-1);
+  background: var(--signal-fill-strong);
+  box-shadow: 2px 0 0 var(--signal-hot) inset;
+}
+
+.explorer-inspector-empty {
+  justify-items: start;
+  text-align: left;
+}
+
+.explorer-inspector-empty > .vector-mark {
+  width: 72px;
+  height: 72px;
+}
+
+.explorer-statusbar {
+  border-top-color: var(--structure);
+  color: var(--ink-2);
+  font-size: 10px;
+  background: var(--surface-1);
+}
+
+@container explorer (max-width: 1039px) {
+  .explorer-body {
+    grid-template-columns: 148px minmax(0, 1fr);
+  }
+
+  .jarvis-explorer .explorer-inspector {
+    display: none;
+  }
+}
+
+@container explorer (max-width: 819px) {
+  .explorer-body {
+    grid-template-columns: 124px minmax(0, 1fr);
+  }
+
+  .explorer-commandbar kbd,
+  .explorer-commandbar > button span {
+    display: none;
+  }
+}
+
+/* Agent, command palette and shell panels */
+
+.workspace-window.is-active .jarvis-explorer,
+.workspace-window.is-active .terminal-workbench,
+.workspace-window.is-active .system-inspector,
+.workspace-window.is-active .agent-workbench {
+  border-color: var(--structure-strong);
+  box-shadow: 0 20px 62px rgba(0, 0, 0, 0.74);
+}
+
+.workspace-window:not(.is-active) {
+  opacity: 0.76;
+  filter: brightness(0.8) saturate(0.76);
+}
+
+.agent-workbench,
+.shell-panel,
+.command-palette,
+.window-switcher-chassis,
+.boot-sequence {
+  border-color: var(--structure);
+  clip-path: none;
+  background: var(--surface-canvas);
+  box-shadow: 0 18px 54px rgb(0 0 0 / 72%);
+}
+
+.boot-sequence::before,
+.boot-scan-field {
+  display: none;
+}
+
+.boot-sequence > header,
+.boot-sequence > footer,
+.boot-check-list,
+.boot-check-list > div {
+  border-color: var(--structure-weak);
+}
+
+.boot-sequence > header code,
+.boot-check-list > div.is-ready > b,
+.boot-check-list > div.is-ready > em {
+  color: var(--signal-hot);
+}
+
+.boot-check-list > div > i,
+.boot-sequence > footer > span {
+  background: var(--structure-weak);
+}
+
+.boot-check-list > div > b {
+  border-color: var(--structure);
+}
+
+.boot-sequence > footer > span i {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.agent-workbench {
+  grid-template-rows: 46px 30px minmax(0, 1fr) auto 84px 26px;
+}
+
+.agent-titlebar,
+.agent-context-strip,
+.agent-transcript,
+.agent-composer,
+.agent-footer,
+.shell-panel-header,
+.command-palette .command-header {
+  background: var(--surface-canvas);
+  box-shadow: none;
+}
+
+.agent-titlebar,
+.shell-panel-header,
+.command-palette .command-header {
+  background: var(--surface-2);
+}
+
+.agent-context-strip,
+.agent-footer {
+  background: var(--surface-1);
+}
+
+.agent-titlebar,
+.agent-context-strip,
+.agent-composer,
+.agent-footer,
+.shell-panel-header,
+.command-palette .command-header {
+  border-color: var(--structure);
+}
+
+.agent-titlebar__mark {
+  border: 0;
+  background: transparent;
+  color: var(--signal-hot);
+  filter: drop-shadow(var(--glow-status));
+}
+
+.agent-message,
+.agent-message.is-user {
+  border-bottom-color: var(--structure-weak);
+  background: color-mix(in srgb, var(--surface-0) 72%, transparent);
+}
+
+.agent-message.is-user {
+  background: var(--signal-fill-strong);
+}
+
+.agent-message::before,
+.agent-message.is-user::before {
+  box-shadow: none;
+}
+
+.agent-message p {
+  color: var(--ink-1);
+  font: var(--type-body)/1.65 var(--font-body);
+}
+
+.agent-empty-state > span,
+.agent-context-strip,
+.agent-footer,
+.agent-composer label {
+  color: var(--ink-2);
+}
+
+.agent-empty-state strong {
+  color: var(--ink-1);
+  font-family: var(--font-display);
+  letter-spacing: 0.035em;
+}
+
+.agent-empty-state p,
+.agent-empty-state small,
+.agent-titlebar__identity small,
+.agent-context-strip code,
+.agent-context-strip small,
+.agent-footer small {
+  color: var(--ink-2);
+}
+
+.agent-alert-region.has-alert {
+  border-color: color-mix(in srgb, var(--status-danger) 44%, transparent);
+  background: transparent;
+  box-shadow: 2px 0 0 var(--status-danger) inset;
+}
+
+.agent-composer textarea,
+.agent-composer > button {
+  border-color: var(--structure);
+  background: var(--surface-0);
+  box-shadow: none;
+}
+
+.agent-composer textarea:focus,
+.agent-composer > button:hover:not(:disabled),
+.agent-composer > button:focus-visible:not(:disabled) {
+  border-color: var(--signal);
+  background: var(--surface-1);
+  box-shadow: 0 0 0 1px var(--signal-dim) inset;
+}
+
+.shell-panel::after,
+.command-palette::after,
+.window-switcher-chassis::after {
+  display: none;
+}
+
+.shell-panel-header > .vector-mark,
+.command-header .vector-mark,
+.window-switcher-brand > .vector-mark,
+.system-toast > .vector-mark,
+.desktop-only-notice > .vector-mark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.runtime-identity > .vector-mark {
+  width: 76px;
+  height: 76px;
+}
+
+.boot-core > .vector-mark {
+  width: min(180px, 28vw);
+  height: min(180px, 28vw);
+}
+
+.boot-core-ring {
+  display: none;
+}
+
+.boot-sequence header > .vector-mark {
+  width: 34px;
+  height: 34px;
+}
+
+.command-palette form,
+.command-results > button,
+.shell-panel button,
+.shell-panel input {
+  border-color: var(--structure);
+  background: var(--surface-0);
+  box-shadow: none;
+}
+
+.command-results > button:hover,
+.command-results > button.is-active,
+.shell-panel button:hover {
+  background: var(--signal-fill-strong);
+}
+
+@media (max-width: 1380px) {
+  .topbar {
+    grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.2fr) auto;
+    padding-inline: 10px;
+  }
+
+  .brand-edition,
+  .secure-cluster > span,
+  .date-cluster,
+  .status-copy small {
+    display: none;
+  }
+
+  .agent-cluster {
+    min-width: 112px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .topbar {
+    grid-template-columns: minmax(250px, 1fr) minmax(300px, 1fr) auto;
+  }
+
+  .secure-cluster,
+  .mic-cluster span,
+  .system-cluster .battery-copy {
+    display: none;
+  }
+
+  .telemetry-rail {
+    padding-inline: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-agent-launcher .agent-glyph.is-working .vector-mark__signal,
+  .neural-vector-field__signal path:first-child {
+    animation: none;
+  }
+
+  .core-stage__media {
+    transform: none !important;
+    transition: none;
+  }
+}
+
+/* V4 product states — selected black / white / orange references */
+
+:root {
+  --signal-hot: #ff6a00;
+  --signal-pale: #ffb13f;
+  --signal-dim: rgb(255 106 0 / 28%);
+  --signal-fill: rgb(255 106 0 / 4%);
+  --signal-fill-strong: rgb(255 106 0 / 7%);
+  --glow-status: 0 0 4px rgb(255 106 0 / 38%);
+  --glow-active: 0 0 6px rgb(255 106 0 / 28%);
+  --taskbar-height: 56px;
+  --taskbar-bottom: 0px;
+  --taskbar-slot-width: clamp(48px, calc(10vw - 70px), 92px);
+  --taskbar-bg: var(--void);
+  --taskbar-bg-raised: var(--surface-1);
+  --taskbar-hover-fill: var(--signal-fill);
+  --taskbar-active-fill: var(--signal-fill);
+  --taskbar-glow-soft: none;
+  --taskbar-glow-line: none;
+  --taskbar-glow-active: var(--glow-status);
+  --success: #ff8a2a;
+}
+
+html,
+body,
+#root,
+.jarvis-shell {
+  background: var(--void);
+}
+
+.jarvis-shell {
+  min-width: 0;
+  min-height: 0;
+}
+
+.jarvis-shell::before,
+.jarvis-shell::after {
+  box-shadow: none;
+}
+
+.topbar {
+  height: var(--top-height);
+  grid-template-columns: minmax(360px, 1.05fr) minmax(560px, 1.2fr) auto;
+  padding-inline: 8px;
+  border-top: 0;
+  border-bottom: var(--rail-outline) solid var(--structure-strong);
+  background: var(--void);
+}
+
+.topbar__zone,
+.top-cluster,
+.topbar__command-bus {
+  background: var(--void);
+}
+
+.topbar__identity,
+.topbar__command-bus,
+.topbar__system {
+  border-right: var(--rail-outline) solid var(--structure);
+}
+
+.topbar__command-bus {
+  border-left: var(--rail-outline) solid var(--structure);
+}
+
+.topbar__command-bus::after {
+  display: none;
+}
+
+.top-cluster {
+  border-right: var(--rail-outline) solid var(--structure);
+  color: var(--ink-2);
+}
+
+.brand-cluster {
+  min-width: 184px;
+}
+
+.brand-orb,
+.agent-status-orb {
+  color: var(--ink-1);
+  filter: none;
+}
+
+.brand-name {
+  color: var(--ink-1);
+  text-shadow: none;
+}
+
+.brand-edition,
+.status-copy small,
+.date-cluster,
+.system-cluster {
+  color: var(--ink-3);
+}
+
+.mic-cluster:hover,
+.mic-cluster:focus-visible,
+.agent-cluster:hover,
+.agent-cluster:focus-visible,
+.stop-cluster:hover:not(:disabled),
+.system-cluster button:hover {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+}
+
+.secure-cluster > span,
+.agent-cluster .agent-status-orb,
+.agent-cluster .status-copy small {
+  color: var(--signal-hot);
+  text-shadow: none;
+}
+
+.agent-cluster {
+  background: transparent;
+}
+
+.stop-token,
+.stop-cluster:not(:disabled) {
+  color: var(--ink-2);
+}
+
+.desktop-workspace {
+  top: calc(var(--top-height) + var(--rail-outline));
+  bottom: calc(var(--taskbar-height) + var(--rail-outline));
+  grid-template-columns: clamp(176px, 12%, 220px) minmax(0, 1fr) clamp(260px, 18%, 340px);
+  background: var(--void);
+}
+
+.desktop-shortcuts,
+.core-stage,
+.telemetry-rail {
+  background: var(--void);
+}
+
+.desktop-shortcuts {
+  border-right-color: var(--structure);
+  background: transparent;
+}
+
+.shortcut-icon {
+  color: var(--ink-1);
+  filter: none;
+}
+
+.desktop-shortcut:hover .shortcut-icon,
+.desktop-shortcut.is-selected .shortcut-icon {
+  color: var(--signal-hot);
+}
+
+.desktop-shortcut:hover,
+.desktop-shortcut.is-selected {
+  border-color: var(--structure-strong);
+  background: var(--signal-fill);
+}
+
+.desktop-shortcut.is-selected {
+  box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset;
+}
+
+.core-stage {
+  border-inline-color: var(--structure-weak);
+}
+
+.neural-vector-field {
+  color: var(--signal-hot);
+  opacity: 0.62;
+}
+
+.neural-vector-field__grid,
+.neural-vector-field__datum,
+.neural-vector-field__edges {
+  stroke: var(--structure);
+}
+
+.neural-vector-field__signal-halo {
+  opacity: 0.05;
+}
+
+.core-hotspot {
+  min-height: 72px;
+  border: 1px solid var(--structure-strong);
+  color: var(--ink-2);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.core-hotspot:hover,
+.core-hotspot:focus-visible {
+  border-color: var(--signal-hot);
+  color: var(--signal-hot);
+  background: var(--signal-fill);
+}
+
+.core-hotspot__mark,
+.core-status > .vector-mark {
+  filter: none;
+}
+
+.telemetry-rail {
+  gap: 0;
+  padding: 0 12px;
+  border-left-color: var(--structure);
+}
+
+.hud-panel {
+  border-top-color: var(--structure);
+  background: var(--void);
+}
+
+.hud-panel::after {
+  width: 34px;
+  height: 1px;
+  background: var(--signal-hot);
+  box-shadow: none;
+}
+
+.hud-panel__tick,
+.process-name i {
+  box-shadow: none;
+}
+
+.segment-bar i.is-on {
+  background: var(--ink-1);
+  box-shadow: none;
+}
+
+.taskbar,
+.jarvis-taskbar-surface .taskbar {
+  height: var(--taskbar-height);
+  grid-template-columns: 72px clamp(156px, 13vw, 208px) minmax(0, 1fr) auto 10px;
+  overflow: hidden;
+  border: 0;
+  border-top: var(--rail-outline) solid var(--structure-strong);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.taskbar::before,
+.taskbar::after {
+  background: transparent;
+  box-shadow: none;
+  clip-path: none;
+}
+
+.taskbar-edge-track {
+  right: 0;
+  left: 0;
+  height: var(--rail-outline);
+  background: var(--structure-strong);
+}
+
+.taskbar-edge-track::before,
+.taskbar-edge-track::after {
+  display: none;
+}
+
+.taskbar-start,
+.taskbar-search,
+.taskbar-apps,
+.system-tray {
+  border-color: var(--structure);
+  background: var(--void);
+}
+
+.taskbar-start-mark {
+  filter: none;
+}
+
+.taskbar-start-mark i {
+  border-color: var(--ink-1);
+  background: transparent;
+}
+
+.taskbar-apps button {
+  border-right-color: var(--structure-weak);
+}
+
+.taskbar-apps button:hover,
+.taskbar-apps button:focus-visible,
+.taskbar-apps button.is-active {
+  background: var(--signal-fill);
+}
+
+.taskbar-apps button.is-running:not(.is-active)::before {
+  width: 3px;
+  height: 3px;
+  bottom: 8px;
+  background: var(--ink-2);
+}
+
+.taskbar-apps button.is-active::after,
+.jarvis-agent-launcher.is-active::after {
+  width: 46%;
+  height: var(--accent-stroke);
+  bottom: 0;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.jarvis-agent-launcher {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  width: 100%;
+  height: auto;
+  align-self: stretch;
+  padding: 0 14px;
+  border: 0;
+  border-right: var(--rail-outline) solid var(--structure);
+  background: var(--void);
+  box-shadow: none;
+  transform: none;
+}
+
+.jarvis-agent-launcher:hover,
+.jarvis-agent-launcher:focus-visible,
+.jarvis-agent-launcher.is-active,
+.jarvis-agent-launcher.is-working {
+  border-color: var(--structure-strong);
+  background: var(--signal-fill);
+  box-shadow: none;
+}
+
+.jarvis-agent-launcher > .vector-mark,
+.jarvis-agent-launcher__copy small {
+  color: var(--signal-hot);
+  filter: none;
+}
+
+.jarvis-agent-launcher__copy strong,
+.tray-clock strong {
+  color: var(--ink-1);
+}
+
+.taskbar-native-icon,
+.taskbar-apps button:hover .taskbar-native-icon,
+.taskbar-apps button.is-active .taskbar-native-icon {
+  filter: none !important;
+}
+
+.taskbar-apps button > svg {
+  color: var(--ink-2);
+}
+
+.taskbar-apps button:hover > svg,
+.taskbar-apps button.is-active > svg {
+  color: var(--ink-1);
+}
+
+.workspace-window,
+.workspace-window.is-active,
+.workspace-window:not(.is-active) {
+  opacity: 1;
+  filter: none;
+}
+
+.workspace-window.is-docked {
+  contain: layout style paint;
+}
+
+.workspace-window.is-docked .jarvis-explorer,
+.workspace-window.is-docked .agent-workbench {
+  border: 1px solid var(--structure-strong);
+  border-radius: 0;
+  background: var(--void);
+  box-shadow: none;
+  clip-path: none;
+  animation: none;
+}
+
+.workspace-window.is-docked.is-layout-explorer-focus .jarvis-explorer {
+  border: 0;
+}
+
+.workspace-window.is-maximized :is(
+  .jarvis-explorer,
+  .terminal-workbench,
+  .system-inspector,
+  .agent-workbench
+) {
+  border: 0;
+  box-shadow: none;
+}
+
+.workspace-window.is-docked .explorer-window-actions,
+.workspace-window.is-docked .agent-titlebar > button:not(:first-of-type) {
+  opacity: 0.66;
+}
+
+.jarvis-shell.is-layout-explorer-focus .desktop-workspace,
+.jarvis-shell.is-layout-explorer-agent-linked .desktop-shortcuts,
+.jarvis-shell.is-layout-explorer-agent-linked .core-stage,
+.jarvis-shell.is-layout-explorer-agent-linked .telemetry-rail {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.jarvis-explorer {
+  border-color: var(--structure-strong);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.explorer-titlebar,
+.explorer-toolbar,
+.explorer-commandbar,
+.explorer-body,
+.explorer-navigation,
+.explorer-files,
+.explorer-inspector,
+.explorer-statusbar,
+.explorer-workspace-heading,
+.explorer-list-heading,
+.explorer-drive-strip {
+  background: var(--void);
+}
+
+.explorer-titlebar {
+  border-bottom: 1px solid var(--structure-strong);
+  box-shadow: none;
+}
+
+.explorer-titlebar > svg {
+  color: var(--ink-2);
+  filter: none;
+}
+
+.explorer-titlebar > strong {
+  color: var(--ink-1);
+}
+
+.explorer-titlebar > span {
+  color: var(--ink-3);
+}
+
+.explorer-window-actions button,
+.explorer-history-actions button,
+.explorer-view-actions button,
+.explorer-commandbar > button,
+.explorer-breadcrumbs button,
+.explorer-address-form button {
+  color: var(--ink-2);
+}
+
+.explorer-window-actions button:hover,
+.explorer-history-actions button:hover:not(:disabled),
+.explorer-view-actions button:hover,
+.explorer-view-actions button.is-active,
+.explorer-commandbar > button:hover:not(:disabled),
+.explorer-breadcrumbs button:hover {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+}
+
+.explorer-toolbar,
+.explorer-commandbar,
+.explorer-statusbar {
+  border-color: var(--structure);
+}
+
+.explorer-history-actions button,
+.explorer-view-actions button,
+.explorer-address-form,
+.explorer-breadcrumbs,
+.explorer-search,
+.explorer-commandbar > button,
+.explorer-view-actions select {
+  border-color: var(--structure);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.explorer-address-form:focus-within,
+.explorer-search:focus-within,
+.explorer-view-actions select:focus-visible {
+  border-color: var(--signal-hot);
+  box-shadow: 0 0 0 1px var(--signal-dim) inset;
+}
+
+.explorer-search svg,
+.explorer-commandbar > button svg,
+.explorer-navigation > button > svg,
+.explorer-drive-strip svg,
+.explorer-preview-icon svg {
+  color: var(--ink-2);
+  filter: none;
+}
+
+.explorer-commandbar > button:hover:not(:disabled) svg,
+.explorer-view-actions button.is-active svg,
+.explorer-entry.is-selected .explorer-entry-name svg,
+.explorer-navigation > button.is-active svg {
+  color: var(--signal-hot);
+}
+
+.explorer-body {
+  grid-template-columns: minmax(176px, 12%) minmax(0, 68%) minmax(248px, 20%);
+}
+
+.explorer-navigation {
+  border-right-color: var(--structure);
+}
+
+.explorer-navigation h2,
+.explorer-list-heading,
+.explorer-inspector-heading span,
+.explorer-workspace-heading > span {
+  color: var(--ink-3);
+}
+
+.explorer-navigation > button {
+  color: var(--ink-2);
+}
+
+.explorer-navigation > button:hover,
+.explorer-navigation > button.is-active {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+  box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset;
+}
+
+.explorer-workspace-heading {
+  grid-template-rows: auto auto;
+  min-height: 56px;
+  padding: 9px 18px;
+  border-bottom-color: var(--structure);
+}
+
+.explorer-workspace-heading h1 {
+  color: var(--ink-1);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.explorer-workspace-heading small {
+  color: var(--ink-3);
+}
+
+.explorer-files,
+.explorer-files.is-grid {
+  grid-template-rows: 60px 34px minmax(0, 1fr) 72px;
+}
+
+.explorer-files.is-grid {
+  grid-template-rows: 60px minmax(0, 1fr) 72px;
+}
+
+.explorer-list-heading {
+  border-bottom-color: var(--structure);
+}
+
+.explorer-list-heading > button {
+  color: var(--ink-3);
+  border-right-color: var(--structure-weak);
+}
+
+.explorer-list-heading > button:hover,
+.explorer-list-heading > button:focus-visible,
+.explorer-list-heading > button.is-active {
+  color: var(--signal-hot);
+  background: var(--signal-fill);
+}
+
+.explorer-entry {
+  height: 46px;
+  border-bottom-color: var(--structure-weak) !important;
+  color: var(--ink-2) !important;
+  contain-intrinsic-size: 46px;
+}
+
+.explorer-entry:hover {
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+}
+
+.explorer-entry.is-selected {
+  border: 1px solid var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: none;
+}
+
+.explorer-entry.is-selected .explorer-entry-name strong,
+.explorer-entry.is-selected mark {
+  color: var(--signal-hot);
+}
+
+.explorer-entry.is-selected::before {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.explorer-entry-name strong {
+  color: var(--ink-1);
+  font-weight: 500;
+}
+
+.explorer-entry > span:not(.explorer-entry-name) {
+  color: var(--ink-2);
+}
+
+.explorer-drive-strip {
+  border-top-color: var(--structure-strong);
+}
+
+.explorer-drive-strip > button {
+  border-right-color: var(--structure);
+  background: var(--void);
+}
+
+.explorer-drive-strip > button:hover,
+.explorer-drive-strip > button.is-active {
+  background: var(--signal-fill);
+}
+
+.explorer-drive-strip > button > i,
+.explorer-drive i {
+  background: var(--structure);
+}
+
+.explorer-drive-strip > button > i b,
+.explorer-drive i::after {
+  background: var(--signal-hot);
+  box-shadow: none;
+}
+
+.jarvis-explorer .explorer-inspector {
+  border-left-color: var(--structure);
+  background: var(--void);
+}
+
+.explorer-inspector-heading i {
+  width: 38px;
+  height: 1px;
+  background: var(--signal-hot);
+  box-shadow: none;
+}
+
+.explorer-preview-icon {
+  border-color: var(--signal-hot);
+  color: var(--signal-hot);
+  background: transparent;
+  box-shadow: none;
+}
+
+.explorer-inspector > h2,
+.explorer-inspector-empty strong {
+  color: var(--ink-1);
+}
+
+.explorer-inspector > p,
+.explorer-inspector dt,
+.explorer-inspector dd,
+.explorer-inspector-empty span {
+  color: var(--ink-2);
+}
+
+.explorer-inspector-actions,
+.explorer-inspector-actions button {
+  border-color: var(--structure-weak);
+  background: transparent;
+}
+
+.explorer-inspector-actions button:hover {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+  box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset;
+}
+
+.explorer-statusbar {
+  color: var(--ink-2);
+}
+
+.explorer-statusbar strong,
+.explorer-statusbar .is-success {
+  color: var(--signal-hot);
+}
+
+.explorer-statusbar small {
+  color: var(--ink-3);
+}
+
+.explorer-selection-summary {
+  display: none;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-navigation,
+.workspace-window.is-layout-explorer-agent-linked .explorer-inspector,
+.workspace-window.is-layout-explorer-agent-linked .explorer-drive-strip,
+.workspace-window.is-layout-explorer-agent-linked .explorer-workspace-heading,
+.workspace-window.is-layout-explorer-agent-linked .explorer-clipboard-status,
+.workspace-window.is-layout-explorer-agent-linked .explorer-titlebar > span {
+  display: none;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .jarvis-explorer {
+  grid-template-rows: 44px 42px 42px minmax(0, 1fr) 112px 32px;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-files,
+.workspace-window.is-layout-explorer-agent-linked .explorer-files.is-grid {
+  grid-template-rows: 34px minmax(0, 1fr);
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-entry {
+  height: 40px;
+  contain-intrinsic-size: 40px;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-toolbar {
+  grid-template-columns: auto minmax(0, 1fr) minmax(140px, 210px) auto;
+  padding-inline: 8px;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-commandbar {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-commandbar kbd {
+  display: none;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-commandbar > button {
+  min-width: 66px;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: 18px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--structure-strong);
+  background: var(--void);
+}
+
+.explorer-selection-summary__identity {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.explorer-selection-summary__icon {
+  width: 44px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--structure-strong);
+  color: var(--ink-1);
+}
+
+.explorer-selection-summary__icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.explorer-selection-summary__identity > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.explorer-selection-summary__identity strong,
+.explorer-selection-summary__identity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-selection-summary__identity strong {
+  color: var(--ink-1);
+  font: 500 11px/1 var(--font-data);
+}
+
+.explorer-selection-summary__identity small {
+  color: var(--signal-hot);
+  font: 9px/1 var(--font-data);
+}
+
+.explorer-selection-summary dl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.explorer-selection-summary dl > div {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 0 14px;
+  border-left: 1px solid var(--structure);
+}
+
+.explorer-selection-summary dt,
+.explorer-selection-summary dd {
+  overflow: hidden;
+  margin: 0;
+  font: 9px/1.25 var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-selection-summary dt {
+  color: var(--ink-3);
+}
+
+.explorer-selection-summary dd {
+  color: var(--ink-2);
+}
+
+.linked-workspace-frame {
+  position: fixed;
+  top: var(--workspace-top-inset, 78px);
+  right: var(--workspace-right-inset, 12px);
+  bottom: var(--workspace-bottom-inset, 86px);
+  left: var(--workspace-left-inset, 12px);
+  z-index: 79;
+  border: 1px solid var(--structure-strong);
+  pointer-events: none;
+}
+
+.linked-workspace-frame > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--structure-strong);
+}
+
+.linked-workspace-frame > i:first-child {
+  left: 53.2%;
+}
+
+.linked-workspace-frame > i:last-child {
+  left: 84.9%;
+}
+
+.linked-system-rail {
+  position: fixed;
+  top: var(--workspace-top-inset, 78px);
+  right: var(--workspace-right-inset, 12px);
+  bottom: var(--workspace-bottom-inset, 86px);
+  left: calc(var(--workspace-left-inset, 12px) + var(--workspace-available-width, calc(100vw - 24px)) * 0.849);
+  z-index: 83;
+  min-width: 0;
+  overflow: hidden auto;
+  border: 1px solid var(--structure-strong);
+  border-left: 0;
+  background: var(--void);
+  color: var(--ink-2);
+  pointer-events: auto;
+  scrollbar-width: thin;
+  display: none;
+}
+
+.linked-system-rail > header {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--structure);
+}
+
+.linked-system-rail > header strong {
+  color: var(--ink-1);
+  font: 600 15px/1 var(--font-display);
+  letter-spacing: 0.09em;
+}
+
+.linked-system-rail > header i {
+  width: 4px;
+  height: 4px;
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.linked-system-rail > section {
+  margin: 0 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--structure);
+}
+
+.linked-system-rail h2 {
+  margin: 0 0 14px;
+  color: var(--ink-1);
+  font: 500 10px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.linked-system-rail dl {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+}
+
+.linked-system-rail dl > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.linked-system-rail dt,
+.linked-system-rail dd,
+.linked-system-resources button,
+.linked-system-notification {
+  font: 9px/1.35 var(--font-data);
+  letter-spacing: 0.04em;
+}
+
+.linked-system-rail dt {
+  color: var(--ink-3);
+}
+
+.linked-system-rail dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink-2);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linked-system-rail dd.is-signal {
+  color: var(--signal-hot);
+}
+
+.linked-system-rail dd.is-muted {
+  color: var(--ink-3);
+}
+
+.linked-system-resources {
+  display: grid;
+}
+
+.linked-system-resources button {
+  min-width: 0;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 5px;
+  gap: 5px 8px;
+  padding: 4px 0;
+  border: 0;
+  color: var(--ink-3);
+  background: transparent;
+  text-align: left;
+}
+
+.linked-system-resources button:hover,
+.linked-system-resources button:focus-visible,
+.linked-system-notification:hover:not(:disabled),
+.linked-system-notification:focus-visible:not(:disabled) {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+}
+
+.linked-system-resources strong {
+  color: var(--ink-1);
+  font-weight: 500;
+}
+
+.linked-system-meter {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+}
+
+.linked-system-meter i {
+  height: 2px;
+  background: var(--structure);
+}
+
+.linked-system-meter i.is-on {
+  background: var(--ink-1);
+}
+
+.linked-system-notification {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  color: var(--ink-2);
+  background: transparent;
+  text-align: left;
+}
+
+.linked-system-notification small {
+  color: var(--ink-3);
+}
+
+.linked-system-notification:disabled {
+  opacity: 1;
+}
+
+.agent-workbench {
+  border-color: var(--structure-strong);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.agent-titlebar,
+.agent-context-strip,
+.agent-transcript,
+.agent-composer,
+.agent-footer {
+  border-color: var(--structure);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.agent-titlebar__mark {
+  color: var(--signal-hot);
+  filter: none;
+}
+
+.agent-empty-state > svg,
+.agent-empty-state.is-ready > svg {
+  color: var(--signal-hot);
+  filter: none;
+}
+
+.agent-context-strip svg {
+  color: var(--ink-2);
+}
+
+.agent-titlebar__identity strong,
+.agent-empty-state strong,
+.agent-message p {
+  color: var(--ink-1);
+}
+
+.agent-titlebar__identity small,
+.agent-context-strip,
+.agent-context-strip code,
+.agent-context-strip small,
+.agent-footer,
+.agent-footer small,
+.agent-message header,
+.agent-empty-state p,
+.agent-empty-state small {
+  color: var(--ink-3);
+}
+
+.agent-runtime-state {
+  color: var(--ink-2);
+}
+
+.agent-runtime-state i,
+.agent-footer span i {
+  border-radius: 0;
+  background: var(--ink-3);
+  box-shadow: none;
+}
+
+.agent-runtime-state.is-ready i,
+.agent-runtime-state.is-running i,
+.agent-footer span i.is-ready,
+.agent-footer span i.is-running {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.agent-titlebar > button {
+  border-left-color: var(--structure);
+  color: var(--ink-2);
+}
+
+.agent-titlebar > button:hover:not(:disabled),
+.agent-titlebar > button:focus-visible:not(:disabled) {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+}
+
+.agent-message,
+.agent-message.is-user {
+  position: relative;
+  margin: 0;
+  padding: 14px 18px 14px 34px;
+  border: 0;
+  border-bottom: 1px solid var(--structure-weak);
+  background: transparent;
+}
+
+.agent-message::before,
+.agent-message.is-user::before {
+  top: 20px;
+  left: 15px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--signal-hot);
+  background: var(--void);
+  box-shadow: none;
+  transform: none;
+}
+
+.agent-message.is-assistant::before,
+.agent-message.is-streaming::before {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.agent-message.is-user {
+  background: var(--signal-fill);
+}
+
+.agent-composer textarea,
+.agent-composer > button {
+  border-color: var(--structure-strong);
+  background: var(--void);
+  box-shadow: none;
+}
+
+.agent-composer textarea:focus,
+.agent-composer > button:hover:not(:disabled),
+.agent-composer > button:focus-visible:not(:disabled) {
+  border-color: var(--signal-hot);
+  background: var(--signal-fill);
+  box-shadow: 0 0 0 1px var(--signal-dim) inset;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .agent-workbench {
+  grid-template-rows: 44px 30px minmax(0, 1fr) auto 96px 28px;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .agent-titlebar__identity small,
+.workspace-window.is-layout-explorer-agent-linked .agent-footer code {
+  display: none;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .agent-titlebar {
+  grid-template-columns: 34px minmax(0, 1fr) auto repeat(4, 34px);
+}
+
+.terminal-workbench,
+.system-inspector,
+.shell-panel,
+.command-palette,
+.window-switcher-chassis,
+.boot-sequence,
+.taskbar-local-flyout,
+.desktop-context-menu,
+.explorer-context-menu,
+.explorer-command-dialog,
+.explorer-conflict-dialog,
+.explorer-transfer-panel,
+.system-toast {
+  border-color: var(--structure-strong);
+  border-radius: 0;
+  background-color: var(--void);
+  background-image: none;
+  box-shadow: none;
+  clip-path: none;
+}
+
+:where(
+  .terminal-workbench,
+  .system-inspector,
+  .shell-panel,
+  .command-palette,
+  .window-switcher-chassis,
+  .boot-sequence,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(header, footer, section, nav, form) {
+  border-color: var(--structure);
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+:where(
+  .terminal-workbench,
+  .system-inspector,
+  .shell-panel,
+  .command-palette,
+  .window-switcher-chassis,
+  .boot-sequence,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(h1, h2, h3, strong) {
+  color: var(--ink-1);
+  text-shadow: none;
+}
+
+:where(
+  .terminal-workbench,
+  .system-inspector,
+  .shell-panel,
+  .command-palette,
+  .window-switcher-chassis,
+  .boot-sequence,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(p, small, span, label, dt, dd, code, kbd) {
+  text-shadow: none;
+}
+
+:where(
+  .terminal-workbench,
+  .system-inspector,
+  .shell-panel,
+  .command-palette,
+  .window-switcher-chassis,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(button, input, textarea, select) {
+  border-color: var(--structure);
+  border-radius: 0;
+  background-color: var(--void);
+  background-image: none;
+  box-shadow: none;
+}
+
+:where(
+  .terminal-workbench,
+  .system-inspector,
+  .shell-panel,
+  .command-palette,
+  .window-switcher-chassis,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(button:hover:not(:disabled), button.is-active, [aria-selected="true"]) {
+  color: var(--ink-1);
+  background-color: var(--signal-fill);
+}
+
+.shell-panel::after,
+.command-palette::after,
+.window-switcher-chassis::after,
+.boot-scan-field,
+.boot-core-ring,
+.date-time-orbit,
+.session-control-orbit,
+.window-switcher-field,
+.window-switcher-corners {
+  display: none;
+}
+
+.theme-swatch.is-nexus,
+.theme-swatch.is-stealth,
+.theme-swatch.is-clarity {
+  border-color: var(--structure-strong);
+  background: var(--void);
+}
+
+.theme-swatch.is-nexus i,
+.theme-swatch.is-stealth i,
+.theme-swatch.is-clarity i {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.workspace-window.is-active .jarvis-explorer,
+.workspace-window.is-active .terminal-workbench,
+.workspace-window.is-active .system-inspector,
+.workspace-window.is-active .agent-workbench {
+  border-color: var(--structure-strong);
+  box-shadow: none;
+}
+
+.shell-panel,
+.command-palette,
+.system-inspector,
+.taskbar-local-flyout,
+.desktop-context-menu,
+.explorer-context-menu {
+  scrollbar-color: var(--signal-hot) var(--void);
+}
+
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where([class]) {
+  border-color: var(--structure);
+  box-shadow: none;
+}
+
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where(button, input, textarea, select) {
+  color: var(--ink-2);
+}
+
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where(svg) {
+  color: var(--ink-2);
+  filter: none;
+}
+
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where(p, span, label, dt, dd, code, kbd) {
+  color: var(--ink-2);
+}
+
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where(small) {
+  color: var(--ink-3);
+}
+
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where(button:hover:not(:disabled), button.is-active, [aria-selected="true"], [aria-current="true"]) :where(svg),
+:where(
+  .shell-panel,
+  .command-palette,
+  .system-inspector,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu
+) :where(.is-active, .is-ready, .is-primary) {
+  color: var(--signal-hot);
+}
+
+.notification-row > svg,
+.health-status > svg {
+  color: var(--ink-2);
+}
+
+.neural-vector-field {
+  opacity: 0.74;
+}
+
+.shell-panel :where(button, input, textarea, select),
+.command-palette :where(button, input),
+.system-inspector :where(button, input, select) {
+  border-color: var(--structure) !important;
+  color: var(--ink-2) !important;
+  background-color: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.shell-panel button svg,
+.command-palette button svg,
+.system-inspector button svg {
+  color: var(--ink-2) !important;
+  filter: none !important;
+}
+
+.shell-panel :where(small, code, kbd),
+.command-palette :where(small, code, kbd),
+.system-inspector :where(small, code, kbd) {
+  color: var(--ink-3) !important;
+}
+
+.command-palette :where(span, p, label),
+.shell-panel :where(p, label) {
+  color: var(--ink-2) !important;
+}
+
+.command-palette :where(h1, h2, h3, strong),
+.shell-panel :where(h1, h2, h3, strong) {
+  color: var(--ink-1) !important;
+}
+
+.command-results > button.is-active :where(span, small, code) {
+  color: var(--signal-hot) !important;
+}
+
+.shell-panel ::-webkit-scrollbar,
+.command-palette ::-webkit-scrollbar,
+.system-inspector ::-webkit-scrollbar,
+.jarvis-explorer ::-webkit-scrollbar,
+.agent-workbench ::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.shell-panel ::-webkit-scrollbar-track,
+.command-palette ::-webkit-scrollbar-track,
+.system-inspector ::-webkit-scrollbar-track,
+.jarvis-explorer ::-webkit-scrollbar-track,
+.agent-workbench ::-webkit-scrollbar-track {
+  background: var(--void);
+}
+
+.shell-panel ::-webkit-scrollbar-thumb,
+.command-palette ::-webkit-scrollbar-thumb,
+.system-inspector ::-webkit-scrollbar-thumb,
+.jarvis-explorer ::-webkit-scrollbar-thumb,
+.agent-workbench ::-webkit-scrollbar-thumb {
+  background: var(--structure-strong);
+}
+
+.shell-panel ::-webkit-scrollbar-thumb:hover,
+.command-palette ::-webkit-scrollbar-thumb:hover,
+.system-inspector ::-webkit-scrollbar-thumb:hover,
+.jarvis-explorer ::-webkit-scrollbar-thumb:hover,
+.agent-workbench ::-webkit-scrollbar-thumb:hover {
+  background: var(--signal-hot);
+}
+
+.shell-panel :where(button, [class*="is-active"]):hover,
+.shell-panel :where(button.is-active, [aria-selected="true"], [aria-current="true"]),
+.command-palette :where(button:hover, button.is-active, [aria-selected="true"]),
+.system-inspector :where(button:hover, button.is-active, [aria-selected="true"]) {
+  color: var(--ink-1) !important;
+  background-color: var(--signal-fill) !important;
+}
+
+.shell-panel :where(button.is-active, [aria-selected="true"], [aria-current="true"]) svg,
+.command-palette :where(button.is-active, [aria-selected="true"]) svg,
+.system-inspector :where(button.is-active, [aria-selected="true"]) svg {
+  color: var(--signal-hot) !important;
+}
+
+.shell-panel :where(input, textarea, select):focus,
+.command-palette :where(input, textarea):focus,
+.system-inspector :where(input, textarea, select):focus {
+  border-color: var(--signal-hot) !important;
+  box-shadow: 0 0 0 1px var(--signal-dim) inset !important;
+}
+
+.terminal-workbench {
+  border-color: var(--structure-strong);
+  background: var(--void);
+  box-shadow: none;
+  clip-path: none;
+}
+
+.terminal-workbench::before,
+.terminal-workbench::after {
+  content: none;
+  display: none;
+}
+
+.terminal-titlebar,
+.terminal-tabbar,
+.terminal-stage,
+.terminal-statusbar,
+.terminal-tabs,
+.terminal-tab,
+.terminal-new-tab {
+  border-color: var(--structure);
+  background: var(--void);
+  background-image: none;
+  box-shadow: none;
+}
+
+.terminal-titlemark,
+.terminal-titlecopy strong,
+.terminal-new-tab,
+.terminal-tab.is-active {
+  color: var(--ink-1);
+}
+
+.terminal-titlemark,
+.terminal-tab i,
+.terminal-link-status i,
+.terminal-statusbar > :last-child {
+  color: var(--signal-hot);
+}
+
+.terminal-titlecopy small,
+.terminal-link-status,
+.terminal-statusbar,
+.terminal-tab {
+  color: var(--ink-3);
+}
+
+.terminal-tab:hover,
+.terminal-new-tab:hover,
+.terminal-tab.is-active {
+  background: var(--signal-fill);
+}
+
+.terminal-tab.is-active {
+  box-shadow: 0 -2px 0 var(--signal-hot) inset;
+}
+
+.terminal-stage-grid {
+  display: none;
+}
+
+/* Runtime settings use the same flat signal language instead of the legacy
+   blue control-room cards. The broad container rule is intentional: this
+   panel contains many independently owned settings modules, and their real
+   state/ARIA contracts remain unchanged while presentation is centralized. */
+.runtime-settings-panel,
+.runtime-settings-panel > .shell-panel-header,
+.runtime-settings-nav {
+  border-color: var(--structure) !important;
+  background: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  scrollbar-color: var(--structure-strong) var(--void);
+}
+
+.runtime-settings-panel :where(
+  .runtime-identity,
+  .runtime-setting-row,
+  .window-appearance-settings,
+  .window-appearance-header,
+  .window-appearance-options,
+  .window-appearance-choice,
+  .window-appearance-telemetry,
+  .window-appearance-guards,
+  .window-appearance-guards > span,
+  .window-rule-editor,
+  .window-rule-editor > header,
+  .window-rule-list,
+  .window-rule-list > div,
+  .window-compatibility,
+  .window-compatibility > header,
+  .window-compatibility-list,
+  .window-compatibility-list > div,
+  .runtime-path-card,
+  .runtime-diagnostics,
+  .runtime-diagnostics > header,
+  .runtime-diagnostic-results,
+  .runtime-diagnostic-results > div
+) {
+  border-color: var(--structure) !important;
+  background: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.runtime-settings-panel :where(
+  .runtime-setting-icon,
+  .window-appearance-icon,
+  .window-appearance-level,
+  .window-appearance-tag,
+  .window-appearance-selector,
+  .window-compatibility > header > b
+) {
+  border-color: var(--structure-strong) !important;
+  color: var(--ink-2) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+.runtime-settings-panel :where(
+  .runtime-identity strong,
+  .runtime-setting-copy strong,
+  .window-appearance-header strong,
+  .window-appearance-copy strong,
+  .window-appearance-copy strong b,
+  .window-rule-editor > header strong,
+  .window-compatibility > header strong,
+  .runtime-diagnostics > header strong,
+  .runtime-diagnostic-results strong
+) {
+  color: var(--ink-1) !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-panel :where(
+  .runtime-identity code,
+  .runtime-identity small,
+  .runtime-setting-copy small,
+  .window-appearance-header small,
+  .window-appearance-header code,
+  .window-appearance-settings legend,
+  .window-appearance-copy small,
+  .window-appearance-telemetry small,
+  .window-appearance-telemetry strong,
+  .window-rule-editor > header small,
+  .window-rule-list code,
+  .window-compatibility > header small,
+  .window-compatibility-list code,
+  .window-compatibility-list small,
+  .window-compatibility-counts small,
+  .window-compatibility-counts b,
+  .window-appearance-safety-note,
+  .window-appearance-feedback,
+  .runtime-path-card code,
+  .runtime-path-card small,
+  .runtime-diagnostics small,
+  .runtime-diagnostics p,
+  .runtime-diagnostic-results small,
+  .runtime-settings-footer,
+  .runtime-settings-footer strong
+) {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-nav button[aria-current="location"],
+.runtime-settings-panel .window-appearance-choice.is-selected,
+.runtime-settings-panel .window-appearance-choice:hover,
+.runtime-settings-panel .runtime-switch.is-on,
+.runtime-settings-panel :where(button.is-active, button[aria-pressed="true"]) {
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-nav button[aria-current="location"],
+.runtime-settings-panel .window-appearance-choice.is-selected :where(
+  .window-appearance-level,
+  .window-appearance-tag,
+  .window-appearance-selector,
+  strong,
+  b
+),
+.runtime-settings-panel :where(
+  .window-appearance-guards .is-ready,
+  .window-appearance-header code.is-compatible,
+  .runtime-switch.is-on,
+  .runtime-state-attention
+) {
+  border-color: var(--signal-hot) !important;
+  color: var(--signal-pale) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-panel .window-appearance-choice.is-selected .window-appearance-selector i,
+.runtime-settings-panel .runtime-switch.is-on > span::after {
+  background: var(--signal-hot) !important;
+  box-shadow: none !important;
+}
+
+.runtime-settings-panel :where(input, textarea, select):focus,
+.runtime-settings-panel .window-appearance-choice:has(input:focus-visible) {
+  outline-color: var(--signal-hot) !important;
+  border-color: var(--signal-hot) !important;
+  box-shadow: none !important;
+}
+
+.runtime-settings-panel :where(
+  .window-appearance-feedback.is-fallback,
+  .window-appearance-feedback.is-error,
+  .runtime-settings-error
+) {
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+@media (min-width: 1440px) {
+  .jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail {
+    display: block;
+  }
+}
+
+/* Layout variant comes from the same viewport model that computes window
+   bounds. These rules intentionally override the legacy raw media queries so
+   a 24px workspace inset cannot create split-brain breakpoints. */
+.jarvis-shell.is-linked-three-pane .linked-system-rail {
+  display: block;
+}
+
+.jarvis-shell.is-linked-three-pane .linked-workspace-frame > i:first-child {
+  left: 53.2%;
+}
+
+.jarvis-shell.is-linked-three-pane .linked-workspace-frame > i:last-child {
+  left: 84.9%;
+}
+
+.jarvis-shell.is-linked-two-pane .linked-system-rail,
+.jarvis-shell.is-linked-drawer .linked-system-rail,
+.jarvis-shell.is-linked-single-pane .linked-system-rail,
+.jarvis-shell.is-linked-two-pane .linked-workspace-frame > i:last-child {
+  display: none;
+}
+
+.jarvis-shell.is-linked-two-pane .linked-workspace-frame > i:first-child {
+  left: 58%;
+}
+
+.jarvis-shell.is-linked-drawer .linked-workspace-frame > i,
+.jarvis-shell.is-linked-single-pane .linked-workspace-frame > i {
+  display: none;
+}
+
+.jarvis-shell.is-linked-single-pane .workspace-window.is-docked:not(.is-active) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+@media (max-width: 1380px) {
+  .topbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(360px, 1.2fr) auto;
+  }
+}
+
+@media (max-width: 1080px) {
+  .topbar {
+    grid-template-columns: minmax(180px, 1fr) minmax(240px, 1fr) auto;
+  }
+}
+
+@media (max-width: 1439px) {
+  .jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail,
+  .jarvis-shell.is-layout-explorer-agent-linked .linked-workspace-frame > i:last-child {
+    display: none;
+  }
+
+  .jarvis-shell.is-layout-explorer-agent-linked .linked-workspace-frame > i:first-child {
+    left: 58%;
+  }
+}
+
+@media (max-width: 1179px) {
+  .jarvis-shell.is-layout-explorer-agent-linked .linked-workspace-frame > i {
+    display: none;
+  }
+
+  .workspace-window.is-linked-drawer.is-agent {
+    box-shadow: -18px 0 44px rgb(0 0 0 / 82%);
+  }
+}
+
+@media (max-width: 919px) {
+  .jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked:not(.is-active) {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(220px, 1fr) auto;
+  }
+
+  .topbar__command-bus {
+    display: none;
+  }
+
+  .jarvis-agent-launcher__copy {
+    display: none;
+  }
+
+  .taskbar,
+  .jarvis-taskbar-surface .taskbar {
+    grid-template-columns: 64px 64px minmax(0, 1fr) auto 8px;
+  }
+
+  .jarvis-agent-launcher {
+    width: 100%;
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .jarvis-agent-launcher > .vector-mark {
+    justify-self: center;
+  }
+}
+
+@media (max-height: 720px) {
+  :root {
+    --taskbar-height: 52px;
+  }
+
+  .linked-system-rail > section {
+    padding-block: 11px;
+  }
+
+  .workspace-window.is-layout-explorer-agent-linked .agent-context-strip,
+  .workspace-window.is-layout-explorer-agent-linked .agent-footer {
+    display: none;
+  }
+
+  .workspace-window.is-layout-explorer-agent-linked .agent-workbench {
+    grid-template-rows: 44px minmax(0, 1fr) auto 82px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-window,
+  .desktop-shortcut,
+  .taskbar button,
+  .linked-system-rail button {
+    transition: none;
+  }
+}
+
+/* Final surface convergence. The legacy stylesheet still owns geometry and
+   interaction, while every visible paint surface resolves here. */
+.shell-panel-layer,
+.overlay-layer,
+.explorer-dialog-layer {
+  background: rgb(0 0 0 / 72%) !important;
+}
+
+.shell-panel:not(.runtime-settings-panel) :where([class]) {
+  border-color: var(--structure) !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.shell-panel:not(.runtime-settings-panel) :where([class])::before,
+.shell-panel:not(.runtime-settings-panel) :where([class])::after {
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.shell-panel:not(.runtime-settings-panel) :where(
+  button:hover:not(:disabled),
+  button.is-active,
+  button.is-selected,
+  button[aria-selected="true"],
+  button[aria-pressed="true"],
+  .shell-notification-item.is-unread
+) {
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+}
+
+.shell-panel:not(.runtime-settings-panel) :where(
+  .start-view-switch > button.is-active::after,
+  .date-time-days button.is-selected::after,
+  .quick-setting-grid > button[aria-pressed="true"]::after
+) {
+  background: var(--signal-hot) !important;
+}
+
+.shell-panel.runtime-settings-panel,
+.shell-panel.runtime-settings-panel > .shell-panel-header,
+.shell-panel.runtime-settings-panel :where(
+  .interface-preferences,
+  .interface-preferences > header,
+  .theme-choice-grid > button,
+  .theme-swatch,
+  .interface-option-group,
+  .interface-option-group > header,
+  .interface-option-grid > button,
+  .audio-preference-row,
+  .interface-reset-button,
+  .windows-history-status,
+  .native-integration-settings,
+  .native-integration-settings > header,
+  .native-integration-grid article,
+  .display-monitor-list > span,
+  .runtime-settings-footer
+) {
+  border-color: var(--structure) !important;
+  background: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.shell-panel.runtime-settings-panel svg {
+  color: var(--ink-2) !important;
+  filter: none !important;
+}
+
+.shell-panel.runtime-settings-panel :where(
+  .shell-panel-header > .vector-mark,
+  .runtime-identity > .vector-mark,
+  .runtime-state-ok,
+  .runtime-state-ok svg,
+  .window-appearance-guards .is-ready,
+  .window-appearance-guards .is-ready svg
+) {
+  color: var(--signal-hot) !important;
+}
+
+.shell-panel.runtime-settings-panel :where(
+  .theme-choice-grid > button.is-selected,
+  .interface-option-grid > button.is-selected,
+  .display-monitor-list > span.is-primary
+) {
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset !important;
+}
+
+.shell-panel.runtime-settings-panel :where(
+  .interface-preferences > header code,
+  .interface-option-group > header code,
+  .native-integration-settings button:not(:disabled),
+  .runtime-diagnostics > header button:not(:disabled),
+  .window-rule-submit:not(:disabled),
+  .window-compatibility-list button:not(:disabled)
+) {
+  border-color: var(--signal-hot) !important;
+  color: var(--signal-pale) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: none !important;
+}
+
+.shell-panel.runtime-settings-panel input[type="range"] {
+  accent-color: var(--signal-hot);
+}
+
+.shell-panel.runtime-settings-panel .runtime-path-card {
+  border-left: var(--accent-stroke) solid var(--signal-hot) !important;
+}
+
+.taskbar-flyout-mock,
+.taskbar-flyout-mock > header,
+.taskbar-overflow-tools > label,
+.taskbar-context-actions > button,
+.taskbar-flyout-grid article,
+.taskbar-flyout-empty,
+.mock-window-thumbnail,
+.mock-window-main,
+.mock-window-close {
+  border-color: var(--structure) !important;
+  color: var(--ink-2) !important;
+  background: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  clip-path: none;
+}
+
+.taskbar-flyout-mock > header::before {
+  background: var(--signal-hot);
+  box-shadow: none;
+}
+
+.taskbar-flyout-mock :where(strong, input) {
+  color: var(--ink-1) !important;
+}
+
+.taskbar-flyout-mock :where(small, code) {
+  color: var(--ink-3) !important;
+}
+
+.taskbar-flyout-mock svg {
+  color: var(--ink-2) !important;
+  filter: none !important;
+}
+
+.taskbar-flyout-mock :where(
+  article:hover,
+  article.is-active,
+  article.is-keyboard-active,
+  button:hover,
+  button:focus-visible
+) {
+  border-color: var(--signal-hot) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: none !important;
+}
+
+.taskbar-window-count,
+.taskbar-overflow-button > small,
+.tray-notifications > small {
+  border: 1px solid var(--signal-hot) !important;
+  border-radius: 0 !important;
+  color: var(--signal-pale) !important;
+  background: var(--void) !important;
+  box-shadow: none !important;
+  font-size: 9px !important;
+}
+
+.taskbar-flyout-mock.is-windows .mock-window-thumbnail {
+  height: 72px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  place-items: center start;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--structure) !important;
+  color: var(--ink-2) !important;
+  background: var(--surface-1) !important;
+}
+
+.taskbar-flyout-mock.is-windows .mock-window-thumbnail > :where(svg, img) {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.taskbar-flyout-mock.is-windows .mock-window-thumbnail > span {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.taskbar-flyout-mock.is-windows .mock-window-thumbnail :where(small, strong) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskbar-flyout-mock.is-windows .mock-window-thumbnail small {
+  color: var(--signal-hot) !important;
+  font: 9px/1 var(--font-data);
+  letter-spacing: 0.12em;
+}
+
+.taskbar-flyout-mock.is-windows .mock-window-thumbnail strong {
+  color: var(--ink-1) !important;
+  font: 600 11px/1.2 var(--font-ui);
+}
+
+.taskbar-flyout-mock.is-windows article:is(.is-active, .is-keyboard-active) .mock-window-thumbnail {
+  border-bottom-color: var(--signal-hot) !important;
+}
+
+.jarvis-window-switcher,
+.window-switcher-chassis,
+.window-switcher-header,
+.window-switcher-footer,
+.window-switcher-card,
+.window-switcher-icon,
+.window-switcher-progress,
+.window-switcher-instructions kbd {
+  border-color: var(--structure) !important;
+  color: var(--ink-2) !important;
+  background: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  clip-path: none;
+}
+
+.window-switcher-card::before,
+.window-switcher-progress span {
+  background: var(--structure-strong) !important;
+  box-shadow: none !important;
+}
+
+.window-switcher-card.is-selected {
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset !important;
+}
+
+.window-switcher-card.is-selected::before,
+.window-switcher-progress span.is-current {
+  background: var(--signal-hot) !important;
+}
+
+.window-switcher-card :where(strong, img),
+.window-switcher-selected strong,
+.window-switcher-counter strong {
+  color: var(--ink-1) !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+.window-switcher-card :where(small, i),
+.window-switcher-selected span,
+.window-switcher-counter :where(span, small),
+.window-switcher-instructions {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+.window-switcher-brand small,
+.window-switcher-card-index,
+.window-switcher-copy small,
+.window-switcher-selected span,
+.window-switcher-counter :where(span, small),
+.window-switcher-instructions,
+.window-switcher-instructions kbd {
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+}
+
+.window-switcher-copy strong,
+.window-switcher-selected strong {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+}
+
+.system-inspector,
+.system-inspector :where(
+  .system-inspector-titlebar,
+  .system-inspector-tabs,
+  .system-inspector-content,
+  .inspector-summary-card,
+  .inspector-summary-card > header,
+  .inspector-resource-grid article,
+  .inspector-resource-grid article > header,
+  .inspector-process-search,
+  .inspector-process-head,
+  .inspector-process-list,
+  .inspector-process-grid,
+  .hardware-identity-card,
+  .hardware-identity-card > header,
+  .hardware-section,
+  .hardware-section > header,
+  .hardware-drive-list article,
+  .hardware-drive-list article > header,
+  .hardware-adapter-list,
+  .hardware-adapter-list > div,
+  .inspector-sensor-state,
+  .system-inspector-loading
+) {
+  border-color: var(--structure) !important;
+  background: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.system-inspector :where(button.is-active, .inspector-process-grid.is-selected) {
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+}
+
+.system-inspector :where(svg, i) {
+  color: var(--ink-2) !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+.system-inspector :where(
+  .system-inspector-titlebar small,
+  .system-inspector-titlebar code,
+  .system-inspector-tabs button,
+  .system-inspector-tabs > span,
+  .inspector-resource-grid article > header,
+  .inspector-resource-grid article small,
+  .inspector-summary-card > header small,
+  .hardware-identity-card > header small,
+  .inspector-summary-card dt,
+  .hardware-identity-card dt,
+  .inspector-summary-card dd,
+  .hardware-identity-card dd,
+  .inspector-sensor-state strong,
+  .inspector-sensor-state small,
+  .inspector-sensor-state code,
+  .inspector-process-search span,
+  .inspector-process-grid,
+  .inspector-process-head,
+  .hardware-section > header,
+  .hardware-adapter-list strong,
+  .hardware-drive-list strong,
+  .hardware-adapter-list small,
+  .hardware-drive-list small,
+  .hardware-adapter-list p,
+  .hardware-drive-list article code,
+  .system-inspector-loading
+) {
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+}
+
+.desktop-selection-marquee {
+  border-color: var(--signal-hot) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: none !important;
+}
+
+.desktop-context-menu,
+.explorer-context-menu,
+.desktop-operation-dialog,
+.explorer-command-dialog,
+.explorer-conflict-dialog,
+.explorer-transfer-panel,
+.desktop-operation-dialog :where([class]),
+.explorer-command-dialog :where([class]),
+.explorer-conflict-dialog :where([class]),
+.explorer-transfer-panel :where([class]) {
+  border-color: var(--structure) !important;
+  background-color: var(--void) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.desktop-context-menu::before,
+.explorer-context-menu::before,
+.explorer-transfer-progress > span,
+.workspace-resize-handle:focus-visible {
+  background: var(--signal-hot) !important;
+  box-shadow: none !important;
+}
+
+.desktop-context-menu :where(button:hover, button:focus-visible),
+.explorer-context-menu :where(button:hover, button:focus-visible),
+.desktop-operation-dialog :where(button:hover, button:focus-visible),
+.explorer-command-dialog :where(button:hover, button:focus-visible),
+.explorer-conflict-dialog :where(button:hover, button:focus-visible) {
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+}
+
+.shell-panel *::-webkit-scrollbar,
+.system-inspector *::-webkit-scrollbar,
+.taskbar-flyout-mock *::-webkit-scrollbar,
+.jarvis-explorer *::-webkit-scrollbar,
+.agent-workbench *::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.shell-panel *::-webkit-scrollbar-track,
+.system-inspector *::-webkit-scrollbar-track,
+.taskbar-flyout-mock *::-webkit-scrollbar-track,
+.jarvis-explorer *::-webkit-scrollbar-track,
+.agent-workbench *::-webkit-scrollbar-track {
+  background: var(--void) !important;
+}
+
+.shell-panel *::-webkit-scrollbar-thumb,
+.system-inspector *::-webkit-scrollbar-thumb,
+.taskbar-flyout-mock *::-webkit-scrollbar-thumb,
+.jarvis-explorer *::-webkit-scrollbar-thumb,
+.agent-workbench *::-webkit-scrollbar-thumb {
+  background: var(--structure-strong) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.shell-panel *::-webkit-scrollbar-thumb:hover,
+.system-inspector *::-webkit-scrollbar-thumb:hover,
+.taskbar-flyout-mock *::-webkit-scrollbar-thumb:hover,
+.jarvis-explorer *::-webkit-scrollbar-thumb:hover,
+.agent-workbench *::-webkit-scrollbar-thumb:hover {
+  background: var(--signal-hot) !important;
+}
+
+/* Linked operations field -------------------------------------------------
+   Explorer and Pi are one causal workspace, not adjacent framed windows.
+   Only sources, payloads, results, and editable directives receive a full
+   boundary. Everything else is organized by spacing, ledger lines, and live
+   route nodes. */
+
+:root {
+  --structure-seam: rgb(245 241 233 / 14%);
+  --structure-ledger: rgb(245 241 233 / 8%);
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked {
+  transition:
+    left 240ms cubic-bezier(.2, .8, .2, 1),
+    width 240ms cubic-bezier(.2, .8, .2, 1),
+    opacity 160ms ease;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked .jarvis-explorer,
+.jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked .agent-workbench {
+  border: 0 !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-explorer .jarvis-explorer,
+.jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-agent .agent-workbench {
+  border-right: 1px solid var(--structure-seam) !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-titlebar,
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-toolbar,
+.jarvis-shell.is-layout-explorer-agent-linked .agent-titlebar {
+  border-bottom: 0 !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-commandbar,
+.jarvis-shell.is-layout-explorer-agent-linked .agent-context-strip {
+  border-bottom: 1px solid var(--structure-seam) !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-context-strip {
+  border-bottom-style: dashed !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-list-heading,
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-list-heading > button,
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry,
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry > span {
+  border-right: 0 !important;
+  border-left: 0 !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-list-heading {
+  border-bottom-color: var(--structure-seam) !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry {
+  position: relative;
+  border-top: 0 !important;
+  border-bottom: 1px solid var(--structure-ledger) !important;
+  outline: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry:hover,
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry:focus-visible {
+  color: var(--ink-1) !important;
+  background: rgb(245 241 233 / 3%) !important;
+  box-shadow: var(--accent-stroke) 0 0 var(--ink-2) inset !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry.is-selected {
+  border-color: var(--structure-ledger) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: var(--accent-stroke) 0 0 var(--signal-hot) inset !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry.is-agent-linked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -1px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--signal-hot);
+  background: var(--void);
+  transform: translate(50%, -50%);
+  z-index: 2;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry.is-agent-linked[data-agent-linked-phase="running"]::after,
+.jarvis-shell.is-layout-explorer-agent-linked .explorer-entry.is-agent-linked[data-agent-linked-phase="submitting"]::after {
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary {
+  grid-template-columns: minmax(200px, 1.1fr) minmax(0, 2fr) auto;
+  gap: 22px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--structure-seam) !important;
+  background: transparent !important;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary__icon {
+  position: relative;
+  border: 0 !important;
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary.has-agent-context .explorer-selection-summary__icon::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  width: 5px;
+  height: 5px;
+  background: var(--signal-hot);
+}
+
+.workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary dl > div {
+  padding-inline: 12px;
+  border-left: 0 !important;
+}
+
+.explorer-link-agent-action {
+  position: relative;
+  min-width: 108px;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: 18px auto;
+  grid-template-rows: 1fr 1fr;
+  place-content: center;
+  align-items: center;
+  gap: 2px 9px;
+  padding: 0 14px;
+  border: 0;
+  border-left: 1px solid var(--structure-seam);
+  color: var(--ink-2);
+  background: transparent;
+  cursor: pointer;
+}
+
+.explorer-link-agent-action .explorer-linked-origin-port {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.explorer-link-agent-action svg {
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+}
+
+.explorer-link-agent-action span,
+.explorer-link-agent-action small {
+  text-align: left;
+  font-family: var(--font-data);
+}
+
+.explorer-link-agent-action span {
+  align-self: end;
+  color: var(--ink-1);
+  font-size: 10px;
+}
+
+.explorer-link-agent-action small {
+  align-self: start;
+  color: var(--signal-hot);
+  font-size: 8px;
+}
+
+.explorer-link-agent-action:hover:not(:disabled),
+.explorer-link-agent-action:focus-visible:not(:disabled) {
+  color: var(--signal-hot);
+  background: var(--signal-fill);
+  box-shadow: 0 -2px 0 var(--signal-hot) inset;
+  outline: 0;
+}
+
+.explorer-link-agent-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-titlebar > button {
+  border-left: 0 !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-titlebar > button:hover:not(:disabled),
+.jarvis-shell.is-layout-explorer-agent-linked .agent-titlebar > button:focus-visible:not(:disabled) {
+  box-shadow: 0 -2px 0 var(--signal-hot) inset;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-transcript {
+  position: relative;
+  padding: 10px 0 18px;
+  background: transparent !important;
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-transcript::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  left: 20px;
+  width: 1px;
+  background: var(--structure-seam);
+  pointer-events: none;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-message,
+.jarvis-shell.is-layout-explorer-agent-linked .agent-message.is-user {
+  margin: 0;
+  padding: 14px 18px 16px 38px;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-message::before,
+.jarvis-shell.is-layout-explorer-agent-linked .agent-message.is-user::before {
+  top: 18px;
+  left: 17px;
+  z-index: 1;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-message.is-user p {
+  color: var(--ink-2);
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-message.is-linked-relation::before {
+  border-color: var(--signal-hot);
+  background: var(--signal-hot);
+  box-shadow: var(--glow-status);
+}
+
+.agent-message-link-port {
+  position: absolute;
+  z-index: 2;
+  top: 21px;
+  left: 20px;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.agent-message.is-linked-relation header code {
+  color: var(--signal-hot);
+}
+
+.agent-message-reuse {
+  margin-top: 12px;
+  padding: 7px 0 2px;
+  border: 0;
+  border-top: 1px solid var(--structure-ledger);
+  color: var(--signal-hot);
+  background: transparent;
+  font: 8px/1 var(--font-data);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.agent-message-reuse:hover,
+.agent-message-reuse:focus-visible {
+  color: var(--ink-1);
+  border-top-color: var(--signal-hot);
+  outline: 0;
+}
+
+.agent-link-cue,
+.agent-linked-context,
+.agent-linked-result {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  margin: 10px 18px 12px;
+  display: grid;
+  align-items: center;
+  color: var(--ink-2);
+}
+
+.agent-link-cue {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--structure-ledger);
+  border-bottom: 1px solid var(--structure-ledger);
+}
+
+.agent-linked-context {
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  gap: 12px;
+  padding: 13px 14px 13px 10px;
+  border: 1px solid var(--signal-dim);
+  background: rgb(255 93 0 / 2%);
+  animation: linked-payload-enter 180ms ease-out both;
+}
+
+.agent-linked-result {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 13px 14px 13px 10px;
+  border: 1px solid var(--signal-hot);
+  background: rgb(255 93 0 / 3%);
+  animation: linked-result-enter 220ms ease-out both;
+}
+
+.agent-flow-node {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--signal-hot);
+}
+
+.agent-flow-node svg {
+  width: 17px;
+  height: 17px;
+}
+
+.agent-link-cue > span:nth-child(2),
+.agent-linked-result > span:nth-child(2),
+.agent-linked-context__identity,
+.agent-linked-context__state {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.agent-link-cue small,
+.agent-linked-context small,
+.agent-linked-result small,
+.agent-linked-context code {
+  overflow: hidden;
+  color: var(--ink-3);
+  font: 8px/1.2 var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-link-cue strong,
+.agent-linked-context strong,
+.agent-linked-result strong {
+  overflow: hidden;
+  color: var(--ink-1);
+  font: 600 10px/1.2 var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-link-cue p,
+.agent-linked-result p {
+  margin: 0;
+  color: var(--ink-3);
+  font: 10px/1.45 var(--font-ui);
+}
+
+.agent-linked-context__state {
+  justify-items: end;
+  text-align: right;
+}
+
+.agent-linked-context__state strong,
+.agent-linked-context.is-running .agent-linked-context__state strong,
+.agent-linked-context.is-submitting .agent-linked-context__state strong {
+  color: var(--signal-hot);
+}
+
+.agent-link-cue > button,
+.agent-linked-context > button,
+.agent-linked-result > button {
+  align-self: stretch;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--structure-seam);
+  color: var(--ink-2);
+  background: transparent;
+  font: 9px/1 var(--font-data);
+  cursor: pointer;
+}
+
+.agent-link-cue > button:hover,
+.agent-link-cue > button:focus-visible,
+.agent-linked-context > button:hover:not(:disabled),
+.agent-linked-context > button:focus-visible:not(:disabled),
+.agent-linked-result > button:hover,
+.agent-linked-result > button:focus-visible {
+  color: var(--signal-hot);
+  background: var(--signal-fill);
+  box-shadow: 0 -2px 0 var(--signal-hot) inset;
+  outline: 0;
+}
+
+.agent-linked-context > button:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-composer {
+  border-top: 1px solid var(--structure-seam) !important;
+  background: transparent !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .agent-footer {
+  border-top: 0 !important;
+  background: transparent !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail {
+  border: 0 !important;
+  border-left: 1px solid var(--structure-seam) !important;
+  background: var(--void) !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail > header,
+.jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail > section {
+  border-bottom: 0 !important;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail > section {
+  position: relative;
+  padding-top: 18px;
+}
+
+.jarvis-shell.is-layout-explorer-agent-linked .linked-system-rail > section::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 16px;
+  width: 32px;
+  height: 1px;
+  background: var(--structure-seam);
+}
+
+.linked-route-field {
+  position: fixed;
+  inset: 0;
+  z-index: 96;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.linked-route-field[data-route-visible="false"] {
+  opacity: 0;
+}
+
+.linked-route-base,
+.linked-route-active {
+  fill: none;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.linked-route-base {
+  stroke: var(--structure-seam);
+  stroke-width: 1;
+}
+
+.linked-route-active {
+  stroke: var(--signal-hot);
+  stroke-width: 1.2;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: linked-route-reveal 360ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.linked-route-terminal {
+  fill: var(--void);
+  stroke: var(--signal-hot);
+  stroke-width: 1;
+}
+
+.linked-route-packet {
+  fill: var(--signal-hot);
+  filter: drop-shadow(0 0 3px rgb(255 93 0 / 76%));
+}
+
+.linked-route-field.is-complete > .linked-route-active {
+  opacity: 0.34;
+}
+
+.linked-route-result .linked-route-active {
+  opacity: 1;
+}
+
+.linked-route-field.is-error .linked-route-active,
+.linked-route-field.is-aborted .linked-route-active {
+  opacity: 0.36;
+}
+
+.linked-route-field.is-paused *,
+.linked-route-field.is-paused animateMotion {
+  animation-play-state: paused !important;
+}
+
+.jarvis-shell.is-linked-drawer .linked-route-field,
+.jarvis-shell.is-linked-single-pane .linked-route-field {
+  display: none;
+}
+
+/* Legacy cool-spectrum quarantine
+   The pre-vector shell still contains literal blue/cyan values. Keep those
+   values out of every product-owned chrome surface while preserving ANSI
+   colors inside the terminal canvas itself. */
+.telemetry-rail .segment-bar i {
+  border-color: var(--structure-weak) !important;
+  background: var(--structure-weak) !important;
+  box-shadow: none !important;
+}
+
+.telemetry-rail .segment-bar i.is-on {
+  border-color: var(--ink-1) !important;
+  background: var(--ink-1) !important;
+}
+
+.telemetry-rail .resource-secondary {
+  color: var(--ink-3) !important;
+}
+
+.telemetry-rail .notification-count {
+  border-color: var(--signal-dim) !important;
+  color: var(--signal-hot) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.jarvis-explorer,
+.jarvis-explorer :where(
+  .explorer-file-viewport,
+  .explorer-entry,
+  .explorer-entry-name,
+  .explorer-inspector,
+  .explorer-navigation
+) {
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+.jarvis-explorer :where(
+  .explorer-breadcrumbs small,
+  .explorer-address-trigger,
+  .explorer-commandbar kbd,
+  .explorer-clipboard-status span,
+  .explorer-drive small,
+  .explorer-inspector-empty,
+  .explorer-statusbar small
+) {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+.jarvis-explorer :where(
+  .explorer-view-actions select,
+  .explorer-clipboard-status strong,
+  .explorer-inspector-empty span
+) {
+  color: var(--ink-2) !important;
+  text-shadow: none !important;
+}
+
+.jarvis-explorer .explorer-list-heading > button.is-active :where(span, small, svg) {
+  color: var(--signal-hot) !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+.jarvis-explorer .explorer-statusbar > span {
+  border-color: var(--structure) !important;
+}
+
+.agent-workbench,
+.agent-workbench :where(.agent-transcript, .agent-empty-state) {
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+.agent-workbench .agent-context-strip > span,
+.agent-workbench .agent-composer textarea {
+  color: var(--ink-2) !important;
+  text-shadow: none !important;
+}
+
+.agent-workbench :where(
+  .agent-empty-state,
+  .agent-composer label small,
+  .agent-footer code
+) {
+  border-color: var(--structure) !important;
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+.agent-workbench .agent-composer > button.is-send {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+.agent-workbench .agent-composer > button.is-send:not(:disabled) {
+  border-color: var(--signal-hot) !important;
+  color: var(--signal-pale) !important;
+}
+
+.agent-workbench .agent-composer > button.is-send :where(span, svg) {
+  color: inherit !important;
+  filter: none !important;
+}
+
+.terminal-workbench select {
+  border-color: var(--structure) !important;
+  color: var(--ink-2) !important;
+  background: var(--void) !important;
+  box-shadow: none !important;
+}
+
+.terminal-workbench .xterm-viewport {
+  scrollbar-color: var(--structure-strong) transparent !important;
+}
+
+.runtime-settings-panel code.is-compatible {
+  border-color: var(--signal-dim) !important;
+  color: var(--signal-pale) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.runtime-settings-panel .window-appearance-feedback {
+  border-color: var(--structure) !important;
+}
+
+.runtime-settings-panel .window-appearance-choice.is-selected .window-appearance-copy strong span {
+  color: var(--signal-pale) !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-panel .window-appearance-telemetry > span {
+  border-color: var(--structure) !important;
+}
+
+.runtime-settings-panel .native-integration-settings > header > span:first-child {
+  color: var(--signal-hot) !important;
+  filter: none !important;
+}
+
+.runtime-settings-panel .native-integration-settings :where(p, small, dt) {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-panel .native-integration-settings :where(strong, dd) {
+  color: var(--ink-2) !important;
+  text-shadow: none !important;
+}
+
+.runtime-settings-panel .native-integration-grid dl div {
+  color: var(--ink-3) !important;
+}
+
+.runtime-settings-panel .display-monitor-list > span,
+.runtime-settings-panel .display-monitor-list b,
+.runtime-settings-panel .display-monitor-list small {
+  color: var(--ink-3) !important;
+}
+
+.runtime-settings-panel .display-monitor-list > span.is-primary,
+.runtime-settings-panel .display-monitor-list > span.is-primary :where(b, small) {
+  color: var(--signal-pale) !important;
+}
+
+.runtime-settings-panel .windows-history-status > span:first-child {
+  color: var(--signal-hot) !important;
+  filter: none !important;
+}
+
+:is(
+  .shell-panel:not(.runtime-settings-panel),
+  .command-palette,
+  .window-switcher-chassis,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(p, small, span, label, dt, dd, code, kbd, time, footer) {
+  border-color: var(--structure) !important;
+  outline-color: var(--structure-strong) !important;
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+:is(
+  .shell-panel:not(.runtime-settings-panel),
+  .command-palette,
+  .window-switcher-chassis,
+  .taskbar-local-flyout,
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .explorer-command-dialog,
+  .explorer-conflict-dialog,
+  .explorer-transfer-panel
+) :where(
+  button:hover:not(:disabled),
+  button.is-active,
+  button.is-selected,
+  button[aria-selected="true"],
+  button[aria-pressed="true"]
+) :where(span, small, svg) {
+  color: var(--ink-1) !important;
+}
+
+.shell-panel:not(.runtime-settings-panel) .shell-notification-item.is-warning > span:first-child {
+  color: #ff806d !important;
+}
+
+.shell-panel:not(.runtime-settings-panel) .shell-notification-item.is-error > span:first-child {
+  color: #ff6f68 !important;
+}
+
+.command-palette :where(
+  .command-search-tools,
+  .command-query-history,
+  .command-results-heading
+) {
+  color: var(--ink-3) !important;
+  outline-color: var(--structure-strong) !important;
+}
+
+.command-palette .command-results {
+  border-color: var(--structure) !important;
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+.command-palette,
+.start-panel {
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+.start-panel .start-panel-content {
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+.start-panel :where(.start-search svg, .start-search path) {
+  color: var(--ink-2) !important;
+  filter: none !important;
+}
+
+.start-panel .start-section-heading {
+  color: var(--ink-2) !important;
+  outline-color: var(--structure-strong) !important;
+}
+
+.quick-settings-panel :where(svg, path) {
+  color: var(--ink-2) !important;
+  filter: none !important;
+}
+
+.quick-settings-panel .runtime-switch.is-on {
+  border-color: var(--signal-hot) !important;
+  color: var(--signal-pale) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: none !important;
+}
+
+.date-time-panel .date-time-agenda > header {
+  border-color: var(--structure) !important;
+}
+
+.date-time-panel .date-time-empty {
+  color: var(--ink-3) !important;
+  outline-color: var(--structure-strong) !important;
+}
+
+/* Unified command menus
+   Desktop, Explorer, and Taskbar expose the same interaction grammar. The
+   legacy sheets still own geometry, while every visible paint state resolves
+   through the neutral shell tokens below. */
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) {
+  border: var(--stroke) solid var(--structure-strong) !important;
+  border-radius: 0 !important;
+  color: var(--ink-2) !important;
+  background: var(--surface-0) !important;
+  background-image: none !important;
+  box-shadow: 8px 12px 24px rgb(0 0 0 / 72%) !important;
+  clip-path: none !important;
+  scrollbar-color: var(--structure-strong) var(--void) !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+)::before,
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+)::after,
+.taskbar-flyout-mock.is-context > header::before {
+  display: none !important;
+  content: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) > header {
+  min-height: 32px !important;
+  height: 32px !important;
+  border-color: var(--structure) !important;
+  color: var(--ink-2) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.taskbar-flyout-mock.is-context > header {
+  grid-template-columns: auto minmax(0, 1fr) 28px !important;
+  gap: var(--space-2) !important;
+}
+
+.taskbar-flyout-mock.is-context > header > span {
+  grid-column: 1 !important;
+}
+
+.taskbar-flyout-mock.is-context > header > small {
+  grid-column: 2 !important;
+}
+
+.taskbar-flyout-mock.is-context > header > button {
+  grid-column: 3 !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) > header :where(strong, span) {
+  color: var(--ink-1) !important;
+  text-shadow: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) > header small {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) :where(button, .desktop-menu-item) {
+  border: 1px solid transparent !important;
+  border-radius: 0 !important;
+  color: var(--ink-2) !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) :where(button:hover:not(:disabled), button:focus-visible:not(:disabled)) {
+  outline: none !important;
+  border-color: var(--signal-hot) !important;
+  color: var(--ink-1) !important;
+  background: var(--signal-fill) !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) button:disabled {
+  border-color: transparent !important;
+  color: color-mix(in srgb, var(--ink-3) 58%, transparent) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) :where(svg, path, .desktop-menu-item__icon, .desktop-menu-item__chevron) {
+  color: var(--ink-3) !important;
+  fill: currentColor !important;
+  filter: none !important;
+}
+
+:where(
+  .desktop-context-menu,
+  .desktop-context-submenu,
+  .explorer-context-menu,
+  .taskbar-flyout-mock.is-context
+) :where(button:hover:not(:disabled), button:focus-visible:not(:disabled))
+  :where(svg, path, .desktop-menu-item__icon, .desktop-menu-item__chevron) {
+  color: var(--signal-hot) !important;
+}
+
+.desktop-menu-item__icon.is-checked {
+  border: 0 !important;
+  color: var(--signal-hot) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:where(.desktop-menu-separator, .explorer-context-menu__separator) {
+  height: var(--stroke) !important;
+  border: 0 !important;
+  background: var(--structure) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.explorer-context-menu__items button kbd {
+  border: 0 !important;
+  color: var(--ink-3) !important;
+  background: transparent !important;
+}
+
+.explorer-context-menu__items button.is-danger:not(:disabled),
+.explorer-context-menu__items button.is-danger:not(:disabled) :where(svg, path) {
+  color: var(--status-danger) !important;
+}
+
+.explorer-context-menu__items button.is-danger:hover:not(:disabled),
+.explorer-context-menu__items button.is-danger:focus-visible:not(:disabled) {
+  border-color: var(--status-danger) !important;
+  color: var(--ink-1) !important;
+  background: color-mix(in srgb, var(--status-danger) 12%, transparent) !important;
+}
+
+.jarvis-explorer .explorer-empty {
+  border-color: var(--structure) !important;
+  color: var(--ink-3) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.jarvis-explorer .explorer-empty :where(svg, path) {
+  color: var(--ink-3) !important;
+  fill: currentColor !important;
+  filter: none !important;
+}
+
+.jarvis-explorer .explorer-empty strong {
+  color: var(--ink-1) !important;
+}
+
+.jarvis-explorer .explorer-empty :where(span, small) {
+  color: var(--ink-3) !important;
+}
+
+.desktop-shortcut:hover .shortcut-icon,
+.desktop-shortcut.is-selected .shortcut-icon {
+  filter: none !important;
+}
+
+.telemetry-rail .notification-copy small,
+.telemetry-rail .notification-row time {
+  color: var(--ink-3) !important;
+  text-shadow: none !important;
+}
+
+@keyframes linked-route-reveal {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes linked-payload-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes linked-result-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 1180px) {
+  .workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary {
+    grid-template-columns: minmax(180px, 1fr) auto;
+  }
+
+  .workspace-window.is-layout-explorer-agent-linked .explorer-selection-summary dl {
+    display: none;
+  }
+
+  .agent-linked-context {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+
+  .agent-linked-context__state {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked,
+  .agent-linked-context,
+  .agent-linked-result,
+  .linked-route-active {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+:root[data-motion="reduced"] .jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked,
+:root[data-motion="reduced"] .agent-linked-context,
+:root[data-motion="reduced"] .agent-linked-result,
+:root[data-motion="reduced"] .linked-route-active {
+  transition: none !important;
+  animation: none !important;
+}
+
+@media (forced-colors: active) {
+  .linked-route-field {
+    display: none;
+  }
+
+  .agent-linked-context,
+  .agent-linked-result,
+  .explorer-entry.is-selected {
+    border-color: Highlight !important;
+  }
+}

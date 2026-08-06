@@ -19,6 +19,38 @@
 #define StartupKey "Software\Microsoft\Windows\CurrentVersion\Run"
 #define StartupValue "JARVIS Night Shell"
 
+#ifnexist SourceDir + "\AgentRuntime\pi.exe"
+  #error SourceDir is missing the verified Pi Agent executable.
+#endif
+
+#ifnexist SourceDir + "\AgentRuntime\runtime.json"
+  #error SourceDir is missing the embedded Pi Agent trust manifest.
+#endif
+
+#ifnexist SourceDir + "\AgentRuntime\LICENSE-Pi.txt"
+  #error SourceDir is missing the Pi Agent license notice.
+#endif
+
+#ifnexist SourceDir + "\AgentRuntime\RUNTIME-SHA256SUMS.txt"
+  #error SourceDir is missing the Pi Agent runtime tree receipt.
+#endif
+
+#ifnexist SourceDir + "\AgentRuntime\PROVENANCE.txt"
+  #error SourceDir is missing the Pi Agent provenance notice.
+#endif
+
+#ifnexist SourceDir + "\LICENSE"
+  #error SourceDir is missing the JARVIS license.
+#endif
+
+#ifnexist SourceDir + "\THIRD_PARTY_NOTICES.md"
+  #error SourceDir is missing third-party notices.
+#endif
+
+#ifnexist SourceDir + "\SHA256SUMS.txt"
+  #error SourceDir is missing the complete release checksum manifest.
+#endif
+
 [Setup]
 AppId={{3D127645-F2E2-4F10-A50F-A4E4B71CE06E}
 AppName={#AppName}
@@ -55,6 +87,7 @@ Name: "autostart"; Description: "Start JARVIS when I sign in to Windows"; GroupD
 
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\frontend"
+Type: filesandordirs; Name: "{app}\AgentRuntime"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

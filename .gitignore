@@ -21,6 +21,7 @@ TestResults/
 artifacts/
 tmp/
 *.log
+.design-qa/
 
 # Local WebView2 state
 **/EBWebView/

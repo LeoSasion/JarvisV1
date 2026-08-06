@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using Jarvis.Host.Agents;
 using Jarvis.Host.Bridge;
 using Jarvis.Host.Infrastructure;
 using Jarvis.Host.Services;
@@ -31,6 +32,7 @@ public partial class MainWindow : Window
     private readonly TrayStatusService _trayStatusService;
     private readonly SystemFeedService _systemFeedService;
     private readonly SystemSessionActionService _systemSessionActionService = new();
+    private readonly AgentCoordinator _agentCoordinator = new(PiAgentOptions.FromEnvironment());
     private readonly TaskbarLifecycleMachine _taskbarLifecycle = new();
     private readonly TaskbarRebindEpoch _taskbarRebindEpoch = new();
     private readonly TaskbarRecoveryCircuit _taskbarRecoveryCircuit = new();
@@ -216,7 +218,8 @@ public partial class MainWindow : Window
                 CaptureTaskbarLifecycle),
             RequestSafeExit,
             ShowDesktop,
-            systemSessionActionService: _systemSessionActionService);
+            systemSessionActionService: _systemSessionActionService,
+            agentCoordinator: _agentCoordinator);
         _bridge.Attach();
 
         WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
@@ -1235,6 +1238,7 @@ public partial class MainWindow : Window
         // asking the taskbar watchdog to finish its own recovery pass.
         _windowAppearanceService.Dispose();
         _taskbarReplacement.Dispose();
+        _agentCoordinator.Dispose();
         _taskbarWindow?.CloseFromHost();
         _taskbarWindow = null;
         _systemFeedService.Dispose();

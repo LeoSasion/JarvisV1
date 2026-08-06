@@ -442,6 +442,21 @@ export function createMockPlatform() {
   const eventListeners = new Map();
   const terminalSessions = new Map();
   let terminalSequence = 0;
+  let agentSequence = 0;
+  let agentMessages = [];
+  let activeAgentRun = null;
+  let agentState = {
+    available: true,
+    configured: true,
+    connected: true,
+    status: "ready",
+    provider: "browser-preview",
+    model: "local-simulator",
+    sessionId: `browser-preview-${Date.now()}-0`,
+    permissionMode: "chat-only",
+    error: null,
+    activeRunId: null,
+  };
   let windowAppearanceRules = readMockWindowAppearanceRules();
   let windowAppearanceState = createMockWindowAppearanceState(
     readMockWindowAppearanceMode(),
@@ -650,6 +665,52 @@ export function createMockPlatform() {
     eventListeners.get(eventName)?.forEach((listener) => listener(data));
   };
 
+  const cloneAgentState = () => ({ ...agentState });
+  const cloneAgentMessages = () => agentMessages.map((message) => ({ ...message }));
+  const emitAgentState = () => emit("agent.stateChanged", cloneAgentState());
+  const emitAgentEvent = (event) => emit("agent.event", event);
+
+  const clearAgentTimers = (run) => {
+    run?.timers.forEach((timer) => globalThis.clearTimeout(timer));
+    run?.timers.clear();
+  };
+
+  const scheduleAgentEvent = (run, callback, delay) => {
+    const timer = globalThis.setTimeout(() => {
+      run.timers.delete(timer);
+      if (activeAgentRun !== run) return;
+      callback();
+    }, delay);
+    run.timers.add(timer);
+  };
+
+  const finishAgentRun = (run, status = "complete", error = null) => {
+    if (activeAgentRun !== run) return;
+    clearAgentTimers(run);
+    const message = agentMessages.find((entry) => entry.id === run.messageId);
+    if (message) message.status = status;
+    emitAgentEvent({
+      kind: "message-complete",
+      runId: run.runId,
+      messageId: run.messageId,
+      status,
+    });
+    emitAgentEvent({
+      kind: "run-end",
+      runId: run.runId,
+      status,
+      ...(error ? { error } : {}),
+    });
+    activeAgentRun = null;
+    agentState = {
+      ...agentState,
+      status: error ? "error" : "ready",
+      error,
+      activeRunId: null,
+    };
+    emitAgentState();
+  };
+
   const beginMockTaskbarTransition = (mode, reason) => {
     if (taskbarModeTimer !== null) {
       globalThis.clearTimeout(taskbarModeTimer);
@@ -773,6 +834,120 @@ export function createMockPlatform() {
           listeners.delete(listener);
           if (listeners.size === 0) eventListeners.delete(eventName);
         };
+      },
+    },
+    agent: {
+      async getState() {
+        return cloneAgentState();
+      },
+      async getMessages() {
+        return cloneAgentMessages();
+      },
+      async prompt(message, clientMessageId) {
+        const text = String(message ?? "").trim();
+        if (!text || !String(clientMessageId ?? "").trim()) {
+          const error = new Error("Agent prompts require text and a client message ID.");
+          error.code = "INVALID_ARGUMENT";
+          throw error;
+        }
+        if (activeAgentRun) {
+          const error = new Error("The browser preview Agent is already responding.");
+          error.code = "AGENT_BUSY";
+          throw error;
+        }
+
+        agentSequence += 1;
+        const timestamp = new Date().toISOString();
+        const runId = `browser-run-${agentSequence}`;
+        const userMessage = {
+          id: `browser-user-${agentSequence}`,
+          role: "user",
+          text,
+          status: "complete",
+          createdAt: timestamp,
+          clientMessageId: String(clientMessageId),
+          runId,
+        };
+        const assistantMessage = {
+          id: `browser-assistant-${agentSequence}`,
+          role: "assistant",
+          text: "",
+          status: "streaming",
+          createdAt: timestamp,
+          clientMessageId: null,
+          runId,
+        };
+        const run = {
+          runId,
+          messageId: assistantMessage.id,
+          timers: new Set(),
+        };
+        activeAgentRun = run;
+        agentMessages.push(userMessage, assistantMessage);
+        agentState = {
+          ...agentState,
+          status: "running",
+          error: null,
+          activeRunId: run.runId,
+        };
+
+        emitAgentEvent({ kind: "message", runId, message: { ...userMessage } });
+        emitAgentEvent({ kind: "message", runId, message: { ...assistantMessage } });
+        emitAgentEvent({ kind: "run-start", runId: run.runId });
+        emitAgentState();
+
+        const directiveMarker = "[USER DIRECTIVE]";
+        const directiveIndex = text.indexOf(directiveMarker);
+        const visibleDirective = directiveIndex < 0
+          ? text
+          : text.slice(directiveIndex + directiveMarker.length).trim();
+        const excerpt = visibleDirective.length > 80
+          ? `${visibleDirective.slice(0, 77)}...`
+          : visibleDirective;
+        const chunks = [
+          "BROWSER PREVIEW — ",
+          `This is a local simulated response to “${excerpt}”. `,
+          "It did not inspect, change, or execute anything on your system.",
+        ];
+        chunks.forEach((delta, index) => {
+          scheduleAgentEvent(run, () => {
+            assistantMessage.text += delta;
+            emitAgentEvent({
+              kind: "text-delta",
+              runId,
+              messageId: assistantMessage.id,
+              delta,
+            });
+            if (index === chunks.length - 1) finishAgentRun(run);
+          }, 180 * (index + 1));
+        });
+
+        return {
+          accepted: true,
+          mock: true,
+          runId: run.runId,
+          clientMessageId: String(clientMessageId),
+        };
+      },
+      async abort() {
+        const run = activeAgentRun;
+        if (!run) return { aborted: false, mock: true };
+        finishAgentRun(run, "aborted");
+        return { aborted: true, mock: true, runId: run.runId };
+      },
+      async newSession() {
+        if (activeAgentRun) finishAgentRun(activeAgentRun, "aborted");
+        agentSequence += 1;
+        agentMessages = [];
+        agentState = {
+          ...agentState,
+          status: "ready",
+          sessionId: `browser-preview-${Date.now()}-${agentSequence}`,
+          error: null,
+          activeRunId: null,
+        };
+        emitAgentState();
+        return cloneAgentState();
       },
     },
     system: {

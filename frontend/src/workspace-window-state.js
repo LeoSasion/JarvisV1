@@ -2,6 +2,21 @@ export const WORKSPACE_LAYOUT_VERSION = 1;
 export const WORKSPACE_LAYOUT_STORAGE_KEY = "jarvis.workspace.windows.v1";
 
 export const WORKSPACE_WINDOW_DEFINITIONS = Object.freeze({
+  agent: Object.freeze({
+    id: "agent",
+    label: "JARVIS Agent",
+    processName: "jarvis-agent",
+    taskbarItemId: "jarvis:launcher",
+    minimumWidth: 660,
+    minimumHeight: 480,
+    widthRatio: 0.58,
+    heightRatio: 0.7,
+    widthLimit: 1020,
+    heightLimit: 820,
+    offsetX: 18,
+    offsetY: -8,
+    order: 4,
+  }),
   explorer: Object.freeze({
     id: "explorer",
     label: "JARVIS File Explorer",
@@ -56,10 +71,10 @@ export const WORKSPACE_WINDOW_IDS = Object.freeze(
 const DEFAULT_VIEWPORT = Object.freeze({
   width: 1440,
   height: 900,
-  top: 78,
-  right: 12,
-  bottom: 86,
-  left: 12,
+  top: 48,
+  right: 0,
+  bottom: 56,
+  left: 0,
 });
 
 function finiteNumber(value, fallback) {

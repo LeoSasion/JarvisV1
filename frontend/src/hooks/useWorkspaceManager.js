@@ -16,22 +16,29 @@ function readPersistedLayout() {
   }
 }
 
-function getViewport(bottomInset) {
+function readRootPixelToken(name, fallback) {
+  const value = Number.parseFloat(
+    window.getComputedStyle(document.documentElement).getPropertyValue(name),
+  );
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function getViewport() {
   return {
     width: document.documentElement.clientWidth || window.innerWidth,
     height: document.documentElement.clientHeight || window.innerHeight,
-    top: 78,
-    right: 12,
-    bottom: bottomInset,
-    left: 12,
+    top: readRootPixelToken("--top-height", 48),
+    right: 0,
+    bottom: readRootPixelToken("--taskbar-height", 56),
+    left: 0,
   };
 }
 
-export function useWorkspaceManager({ bottomInset = 108 } = {}) {
+export function useWorkspaceManager() {
   const [state, dispatch] = useReducer(
     workspaceWindowReducer,
     null,
-    () => createWorkspaceWindowState(getViewport(bottomInset), readPersistedLayout()),
+    () => createWorkspaceWindowState(getViewport(), readPersistedLayout()),
   );
 
   const serializedLayout = useMemo(
@@ -55,7 +62,7 @@ export function useWorkspaceManager({ bottomInset = 108 } = {}) {
     const reflow = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        dispatch({ type: "REFLOW", viewport: getViewport(bottomInset) });
+        dispatch({ type: "REFLOW", viewport: getViewport() });
       });
     };
     reflow();
@@ -64,7 +71,7 @@ export function useWorkspaceManager({ bottomInset = 108 } = {}) {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", reflow);
     };
-  }, [bottomInset]);
+  }, []);
 
   const open = useCallback((id) => dispatch({ type: "OPEN", id }), []);
   const close = useCallback((id) => dispatch({ type: "CLOSE", id }), []);

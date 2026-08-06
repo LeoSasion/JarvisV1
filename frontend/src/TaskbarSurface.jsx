@@ -118,6 +118,11 @@ export function TaskbarSurface() {
     }
   }, [hideTaskbarFlyout, showDesktopPanel]);
 
+  const toggleAgent = useCallback(async () => {
+    await showDesktopPanel();
+    sendWorkspaceCommand("agent", "toggle");
+  }, [showDesktopPanel]);
+
   return (
     <main
       className={[
@@ -132,6 +137,7 @@ export function TaskbarSurface() {
         internalWindows={internalWindows}
         onAppClick={handleAppClick}
         onOpenCommand={() => showDesktopPanel("command")}
+        onToggleAgent={toggleAgent}
         onOpenStart={() => showDesktopPanel("start")}
         onOpenQuickSettings={() => showDesktopPanel("quick-settings")}
         onOpenDateTime={() => showDesktopPanel("date-time")}

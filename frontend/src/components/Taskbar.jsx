@@ -56,6 +56,8 @@ import {
   TASKBAR_HOVER_DISMISS_DELAY_MS,
   TASKBAR_HOVER_PREVIEW_DELAY_MS,
 } from "../taskbar-hover-preview.js";
+import { getTaskbarCapacity } from "../taskbar-layout-model.js";
+import { AgentGlyph } from "./VectorMarks.jsx";
 
 const processDisplayNames = {
   applicationframehost: "Windows app",
@@ -174,7 +176,10 @@ function useTaskbarCapacity(containerRef) {
     if (!container) return undefined;
 
     const update = () => {
-      const nextCapacity = Math.max(5, Math.floor(container.clientWidth / 56));
+      const configuredSlotWidth = Number.parseFloat(
+        window.getComputedStyle(container).getPropertyValue("--taskbar-slot-width"),
+      );
+      const nextCapacity = getTaskbarCapacity(container.clientWidth, configuredSlotWidth);
       setCapacity((current) => current === nextCapacity ? current : nextCapacity);
     };
     update();
@@ -348,7 +353,12 @@ function TaskbarLocalFlyout({
               index === selectedIndex ? "is-keyboard-active" : "",
             ].filter(Boolean).join(" ")}
           >
-            {flyout.mode === "windows" ? <div className="mock-window-thumbnail" aria-hidden="true"><WindowAppsRegular /></div> : null}
+            {flyout.mode === "windows" ? (
+              <div className="mock-window-thumbnail" aria-hidden="true">
+                <TaskbarAppIcon item={entry.item} />
+                <span><small>WINDOW PREVIEW</small><strong>{entry.label}</strong></span>
+              </div>
+            ) : null}
             <button
               ref={(element) => {
                 if (element) entryRefs.current.set(entry.key, element);
@@ -394,6 +404,8 @@ export function Taskbar({
   internalWindows = [],
   onAppClick,
   onOpenCommand,
+  onToggleAgent,
+  agentState,
   onOpenStart,
   onOpenQuickSettings,
   onOpenDateTime,
@@ -429,9 +441,14 @@ export function Taskbar({
   const orderedPinnedApps = useMemo(() => createTaskbarPinnedApps(
     resolvePinnedApplications(pinnedApplicationRefs, menuApplications),
   ), [menuApplications, pinnedApplicationRefs]);
+  const agentWindow = internalWindows.find((window) => window.internalWindowId === "agent") ?? null;
+  const taskbarInternalWindows = useMemo(
+    () => internalWindows.filter((window) => window.internalWindowId !== "agent"),
+    [internalWindows],
+  );
   const taskbarItems = useMemo(
-    () => buildTaskbarItems(taskbar.windows, orderedPinnedApps, runningOrder, internalWindows),
-    [internalWindows, orderedPinnedApps, runningOrder, taskbar.windows],
+    () => buildTaskbarItems(taskbar.windows, orderedPinnedApps, runningOrder, taskbarInternalWindows),
+    [orderedPinnedApps, runningOrder, taskbar.windows, taskbarInternalWindows],
   );
   useEffect(() => {
     taskbarItemsRef.current = taskbarItems;
@@ -470,8 +487,12 @@ export function Taskbar({
     setFocusedTaskbarItemId(id);
     window.requestAnimationFrame(() => taskbarButtonRefs.current.get(id)?.focus());
   }, [focusableTaskbarIds]);
-  const hasActiveWindow = taskbar.windows.some((window) => window.active)
-    || internalWindows.some((window) => window.active);
+  const agentRunning = Boolean(agentWindow);
+  const agentActive = Boolean(agentWindow?.active && !agentWindow?.minimized);
+  const hasActiveInternalWindow = agentActive
+    || taskbarInternalWindows.some((window) => window.active);
+  const agentWorking = ["starting", "running"].includes(agentState?.status);
+  const agentDegraded = Boolean(agentState?.error);
   const networkAvailable = tray.network.available;
   const power = tray.power;
   const alertCount = feed.unreadCount;
@@ -745,30 +766,65 @@ export function Taskbar({
     <footer className="taskbar hud-chassis" aria-label="Windows taskbar">
       <div className="taskbar-start">
         <button type="button" aria-label="Start" title="Start" onClick={onOpenStart}>
-          <WindowAppsRegular />
+          <span className="taskbar-start-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
         </button>
       </div>
       <button
         type="button"
-        className="taskbar-search"
-        onClick={onOpenCommand}
-        title="Search apps and windows"
+        className={[
+          "jarvis-agent-launcher",
+          agentRunning ? "is-running" : "",
+          agentActive ? "is-active" : "",
+          agentWorking ? "is-working" : "",
+          agentState?.available === false ? "is-offline" : "",
+          agentDegraded ? "is-degraded" : "",
+        ].filter(Boolean).join(" ")}
+        onClick={onToggleAgent ?? onOpenCommand}
+        aria-label={agentActive ? "Minimize JARVIS Pi Agent" : "Open JARVIS Pi Agent"}
+        title={agentState?.error?.message
+          ?? (agentState?.available === false ? "Pi Agent · runtime configuration required" : "Open Pi Agent")}
       >
-        <SearchRegular />
-        <span>Search</span>
+        <AgentGlyph
+          state={agentWorking
+            ? "working"
+            : agentDegraded
+              ? "attention"
+              : agentState?.available === false ? "offline" : "ready"}
+        />
+        <span className="jarvis-agent-launcher__copy">
+          <strong>PI AGENT</strong>
+          <small>{agentWorking
+            ? "PROCESSING"
+            : agentState?.available === false
+              ? "OFFLINE"
+              : agentDegraded
+                ? "ATTENTION"
+                : agentRunning ? "ACTIVE" : "OPEN"}</small>
+        </span>
+        <i aria-hidden="true" />
       </button>
       <nav ref={appsRef} className="taskbar-apps" aria-label="Taskbar applications">
         {visibleItems.map((item) => {
           const { id, label, windows, selectedWindow: runningWindow } = item;
+          const isInternalItem = windows.some((window) => window.internalWindowId);
           const isInternalBuiltin = item.pinnedApplication?.id === "explorer"
             || item.pinnedApplication?.id === "terminal";
-          const isActive = runningWindow?.active
-            ?? (
-              platformKind === "mock" &&
-              taskbar.windows.length === 0 &&
-              !isInternalBuiltin &&
-              activeApp === id
-            );
+          const isActive = isInternalItem
+            ? Boolean(runningWindow?.active)
+            : hasActiveInternalWindow
+              ? false
+              : runningWindow?.active
+                ?? (
+                  platformKind === "mock" &&
+                  taskbar.windows.length === 0 &&
+                  !isInternalBuiltin &&
+                  activeApp === id
+                );
           const className = [
             isActive ? "is-active" : "",
             runningWindow ? "is-running" : "",
@@ -879,15 +935,6 @@ export function Taskbar({
           </button>
         ) : null}
       </nav>
-      <button
-        type="button"
-        className={`jarvis-launcher${hasActiveWindow ? "" : " is-active"}`}
-        onClick={onOpenCommand}
-        aria-label="Open JARVIS quick search"
-      >
-        <img src="/assets/jarvis-taskbar-core-launcher-v1.png" alt="" />
-      </button>
-      <div className="taskbar-spacer" />
       <div className="system-tray">
         <button
           type="button"

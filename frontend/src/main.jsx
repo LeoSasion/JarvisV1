@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import "./vector-shell.css";
 import { installUiAudioBridge } from "./audio-system.js";
 import { initializeInterfacePreferences } from "./interface-preferences.js";
 import { initializeVisualTheme } from "./theme-system.js";

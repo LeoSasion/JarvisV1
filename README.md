@@ -10,6 +10,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 - Full primary-taskbar replacement by default, with optional native and hybrid modes, fullscreen-aware reversible suppression, running-window synchronization, delayed DWM hover previews, session-scoped Show Desktop restore, and a recovery watchdog
 - Current-virtual-desktop window scoping for the replacement taskbar and bounded HUD Alt+Tab switcher, with fail-open public-API fallback and native Windows fallback in hybrid, safe, secure-desktop, and renderer-failure paths
 - Local Quick Search from the desktop and replacement taskbar, with keyboard scope switching and bounded history
+- A centered Pi Agent taskbar entry and embedded streaming chat window; V1 keeps Pi tools disabled and lazily starts a repository-pinned, privately bundled runtime only when a prompt is sent
 - Explorer-owned notification area in hybrid mode, with automatic native fallback
 - Real Windows audio, network, power, and local-time state shared by the top bar, taskbar, Quick Settings, and the taskbar date-and-time center
 - Keyboard-accessible Monday-first calendar with session-event filtering and an allowlisted handoff to Windows Date & Time Settings
@@ -35,6 +36,7 @@ JarvisV1 is under active development. The experimental immersive mode can alter 
 - `host/` — .NET 8 WPF host, Windows bridge, taskbar and recovery services
 - `installer/` — Inno Setup definition for per-user installation
 - `scripts/` — release and native lifecycle verification scripts
+- `third_party/pi/` — pinned Pi release trust manifest and retained MIT license; upstream binaries remain build artifacts, not source-control payloads
 - `assets/archive/` — approved source visual assets retained for restoration
 
 The WebView renderer receives bounded capabilities rather than executable paths or arbitrary command lines. Windows integration and safety-sensitive operations remain in the native host.

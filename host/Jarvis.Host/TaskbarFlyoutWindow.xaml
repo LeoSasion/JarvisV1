@@ -10,14 +10,14 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Topmost="True"
-        Background="#020912"
+        Background="{StaticResource NativeShellBackgroundBrush}"
         SourceInitialized="OnSourceInitialized"
         Loaded="OnLoaded"
         Closed="OnClosed">
-  <Border BorderBrush="#166EAA"
+  <Border BorderBrush="{StaticResource NativeShellStructureBrush}"
           BorderThickness="1"
-          Background="#F5020912"
-          CornerRadius="5"
+          Background="{StaticResource NativeShellBackgroundBrush}"
+          CornerRadius="0"
           SnapsToDevicePixels="True">
     <Grid>
       <Grid.RowDefinitions>
@@ -34,21 +34,24 @@
         <Border Width="3"
                 Height="14"
                 Margin="0,0,10,0"
-                Background="#22CFFF"
+                Background="{StaticResource NativeShellAccentBrush}"
                 VerticalAlignment="Center">
           <Border.Effect>
-            <DropShadowEffect Color="#22CFFF" BlurRadius="8" ShadowDepth="0" Opacity="0.7" />
+            <DropShadowEffect Color="{StaticResource NativeShellAccentColor}"
+                              BlurRadius="5"
+                              ShadowDepth="0"
+                              Opacity="0.55" />
           </Border.Effect>
         </Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <TextBlock x:Name="TitleText"
-                     Foreground="#D7F2FF"
+                     Foreground="{StaticResource NativeShellInkBrush}"
                      FontFamily="Bahnschrift"
                      FontSize="11"
                      FontWeight="SemiBold" />
           <TextBlock x:Name="MetaText"
                      Margin="10,0,0,0"
-                     Foreground="#6689A3"
+                     Foreground="{StaticResource NativeShellMutedBrush}"
                      FontFamily="Consolas"
                      FontSize="9" />
         </StackPanel>
@@ -56,7 +59,7 @@
                 Width="30"
                 Height="28"
                 Content="×"
-                Foreground="#77BDE8"
+                Foreground="{StaticResource NativeShellMutedBrush}"
                 Background="Transparent"
                 BorderThickness="0"
                 FontFamily="Segoe UI"
@@ -68,7 +71,7 @@
       <Border Grid.Row="0"
               Height="1"
               Margin="14,39,14,0"
-              Background="#163A55"
+              Background="{StaticResource NativeShellStructureBrush}"
               VerticalAlignment="Top" />
 
       <WrapPanel x:Name="CardsPanel"

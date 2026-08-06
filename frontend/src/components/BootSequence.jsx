@@ -1,6 +1,7 @@
 import { CheckmarkRegular, DismissRegular, WarningRegular } from "@fluentui/react-icons";
 import { useEffect, useMemo, useState } from "react";
 import { platform } from "../platform/index.js";
+import { CoreNodeGlyph, JarvisMark } from "./VectorMarks.jsx";
 
 const minimumVisibleMs = 1150;
 let sharedChecks = null;
@@ -95,11 +96,11 @@ export function BootSequence({ onComplete }) {
     <section className="boot-sequence" role="status" aria-live="polite" aria-label="JARVIS startup checks">
       <div className="boot-scan-field" aria-hidden="true"><i /><i /><i /></div>
       <div className="boot-core">
-        <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
+        <CoreNodeGlyph active={completed < checkDefinitions.length} />
         <span className="boot-core-ring" aria-hidden="true" />
       </div>
       <header>
-        <img src="/assets/jarvis-top-brand-core-v1.png" alt="" />
+        <JarvisMark />
         <span><small>POST-LOGIN SYSTEM INITIALIZATION</small><strong>JARVIS NIGHT SHELL</strong></span>
         <code>{String(completed).padStart(2, "0")} / {String(checkDefinitions.length).padStart(2, "0")}</code>
       </header>

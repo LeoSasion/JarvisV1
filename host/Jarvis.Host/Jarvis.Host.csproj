@@ -29,6 +29,11 @@
     <InternalsVisibleTo Include="Jarvis.Host.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\third_party\pi\runtime.json"
+                      LogicalName="Jarvis.Host.PiRuntimeManifest.json" />
+  </ItemGroup>
+
   <ItemGroup Condition="Exists('..\..\frontend\dist\index.html')">
     <Content Include="..\..\frontend\dist\**\*">
       <Link>frontend\%(RecursiveDir)%(Filename)%(Extension)</Link>

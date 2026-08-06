@@ -6,6 +6,7 @@ import {
   getWindowInitials,
   normalizeWindowSwitcherState,
 } from "./window-switcher-model.js";
+import { JarvisMark } from "./components/VectorMarks.jsx";
 
 function createPreviewState() {
   const requestedIndex = Number.parseInt(
@@ -65,7 +66,7 @@ export function WindowSwitcherSurface() {
       <section className="window-switcher-chassis" aria-live="polite">
         <header className="window-switcher-header">
           <div className="window-switcher-brand">
-            <img src="/assets/jarvis-top-brand-core-v1.png" alt="" />
+            <JarvisMark />
             <div>
               <span>JARVIS WINDOW CHANNEL</span>
               <small>FOREGROUND ROUTING · SECURE LOCAL CONTROL</small>

@@ -16,6 +16,7 @@ function toBridgeError(error, method) {
   const bridgeError = new Error(message);
   bridgeError.name = "JarvisBridgeError";
   bridgeError.code = error?.code;
+  bridgeError.retryable = Boolean(error?.retryable);
   bridgeError.method = method;
   return bridgeError;
 }
@@ -83,6 +84,17 @@ export function createWindowsPlatform(webview) {
     kind: "windows",
     isNative: true,
     events: { subscribe },
+    agent: {
+      getState: () => request("agent.getState"),
+      getMessages: () => request("agent.getMessages"),
+      prompt: (message, clientMessageId) => request(
+        "agent.prompt",
+        { message, clientMessageId },
+        30_000,
+      ),
+      abort: () => request("agent.abort", {}, 30_000),
+      newSession: () => request("agent.newSession", {}, 45_000),
+    },
     system: {
       getSnapshot: () => request("system.getSnapshot"),
       getDetails: () => request("system.getDetails", {}, 30_000),

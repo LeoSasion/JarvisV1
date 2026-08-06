@@ -11,7 +11,7 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Topmost="True"
-        Background="#01040A"
+        Background="{StaticResource NativeShellBackgroundBrush}"
         Opacity="0"
         IsHitTestVisible="False"
         SourceInitialized="OnSourceInitialized"
@@ -21,15 +21,15 @@
     <wv2:WebView2 x:Name="WebView"
                   HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch"
-                  DefaultBackgroundColor="#01040A" />
+                  DefaultBackgroundColor="#000000" />
 
     <Border x:Name="LoadingOverlay"
-            Background="#01040A"
+            Background="{StaticResource NativeShellBackgroundBrush}"
             IsHitTestVisible="False">
       <StackPanel HorizontalAlignment="Center"
                   VerticalAlignment="Center">
         <TextBlock Text="WINDOW CHANNEL"
-                   Foreground="#A8E9FF"
+                   Foreground="{StaticResource NativeShellInkBrush}"
                    FontFamily="Bahnschrift"
                    FontSize="13"
                    FontWeight="SemiBold"
@@ -37,7 +37,7 @@
         <TextBlock x:Name="StatusText"
                    Text="INITIALIZING"
                    Margin="0,8,0,0"
-                   Foreground="#527B96"
+                   Foreground="{StaticResource NativeShellMutedBrush}"
                    FontFamily="Consolas"
                    FontSize="9"
                    HorizontalAlignment="Center" />

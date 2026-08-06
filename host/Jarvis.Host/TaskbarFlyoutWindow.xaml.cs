@@ -24,12 +24,12 @@ public partial class TaskbarFlyoutWindow : Window
     private const uint DwmTnpVisible = 0x00000008;
     private const uint DwmTnpSourceClientAreaOnly = 0x00000010;
 
-    private static readonly SolidColorBrush PanelBrush = Brush("#F4020B14");
-    private static readonly SolidColorBrush PanelHoverBrush = Brush("#F5081A29");
-    private static readonly SolidColorBrush CardBorderBrush = Brush("#285D83");
-    private static readonly SolidColorBrush CardBorderHoverBrush = Brush("#22A7F0");
-    private static readonly SolidColorBrush TextBrush = Brush("#D7EAF5");
-    private static readonly SolidColorBrush MutedTextBrush = Brush("#7191A8");
+    private static readonly SolidColorBrush PanelBrush = NativeVisualPalette.SurfaceBrush;
+    private static readonly SolidColorBrush PanelHoverBrush = NativeVisualPalette.SurfaceHoverBrush;
+    private static readonly SolidColorBrush CardBorderBrush = NativeVisualPalette.StructureBrush;
+    private static readonly SolidColorBrush CardBorderHoverBrush = NativeVisualPalette.AccentBrush;
+    private static readonly SolidColorBrush TextBrush = NativeVisualPalette.InkBrush;
+    private static readonly SolidColorBrush MutedTextBrush = NativeVisualPalette.MutedBrush;
 
     private readonly IReadOnlyList<TaskbarWindowSnapshot> _windows;
     private readonly WindowTaskbarService _taskbarService;
@@ -79,13 +79,6 @@ public partial class TaskbarFlyoutWindow : Window
             Owner = Application.Current.MainWindow;
         }
         BuildContent();
-    }
-
-    private static SolidColorBrush Brush(string value)
-    {
-        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(value));
-        brush.Freeze();
-        return brush;
     }
 
     private void BuildContent(int? limit = null)
@@ -144,7 +137,7 @@ public partial class TaskbarFlyoutWindow : Window
             Padding = new Thickness(14, 0, 12, 0),
             Content = label,
             HorizontalContentAlignment = HorizontalAlignment.Left,
-            Foreground = action == "close" ? Brush("#A9D5ED") : TextBrush,
+            Foreground = action == "close" ? NativeVisualPalette.DangerBrush : TextBrush,
             Background = PanelBrush,
             BorderBrush = CardBorderBrush,
             BorderThickness = new Thickness(1),
@@ -188,7 +181,7 @@ public partial class TaskbarFlyoutWindow : Window
         var preview = new Border
         {
             Margin = new Thickness(5, 5, 5, 0),
-            Background = Brush("#01060C"),
+            Background = NativeVisualPalette.BackgroundBrush,
             ClipToBounds = true,
             Cursor = Cursors.Hand,
             ToolTip = $"Switch to {window.Title}"
@@ -257,7 +250,7 @@ public partial class TaskbarFlyoutWindow : Window
             BorderBrush = window.Active ? CardBorderHoverBrush : CardBorderBrush,
             BorderThickness = new Thickness(1),
             Background = PanelBrush,
-            CornerRadius = new CornerRadius(3),
+            CornerRadius = new CornerRadius(0),
             SnapsToDevicePixels = true
         };
         card.MouseEnter += (_, _) =>
@@ -315,9 +308,9 @@ public partial class TaskbarFlyoutWindow : Window
             Height = 26,
             Padding = new Thickness(0),
             Content = "×",
-            Foreground = Brush("#8DBFDC"),
-            Background = Brush("#D906111B"),
-            BorderBrush = Brush("#365D74"),
+            Foreground = NativeVisualPalette.MutedBrush,
+            Background = NativeVisualPalette.BackgroundBrush,
+            BorderBrush = NativeVisualPalette.StructureBrush,
             BorderThickness = new Thickness(1),
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = 14,

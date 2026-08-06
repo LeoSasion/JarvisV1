@@ -17,6 +17,8 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
     let cssHeight = 0;
     let dpr = 1;
     let raf = 0;
+    let signalColor = "#ff6a00";
+    let structureColor = "#77716a";
 
     const schedule = () => {
       if (!raf && documentVisible && elementVisible) {
@@ -43,10 +45,10 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
       const bars = compact ? 28 : 46;
       const gap = cssWidth / bars;
       const phase = reduceMotion ? 0 : timestamp * 0.0027;
-      context.strokeStyle = active ? "#22cfff" : "#365064";
+      context.strokeStyle = active ? signalColor : structureColor;
       context.lineWidth = 1;
-      context.shadowColor = active ? "#0084ee" : "transparent";
-      context.shadowBlur = active ? 5 : 0;
+      context.shadowColor = active ? signalColor : "transparent";
+      context.shadowBlur = active ? 3 : 0;
 
       for (let index = 0; index < bars; index += 1) {
         const envelope = 0.25 + Math.sin(index * 0.71 + phase) ** 2 * 0.75;
@@ -68,6 +70,9 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
 
     const updateSize = () => {
       const rect = canvas.getBoundingClientRect();
+      const computedStyle = getComputedStyle(canvas);
+      signalColor = computedStyle.getPropertyValue("--signal-hot").trim() || "#ff6a00";
+      structureColor = computedStyle.getPropertyValue("--structure-strong").trim() || "#77716a";
       cssWidth = rect.width;
       cssHeight = rect.height;
       dpr = Math.min(window.devicePixelRatio || 1, 2);

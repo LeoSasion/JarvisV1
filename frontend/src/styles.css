@@ -1,34 +1,60 @@
 :root {
   color-scheme: dark;
   font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  color: #edf2f5;
-  background: #00030a;
+  color: #f5f1e9;
+  background: #000000;
   font-synthesis: none;
-  --bg-0: #00030a;
-  --bg-1: #020a14;
-  --surface: rgba(2, 10, 18, 0.94);
-  --surface-raised: rgba(4, 15, 26, 0.96);
-  --line-dim: #0a304c;
-  --line-mid: #086da8;
-  --energy-blue: #0084ee;
-  --energy-cyan: #22cfff;
-  --energy-ice: #bfeff5;
-  --glow-core: #e3fbff;
-  --glow-edge: #58d9ff;
-  --glow-halo: rgba(28, 157, 255, 0.34);
-  --glow-bloom: rgba(0, 92, 238, 0.16);
-  --terminal-bg: #01060d;
-  --terminal-fg: #dceef6;
-  --text-1: #edf2f5;
-  --text-2: #9ca9b7;
-  --text-3: #637386;
+  --bg-0: #000000;
+  --bg-1: #070605;
+  --surface: rgba(8, 7, 6, 0.97);
+  --surface-raised: rgba(16, 14, 12, 0.98);
+  --line-dim: #35312d;
+  --line-mid: #77716a;
+  --energy-blue: #b84000;
+  --energy-cyan: #ff5a00;
+  --energy-ice: #f5f1e9;
+  --glow-core: #fffdf8;
+  --glow-edge: #ff9850;
+  --glow-halo: rgba(255, 90, 0, 0.34);
+  --glow-bloom: rgba(255, 90, 0, 0.12);
+  --terminal-bg: #020201;
+  --terminal-fg: #f5f1e9;
+  --text-1: #f5f1e9;
+  --text-2: #aaa39a;
+  --text-3: #6f6962;
   --success: #90c878;
   --danger: #e74931;
   --top-height: 62px;
   --taskbar-height: 74px;
   --taskbar-bottom: 20px;
   --frame-gap: 8px;
-  --spark-color: #22cfff;
+  --spark-color: #ff5a00;
+  --taskbar-bg: var(--surface);
+  --taskbar-bg-raised: var(--surface-raised);
+  --taskbar-line-dim: color-mix(in srgb, var(--line-dim) 76%, transparent);
+  --taskbar-line: color-mix(in srgb, var(--line-mid) 82%, transparent);
+  --taskbar-line-hot: color-mix(in srgb, var(--glow-edge) 88%, transparent);
+  --taskbar-hover-fill: color-mix(in srgb, var(--energy-blue) 8%, transparent);
+  --taskbar-active-fill: color-mix(in srgb, var(--energy-cyan) 11%, transparent);
+  --taskbar-text: var(--text-1);
+  --taskbar-text-muted: var(--text-2);
+  --taskbar-text-dim: var(--text-3);
+  --taskbar-glow-soft: 0 0 10px var(--glow-bloom);
+  --taskbar-glow-line: 0 0 6px var(--glow-halo);
+  --taskbar-glow-active: 0 0 8px var(--glow-halo);
+  --taskbar-focus: 0 0 0 1px var(--taskbar-line-hot), 0 0 8px var(--glow-halo);
+  --taskbar-hairline: 1px;
+  --taskbar-indicator: 2px;
+  --taskbar-cut: 10px;
+  --taskbar-control: 40px;
+  --taskbar-icon: 22px;
+  --taskbar-orb: 96px;
+  --taskbar-gap: 8px;
+  --taskbar-pad-x: 12px;
+  --taskbar-slot-width: clamp(52px, calc(12vw - 102px), 116px);
+  --taskbar-motion-fast: 120ms;
+  --taskbar-motion-base: 160ms;
+  --taskbar-ease: cubic-bezier(0.2, 0.75, 0.2, 1);
 }
 
 * {
@@ -95,25 +121,34 @@ input:focus-visible {
   min-width: 920px;
   min-height: 620px;
   overflow: hidden;
+  overflow: clip;
   isolation: isolate;
   background-color: var(--bg-0);
 }
 
 .jarvis-taskbar-surface {
-  --taskbar-height: 74px;
   position: relative;
   width: 100vw;
   height: 100dvh;
-  min-width: 920px;
+  min-width: 0;
   overflow: hidden;
+  overflow: clip;
   isolation: isolate;
   background: transparent;
 }
 
 .jarvis-taskbar-surface .taskbar {
+  --taskbar-leading-width: 292px;
+  --taskbar-core-reserve: 116px;
   inset: 0;
   height: 100%;
-  grid-template-columns: 72px 220px minmax(430px, 584px) 1fr auto 10px;
+  grid-template-columns:
+    72px
+    220px
+    minmax(0, min(584px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+    1fr
+    auto
+    10px;
 }
 
 .jarvis-taskbar-surface .taskbar-apps {
@@ -126,14 +161,14 @@ input:focus-visible {
 }
 
 .jarvis-taskbar-surface .taskbar-apps button {
-  flex: 1 1 52px;
-  min-width: 42px;
-  max-width: 92px;
-  padding-inline: 8px;
+  flex: 1 1 var(--taskbar-slot-width);
+  min-width: 64px;
+  max-width: 132px;
+  padding-inline: var(--taskbar-pad-x);
 }
 
 .jarvis-taskbar-surface .taskbar-apps button > span {
-  display: none;
+  display: block;
 }
 
 .jarvis-taskbar-surface .taskbar-flyout-mock {
@@ -156,16 +191,6 @@ input:focus-visible {
   height: 26px;
 }
 
-.jarvis-taskbar-surface .jarvis-launcher img {
-  width: 115px;
-  height: 115px;
-  transform: translate(-50%, -50%);
-}
-
-.jarvis-taskbar-surface.is-native .jarvis-launcher img {
-  opacity: 0;
-}
-
 .jarvis-taskbar-surface.is-native .taskbar-edge-track {
   opacity: 0;
 }
@@ -181,7 +206,7 @@ input:focus-visible {
 }
 
 .jarvis-taskbar-surface .taskbar-apps button::after,
-.jarvis-taskbar-surface .jarvis-launcher::after {
+.jarvis-taskbar-surface .jarvis-agent-launcher::after {
   bottom: 7px;
 }
 
@@ -1844,11 +1869,19 @@ button.process-grid:hover {
 }
 
 .taskbar {
+  --taskbar-leading-width: 352px;
+  --taskbar-core-reserve: 116px;
   bottom: var(--taskbar-bottom);
   z-index: 20;
   height: var(--taskbar-height);
   display: grid;
-  grid-template-columns: 93px 259px 584px 1fr auto 10px;
+  grid-template-columns:
+    93px
+    259px
+    minmax(0, min(584px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+    1fr
+    auto
+    10px;
   align-items: center;
   overflow: visible;
   isolation: isolate;
@@ -1863,11 +1896,13 @@ button.process-grid:hover {
   position: absolute;
   inset: 0;
   z-index: -1;
-  border: 1px solid rgba(24, 116, 170, 0.68);
-  background-color: rgba(1, 7, 13, 0.97);
+  border: var(--taskbar-hairline) solid var(--taskbar-line);
+  background:
+    linear-gradient(90deg, var(--taskbar-hover-fill), transparent 24%, transparent 76%, var(--taskbar-hover-fill)),
+    var(--taskbar-bg);
   box-shadow:
-    0 0 0 1px rgba(0, 15, 30, 0.96) inset,
-    0 0 12px rgba(0, 132, 238, 0.08);
+    0 0 0 1px var(--taskbar-line-dim) inset,
+    var(--taskbar-glow-soft);
   clip-path: polygon(
     0 13px,
     13px 0,
@@ -1889,20 +1924,39 @@ button.process-grid:hover {
   position: absolute;
   inset: 0;
   z-index: 70;
-  border: 1px solid rgba(36, 151, 214, 0.82);
+  border: 0;
   background:
     linear-gradient(
       90deg,
       transparent 0,
-      transparent 33.5%,
-      var(--energy-blue) 33.5%,
-      var(--energy-blue) calc(33.5% + 54px),
-      transparent calc(33.5% + 54px),
+      transparent 5%,
+      var(--taskbar-line-hot) 5%,
+      var(--taskbar-line-hot) 11%,
+      transparent 11%,
+      transparent calc(50% - 43px),
+      var(--taskbar-line-hot) calc(50% - 43px),
+      var(--taskbar-line-hot) calc(50% + 43px),
+      transparent calc(50% + 43px),
+      transparent 88%,
+      var(--taskbar-line-hot) 88%,
+      var(--taskbar-line-hot) 94%,
+      transparent 94%,
       transparent 100%
-    ) top / 100% 2px no-repeat;
-  box-shadow:
-    0 0 7px rgba(34, 207, 255, 0.28),
-    0 0 8px rgba(34, 207, 255, 0.18) inset;
+    ) top / 100% var(--taskbar-hairline) no-repeat,
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 26%,
+      var(--taskbar-line) 26%,
+      var(--taskbar-line) 34%,
+      transparent 34%,
+      transparent 66%,
+      var(--taskbar-line) 66%,
+      var(--taskbar-line) 74%,
+      transparent 74%,
+      transparent 100%
+    ) bottom / 100% var(--taskbar-hairline) no-repeat;
+  filter: drop-shadow(var(--taskbar-glow-line));
   clip-path: polygon(
     0 13px,
     13px 0,
@@ -1928,10 +1982,8 @@ button.process-grid:hover {
   z-index: 90;
   height: 1px;
   display: block;
-  background: rgba(36, 151, 214, 0.92);
-  box-shadow:
-    0 0 4px rgba(34, 207, 255, 0.88),
-    0 0 9px rgba(0, 132, 238, 0.46);
+  background: var(--taskbar-line);
+  box-shadow: var(--taskbar-glow-line);
   pointer-events: none;
   transform: translateZ(0);
 }
@@ -1940,52 +1992,81 @@ button.process-grid:hover {
   height: 42px;
   display: grid;
   place-items: center;
-  border-right: 1px solid rgba(55, 79, 99, 0.55);
+  border-right: var(--taskbar-hairline) solid var(--taskbar-line-dim);
 }
 
 .taskbar button {
   border: 0;
   background: transparent;
-  color: #9eadba;
+  color: var(--taskbar-text-muted);
   cursor: pointer;
+  transition:
+    color var(--taskbar-motion-fast) var(--taskbar-ease),
+    background-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    border-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    box-shadow var(--taskbar-motion-fast) var(--taskbar-ease);
 }
 
 .taskbar button:hover {
-  color: var(--energy-ice);
+  color: var(--taskbar-text);
+  background-color: var(--taskbar-hover-fill);
 }
 
 .taskbar-start button {
-  width: 52px;
-  height: 52px;
+  width: var(--taskbar-control);
+  height: var(--taskbar-control);
   display: grid;
   place-items: center;
 }
 
 .taskbar-start svg {
-  width: 32px;
-  height: 32px;
-  color: var(--text-1);
+  width: 26px;
+  height: 26px;
+  color: var(--taskbar-text);
+}
+
+.taskbar-start-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
+  transform: perspective(32px) rotateY(-7deg);
+  filter: drop-shadow(var(--taskbar-glow-line));
+}
+
+.taskbar-start-mark i {
+  display: block;
+  border: var(--taskbar-hairline) solid color-mix(in srgb, var(--energy-ice) 88%, var(--energy-blue));
+  background: color-mix(in srgb, var(--energy-blue) 8%, transparent);
+}
+
+.taskbar-start button:hover .taskbar-start-mark,
+.taskbar-start button:focus-visible .taskbar-start-mark {
+  filter: drop-shadow(var(--taskbar-glow-active));
 }
 
 .taskbar-search {
-  height: 42px;
+  height: var(--taskbar-control);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 24px;
-  color: #8694a2;
+  gap: var(--taskbar-gap);
+  padding: 0 16px;
+  color: var(--taskbar-text-dim);
   text-align: left;
 }
 
 .taskbar-search svg {
-  width: 24px;
-  height: 24px;
-  color: var(--text-1);
+  width: var(--taskbar-icon);
+  height: var(--taskbar-icon);
+  color: var(--taskbar-text);
 }
 
 .taskbar-search span,
 .taskbar-apps span {
   font-size: 11px;
+  letter-spacing: 0.01em;
 }
 
 .taskbar-apps {
@@ -2002,15 +2083,35 @@ button.process-grid:hover {
 
 .taskbar-apps button {
   position: relative;
-  min-width: 44px;
-  max-width: 170px;
-  flex: 1 1 56px;
+  min-width: 64px;
+  max-width: 132px;
+  flex: 1 1 var(--taskbar-slot-width);
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 0 15px;
+  gap: var(--taskbar-gap);
+  padding: 0 var(--taskbar-pad-x);
+  background-image: linear-gradient(180deg, transparent 54%, var(--taskbar-hover-fill));
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 0;
+  transition:
+    color var(--taskbar-motion-fast) var(--taskbar-ease),
+    background-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    background-size var(--taskbar-motion-fast) var(--taskbar-ease),
+    box-shadow var(--taskbar-motion-fast) var(--taskbar-ease);
+}
+
+.taskbar-apps button:hover,
+.taskbar-apps button:focus-visible {
+  background-color: transparent;
+  background-size: 100% 100%;
+}
+
+.taskbar-apps button.is-active {
+  color: var(--taskbar-text);
+  background-color: var(--taskbar-active-fill);
 }
 
 .taskbar-apps button > span {
@@ -2033,16 +2134,20 @@ button.process-grid:hover {
 }
 
 .taskbar-native-icon {
-  width: 22px;
-  height: 22px;
+  width: var(--taskbar-icon);
+  height: var(--taskbar-icon);
   flex: 0 0 auto;
   object-fit: contain;
   image-rendering: auto;
-  filter: drop-shadow(0 0 1px rgba(34, 207, 255, 0.24));
+  filter: none;
+  transition:
+    filter var(--taskbar-motion-fast) var(--taskbar-ease),
+    opacity var(--taskbar-motion-fast) var(--taskbar-ease);
 }
 
+.taskbar-apps button:hover .taskbar-native-icon,
 .taskbar-apps button.is-active .taskbar-native-icon {
-  filter: drop-shadow(0 0 3px rgba(34, 207, 255, 0.48));
+  filter: drop-shadow(0 0 3px var(--glow-halo));
 }
 
 .taskbar-window-count {
@@ -2086,12 +2191,28 @@ button.process-grid:hover {
   width: min(738px, calc(100vw - 32px));
   padding: 0 10px 10px;
   transform: translateX(-50%);
-  border: 1px solid rgba(22, 110, 170, 0.9);
-  border-radius: 5px;
-  background: rgba(2, 9, 18, 0.98);
+  border: var(--taskbar-hairline) solid var(--taskbar-line);
+  border-radius: 0;
+  background: var(--taskbar-bg-raised);
   box-shadow:
-    0 0 0 1px rgba(1, 18, 33, 0.9) inset,
-    0 0 18px rgba(0, 132, 238, 0.16);
+    0 0 0 1px var(--taskbar-line-dim) inset,
+    var(--taskbar-glow-soft);
+  clip-path: polygon(
+    0 var(--taskbar-cut),
+    var(--taskbar-cut) 0,
+    100% 0,
+    100% calc(100% - var(--taskbar-cut)),
+    calc(100% - var(--taskbar-cut)) 100%,
+    0 100%
+  );
+  animation: taskbar-flyout-in var(--taskbar-motion-base) var(--taskbar-ease) both;
+}
+
+@keyframes taskbar-flyout-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
 }
 
 .taskbar-flyout-mock.is-overflow {
@@ -2109,7 +2230,7 @@ button.process-grid:hover {
   grid-template-columns: 3px auto 1fr 30px;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid rgba(22, 58, 85, 0.9);
+  border-bottom: var(--taskbar-hairline) solid var(--taskbar-line-dim);
 }
 
 .taskbar-flyout-mock > header::before {
@@ -2204,10 +2325,10 @@ button.process-grid:hover {
 .taskbar-context-actions > button {
   min-height: 38px;
   padding: 0 14px;
-  border: 1px solid rgba(40, 93, 131, 0.84);
-  border-radius: 3px;
-  background: rgba(2, 11, 20, 0.96);
-  color: #d7eaf5;
+  border: var(--taskbar-hairline) solid var(--taskbar-line-dim);
+  border-radius: 0;
+  background: var(--taskbar-bg);
+  color: var(--taskbar-text);
   font: 600 10px/1 Bahnschrift, sans-serif;
   letter-spacing: 0.05em;
   text-align: left;
@@ -2215,29 +2336,34 @@ button.process-grid:hover {
 
 .taskbar-context-actions > button:hover,
 .taskbar-context-actions > button:focus-visible {
-  border-color: rgba(34, 167, 240, 0.94);
-  background: rgba(8, 26, 41, 0.98);
-  box-shadow: 0 0 10px rgba(0, 132, 238, 0.12);
+  border-color: var(--taskbar-line);
+  background: var(--taskbar-hover-fill);
+  box-shadow: var(--taskbar-focus);
 }
 
 .taskbar-flyout-grid article {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid rgba(40, 93, 131, 0.84);
-  border-radius: 3px;
-  background: rgba(2, 11, 20, 0.96);
+  border: var(--taskbar-hairline) solid var(--taskbar-line-dim);
+  border-radius: 0;
+  background: var(--taskbar-bg);
+  clip-path: polygon(0 6px, 6px 0, 100% 0, 100% 100%, 0 100%);
+  transition:
+    background-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    border-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    box-shadow var(--taskbar-motion-fast) var(--taskbar-ease);
 }
 
 .taskbar-flyout-grid article:hover,
 .taskbar-flyout-grid article.is-active,
 .taskbar-flyout-grid article.is-keyboard-active {
-  border-color: rgba(34, 167, 240, 0.94);
-  background: rgba(8, 26, 41, 0.98);
+  border-color: var(--taskbar-line);
+  background: var(--taskbar-hover-fill);
 }
 
 .taskbar-flyout-grid article.is-keyboard-active {
-  box-shadow: 0 0 10px rgba(0, 132, 238, 0.14) inset;
+  box-shadow: var(--taskbar-focus);
 }
 
 .taskbar-flyout-empty {
@@ -2352,81 +2478,189 @@ button.process-grid:hover {
 }
 
 .taskbar-apps button::after,
-.jarvis-launcher::after {
+.jarvis-agent-launcher::after {
   content: "";
   position: absolute;
-  right: 30%;
+  right: auto;
   bottom: 7px;
-  left: 30%;
-  height: 2px;
+  left: 50%;
+  width: 2px;
+  height: var(--taskbar-indicator);
   background-color: transparent;
+  transform: translateX(-50%);
+}
+
+.taskbar-apps button.is-running:not(.is-active)::after {
+  background-color: var(--taskbar-line-hot);
 }
 
 .taskbar-apps button.is-active::after,
-.jarvis-launcher.is-active::after {
+.jarvis-agent-launcher.is-active::after {
+  width: 24px;
   background-color: var(--energy-cyan);
-  box-shadow: 0 0 8px rgba(34, 207, 255, 0.75);
+  box-shadow: var(--taskbar-glow-active);
 }
 
 .taskbar-apps button:focus-visible {
+  box-shadow: var(--taskbar-focus);
   outline-offset: -4px;
 }
 
 .taskbar-apps svg {
-  width: 22px;
-  height: 22px;
-  color: #9fdcff;
-  filter: drop-shadow(0 0 3px rgba(0, 132, 238, 0.35));
+  width: var(--taskbar-icon);
+  height: var(--taskbar-icon);
+  color: color-mix(in srgb, var(--energy-ice) 76%, var(--text-2));
+  filter: drop-shadow(0 0 2px var(--glow-bloom));
+  transition:
+    color var(--taskbar-motion-fast) var(--taskbar-ease),
+    filter var(--taskbar-motion-fast) var(--taskbar-ease);
 }
 
-.jarvis-launcher {
+.taskbar-apps button:hover svg,
+.taskbar-apps button.is-active svg {
+  color: var(--energy-ice);
+  filter: drop-shadow(var(--taskbar-glow-line));
+}
+
+.jarvis-agent-launcher {
   position: absolute;
   left: 50%;
   top: 50%;
   z-index: 100;
-  width: 104px;
-  height: 100%;
+  width: clamp(164px, 14vw, 220px);
+  height: calc(100% - 16px);
   min-width: 0;
   min-height: 0;
   display: grid;
-  place-items: center;
-  padding: 0;
-  overflow: visible;
+  grid-template-columns: 30px minmax(0, 1fr) 8px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px 0 10px;
+  overflow: hidden;
+  border: var(--taskbar-hairline) solid color-mix(in srgb, var(--taskbar-line) 76%, transparent);
+  clip-path: polygon(0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+  background:
+    linear-gradient(90deg, rgba(6, 31, 50, 0.9), rgba(2, 12, 23, 0.94) 58%, rgba(5, 24, 39, 0.9));
+  box-shadow:
+    0 0 0 1px rgba(0, 29, 51, 0.86) inset,
+    0 0 14px rgba(0, 126, 230, 0.14);
   transform: translate(-50%, -50%);
+  transition:
+    border-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    background-color var(--taskbar-motion-fast) var(--taskbar-ease),
+    box-shadow var(--taskbar-motion-fast) var(--taskbar-ease);
 }
 
-.jarvis-launcher img {
-  position: absolute;
-  left: 50%;
-  top: 50%;
+.jarvis-agent-launcher:hover,
+.jarvis-agent-launcher:focus-visible,
+.jarvis-agent-launcher.is-active {
+  border-color: color-mix(in srgb, var(--energy-ice) 76%, var(--taskbar-line));
+  background:
+    linear-gradient(90deg, rgba(8, 49, 76, 0.94), rgba(3, 18, 32, 0.96) 58%, rgba(6, 34, 54, 0.94));
+  box-shadow:
+    0 0 0 1px rgba(0, 62, 101, 0.84) inset,
+    0 0 17px rgba(24, 171, 255, 0.24);
+}
+
+.jarvis-agent-launcher:focus-visible {
+  outline: var(--taskbar-hairline) solid var(--energy-ice);
+  outline-offset: 3px;
+}
+
+.jarvis-agent-launcher img {
+  position: relative;
   z-index: 2;
-  width: 115px;
-  height: 115px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
-  transform: translate(-50%, -50%);
+  filter: brightness(1.08) contrast(1.1) drop-shadow(0 0 5px rgba(58, 182, 255, 0.48));
   pointer-events: none;
+}
+
+.jarvis-agent-launcher__copy {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  overflow: hidden;
+  text-align: left;
+}
+
+.jarvis-agent-launcher__copy strong,
+.jarvis-agent-launcher__copy small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jarvis-agent-launcher__copy strong {
+  color: var(--taskbar-text);
+  font: 600 10px/1 Bahnschrift, "Segoe UI", sans-serif;
+  letter-spacing: 0.14em;
+}
+
+.jarvis-agent-launcher__copy small {
+  color: var(--taskbar-text-dim);
+  font: 8px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.jarvis-agent-launcher > i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--taskbar-line);
+  border-radius: 50%;
+  background: rgba(2, 17, 28, 0.92);
+  box-shadow: 0 0 5px rgba(34, 207, 255, 0.26);
+}
+
+.jarvis-agent-launcher.is-running > i {
+  background: var(--energy-cyan);
+  box-shadow: 0 0 8px rgba(34, 207, 255, 0.72);
+}
+
+.jarvis-agent-launcher.is-working > i {
+  animation: agent-status-pulse 1.4s ease-in-out infinite;
+}
+
+.jarvis-agent-launcher.is-offline > i {
+  border-color: rgba(235, 121, 80, 0.7);
+  background: rgba(235, 121, 80, 0.42);
+  box-shadow: 0 0 6px rgba(235, 92, 53, 0.32);
+}
+
+.jarvis-agent-launcher.is-degraded:not(.is-working) > i {
+  border-color: rgba(255, 171, 92, 0.82);
+  background: rgba(255, 133, 67, 0.58);
+  box-shadow: 0 0 8px rgba(255, 113, 45, 0.42);
+}
+
+@keyframes agent-status-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.82); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 .system-tray {
   height: 100%;
   display: flex;
   align-items: center;
-  gap: 13px;
-  padding: 0 22px 0 14px;
+  gap: var(--taskbar-gap);
+  padding: 0 var(--taskbar-pad-x);
 }
 
 .system-tray > button svg {
   width: 19px;
   height: 19px;
-  color: #e1e7eb;
+  color: var(--taskbar-text-muted);
 }
 
 .system-tray .tray-status-button {
   width: auto;
   display: flex;
   grid-auto-flow: unset;
-  gap: 10px;
-  padding: 0 9px;
+  gap: var(--taskbar-gap);
+  padding: 0 8px;
   border-left: 0;
 }
 
@@ -2445,34 +2679,34 @@ button.process-grid:hover {
   display: grid;
   justify-items: end;
   gap: 3px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(55, 79, 99, 0.42);
+  padding-inline: 8px;
+  border-left: var(--taskbar-hairline) solid var(--taskbar-line-dim);
 }
 
 .system-tray .tray-clock:hover,
 .system-tray .tray-clock:focus-visible {
   outline: 0;
-  color: #f0fbff;
-  background: rgba(8, 37, 56, 0.58);
+  color: var(--taskbar-text);
+  background: var(--taskbar-hover-fill);
 }
 
 .system-tray .tray-clock strong {
-  color: #dde5e9;
+  color: var(--taskbar-text);
   font: 12px/1 "Segoe UI", sans-serif;
 }
 
 .system-tray .tray-clock small {
-  color: #697b8d;
+  color: var(--taskbar-text-dim);
   font: 10px/1 "Segoe UI", sans-serif;
 }
 
 .system-tray button {
   position: relative;
   width: 35px;
-  height: 42px;
+  height: var(--taskbar-control);
   display: grid;
   place-items: center;
-  border-left: 1px solid rgba(55, 79, 99, 0.48);
+  border-left: var(--taskbar-hairline) solid var(--taskbar-line-dim);
 }
 
 .taskbar-show-desktop {
@@ -2485,8 +2719,8 @@ button.process-grid:hover {
   height: 100%;
   align-self: stretch;
   padding: 0;
-  border-left: 1px solid rgba(63, 120, 159, 0.58);
-  background: rgba(5, 19, 31, 0.62);
+  border-left: var(--taskbar-hairline) solid var(--taskbar-line);
+  background: var(--taskbar-hover-fill);
 }
 
 .taskbar-show-desktop::before {
@@ -2496,20 +2730,20 @@ button.process-grid:hover {
   bottom: 12px;
   left: 3px;
   width: 1px;
-  background: rgba(72, 179, 235, 0.54);
-  box-shadow: 0 0 5px rgba(34, 207, 255, 0.22);
+  background: var(--taskbar-line);
+  box-shadow: var(--taskbar-glow-line);
 }
 
 .taskbar-show-desktop:hover,
 .taskbar-show-desktop:focus-visible {
-  background: rgba(12, 49, 72, 0.88);
-  box-shadow: -3px 0 10px rgba(0, 132, 238, 0.16) inset;
+  background: var(--taskbar-active-fill);
+  box-shadow: -3px 0 10px var(--glow-bloom) inset;
 }
 
 .taskbar-show-desktop:hover::before,
 .taskbar-show-desktop:focus-visible::before {
-  background: rgba(137, 225, 255, 0.92);
-  box-shadow: 0 0 8px rgba(34, 207, 255, 0.58);
+  background: var(--taskbar-line-hot);
+  box-shadow: var(--taskbar-glow-active);
 }
 
 .tray-notifications > small {
@@ -8075,7 +8309,47 @@ button.process-grid:hover {
   }
 
   .taskbar {
-    grid-template-columns: 76px 212px 472px 1fr auto 10px;
+    --taskbar-leading-width: 288px;
+    --taskbar-core-reserve: 96px;
+    grid-template-columns:
+      76px
+      212px
+      minmax(0, min(472px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+      1fr
+      auto
+      10px;
+  }
+
+  .taskbar-apps button {
+    min-width: 44px;
+    max-width: var(--taskbar-slot-width);
+    padding-inline: 8px;
+  }
+
+  .taskbar-apps button > span {
+    display: none;
+  }
+
+  .jarvis-taskbar-surface .taskbar {
+    --taskbar-leading-width: 240px;
+    --taskbar-core-reserve: 94px;
+    grid-template-columns:
+      72px
+      168px
+      minmax(0, min(472px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+      1fr
+      auto
+      10px;
+  }
+
+  .jarvis-taskbar-surface .taskbar-apps button {
+    min-width: 44px;
+    max-width: var(--taskbar-slot-width);
+    padding-inline: 8px;
+  }
+
+  .jarvis-taskbar-surface .taskbar-apps button > span {
+    display: none;
   }
 
 }
@@ -8105,11 +8379,31 @@ button.process-grid:hover {
   }
 
   .taskbar {
-    grid-template-columns: 68px 150px minmax(245px, auto) 1fr auto 10px;
+    --taskbar-leading-width: 186px;
+    --taskbar-core-reserve: 82px;
+    grid-template-columns:
+      68px
+      118px
+      minmax(0, min(388px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+      1fr
+      auto
+      10px;
   }
 
   .taskbar-apps button {
-    min-width: 64px;
+    min-width: 44px;
+  }
+
+  .jarvis-taskbar-surface .taskbar {
+    --taskbar-leading-width: 176px;
+    --taskbar-core-reserve: 82px;
+    grid-template-columns:
+      64px
+      112px
+      minmax(0, min(388px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+      1fr
+      auto
+      10px;
   }
 
   .resource-row {
@@ -8122,6 +8416,7 @@ button.process-grid:hover {
   :root {
     --top-height: 54px;
     --taskbar-height: 62px;
+    --taskbar-orb: 92px;
   }
 
   .top-cluster {
@@ -8168,18 +8463,118 @@ button.process-grid:hover {
   }
 
   .taskbar-apps button::after,
-  .jarvis-launcher::after {
+  .jarvis-agent-launcher::after {
     bottom: 4px;
   }
 
-  .jarvis-launcher img {
-    width: 94px;
-    height: 94px;
-    transform: translate(-50%, -50%);
+  .jarvis-agent-launcher {
+    height: calc(100% - 12px);
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1040px) {
+  .jarvis-taskbar-surface .taskbar {
+    --taskbar-leading-width: 116px;
+    --taskbar-core-reserve: 38px;
+    grid-template-columns:
+      64px
+      52px
+      minmax(0, min(348px, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve))))
+      1fr
+      auto
+      8px;
+  }
+
+  .jarvis-taskbar-surface .taskbar-search {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .jarvis-taskbar-surface .taskbar-search span,
+  .jarvis-taskbar-surface .system-tray .tray-clock small {
+    display: none;
+  }
+
+  .jarvis-taskbar-surface .system-tray {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .jarvis-taskbar-surface .system-tray .tray-clock {
+    min-width: 54px;
+    padding-inline: 6px;
+  }
+
+  .jarvis-taskbar-surface .system-tray .tray-status-button {
+    gap: 6px;
+    padding-inline: 6px;
+  }
+
+  .jarvis-taskbar-surface .system-tray .tray-status-button svg:first-child {
+    display: none;
+  }
+
+  .jarvis-agent-launcher {
+    width: 58px;
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .jarvis-agent-launcher__copy,
+  .jarvis-agent-launcher > i {
+    display: none;
+  }
+
+  .jarvis-agent-launcher img {
+    justify-self: center;
+  }
+}
+
+@media (max-width: 720px) {
+  .jarvis-taskbar-surface .taskbar {
+    --taskbar-leading-width: 100px;
+    --taskbar-core-reserve: 34px;
+    grid-template-columns:
+      52px
+      48px
+      minmax(0, calc(50vw - var(--taskbar-leading-width) - var(--taskbar-core-reserve)))
+      1fr
+      auto
+      6px;
+  }
+
+  .jarvis-taskbar-surface .taskbar-start button {
+    width: 38px;
+  }
+
+  .jarvis-taskbar-surface .taskbar-apps button {
+    min-width: 0;
+    max-width: none;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .jarvis-taskbar-surface .taskbar-apps svg,
+  .jarvis-taskbar-surface .taskbar-native-icon {
+    width: clamp(14px, 3vw, 18px);
+    height: clamp(14px, 3vw, 18px);
+  }
+
+  .jarvis-taskbar-surface .system-tray > .tray-status-button {
+    width: 40px;
+    padding: 0;
+  }
+
+  .jarvis-taskbar-surface .system-tray > .tray-status-button svg:not(:nth-last-child(2)) {
+    display: none;
+  }
+
+  .jarvis-taskbar-surface .tray-notifications {
+    width: 32px;
+  }
+}
+
+@media (max-width: 639px) {
   .jarvis-shell {
     min-width: 0;
     min-height: 0;
@@ -9145,7 +9540,8 @@ button.process-grid:hover {
 
 .workspace-window .explorer-layer,
 .workspace-window .terminal-layer,
-.workspace-window .system-inspector-layer {
+.workspace-window .system-inspector-layer,
+.workspace-window .agent-layer {
   position: absolute;
   inset: 0;
   z-index: auto;
@@ -9159,7 +9555,8 @@ button.process-grid:hover {
 
 .workspace-window .jarvis-explorer,
 .workspace-window .terminal-workbench,
-.workspace-window .system-inspector {
+.workspace-window .system-inspector,
+.workspace-window .agent-workbench {
   position: relative;
   inset: auto;
   width: 100%;
@@ -9173,7 +9570,8 @@ button.process-grid:hover {
 
 .workspace-window.is-active .jarvis-explorer,
 .workspace-window.is-active .terminal-workbench,
-.workspace-window.is-active .system-inspector {
+.workspace-window.is-active .system-inspector,
+.workspace-window.is-active .agent-workbench {
   border-color: rgba(41, 181, 255, 0.96);
   box-shadow:
     0 0 0 1px rgba(0, 42, 72, 0.96) inset,
@@ -9183,9 +9581,477 @@ button.process-grid:hover {
 
 .workspace-window.is-maximized .jarvis-explorer,
 .workspace-window.is-maximized .terminal-workbench,
-.workspace-window.is-maximized .system-inspector {
+.workspace-window.is-maximized .system-inspector,
+.workspace-window.is-maximized .agent-workbench {
   border-radius: 0;
   clip-path: none;
+}
+
+.agent-workbench {
+  display: grid;
+  grid-template-rows: 54px 34px minmax(0, 1fr) auto 96px 28px;
+  overflow: hidden;
+  border: 1px solid rgba(25, 126, 187, 0.82);
+  clip-path: polygon(0 12px, 12px 0, calc(100% - 12px) 0, 100% 12px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px));
+  background:
+    linear-gradient(90deg, rgba(6, 24, 38, 0.96), rgba(2, 10, 18, 0.985) 42%, rgba(3, 15, 26, 0.98));
+  color: var(--text-1);
+  box-shadow:
+    0 0 0 1px rgba(0, 40, 68, 0.94) inset,
+    0 0 24px rgba(0, 119, 212, 0.2),
+    0 24px 64px rgba(0, 0, 0, 0.66);
+}
+
+.agent-titlebar {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(170px, 1fr) minmax(140px, auto) repeat(4, 38px);
+  align-items: center;
+  border-bottom: 1px solid rgba(24, 121, 177, 0.5);
+  background: rgba(3, 14, 25, 0.96);
+  box-shadow: 0 -1px 0 rgba(75, 204, 255, 0.18) inset;
+}
+
+.agent-titlebar__mark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  margin-left: 8px;
+  border: 1px solid rgba(34, 158, 220, 0.48);
+  color: #71ccff;
+  background: rgba(1, 43, 70, 0.26);
+  filter: drop-shadow(0 0 5px rgba(41, 172, 255, 0.3));
+}
+
+.agent-titlebar__mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.agent-titlebar__identity {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding-left: 10px;
+  overflow: hidden;
+}
+
+.agent-titlebar__identity small,
+.agent-titlebar__identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-titlebar__identity small {
+  color: #647f91;
+  font: 7.5px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.14em;
+}
+
+.agent-titlebar__identity strong {
+  color: #d8f4ff;
+  font: 600 12px/1 Bahnschrift, "Segoe UI", sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.agent-runtime-state {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 0 12px;
+  color: #79a7bf;
+  font: 8px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.agent-runtime-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #376278;
+  box-shadow: 0 0 6px rgba(56, 132, 171, 0.4);
+}
+
+.agent-runtime-state.is-ready i,
+.agent-runtime-state.is-running i {
+  background: #46d7ff;
+  box-shadow: 0 0 8px rgba(70, 215, 255, 0.72);
+}
+
+.agent-runtime-state.is-error i,
+.agent-runtime-state.is-unavailable i {
+  background: #d26b4a;
+  box-shadow: 0 0 7px rgba(210, 76, 46, 0.46);
+}
+
+.agent-titlebar > button {
+  width: 38px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid rgba(25, 91, 128, 0.42);
+  background: transparent;
+  color: #7097ab;
+  cursor: pointer;
+}
+
+.agent-titlebar > button:hover:not(:disabled),
+.agent-titlebar > button:focus-visible:not(:disabled) {
+  color: #d9f5ff;
+  background: rgba(20, 122, 177, 0.18);
+  outline: 0;
+}
+
+.agent-titlebar > button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.agent-titlebar > button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-context-strip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(210px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(16, 75, 108, 0.5);
+  background: rgba(1, 9, 16, 0.72);
+  color: #6e91a6;
+}
+
+.agent-context-strip span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #8ec8e5;
+  font: 8px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.07em;
+}
+
+.agent-context-strip svg {
+  width: 14px;
+  height: 14px;
+}
+
+.agent-context-strip code,
+.agent-context-strip small {
+  min-width: 0;
+  overflow: hidden;
+  color: #597687;
+  font: 7.5px/1 "Cascadia Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-context-strip code {
+  text-align: center;
+}
+
+.agent-transcript {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(39, 133, 179, 0.62) rgba(2, 11, 18, 0.72);
+  background:
+    linear-gradient(rgba(15, 51, 70, 0.09) 1px, transparent 1px) 0 0 / 100% 32px,
+    rgba(1, 7, 13, 0.62);
+}
+
+.agent-message {
+  position: relative;
+  display: grid;
+  gap: 9px;
+  padding: 16px 20px 18px 24px;
+  border-bottom: 1px solid rgba(18, 75, 105, 0.46);
+  background: rgba(3, 14, 23, 0.66);
+}
+
+.agent-message::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 10px;
+  width: 1px;
+  background: rgba(61, 158, 207, 0.54);
+  box-shadow: 0 0 5px rgba(45, 157, 221, 0.28);
+}
+
+.agent-message.is-user {
+  background: rgba(5, 26, 41, 0.78);
+}
+
+.agent-message.is-user::before {
+  background: rgba(89, 206, 255, 0.94);
+  box-shadow: 0 0 7px rgba(65, 193, 255, 0.5);
+}
+
+.agent-message > header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  color: #6e94a8;
+  font: 7.5px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.1em;
+}
+
+.agent-message > header span {
+  color: #8ed7f8;
+  font-weight: 700;
+}
+
+.agent-message > header code {
+  min-width: 46px;
+  text-align: right;
+  color: #52788e;
+}
+
+.agent-message.is-streaming > header code {
+  color: #69d8ff;
+}
+
+.agent-message p {
+  max-width: 82ch;
+  margin: 0;
+  color: #b9cfdb;
+  font: 13px/1.65 "Segoe UI", sans-serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-empty-state {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 430px);
+  place-content: center;
+  gap: 20px;
+  padding: 40px;
+  color: #56798c;
+}
+
+.agent-empty-state > svg {
+  width: 42px;
+  height: 42px;
+  color: #3d7897;
+  filter: drop-shadow(0 0 8px rgba(42, 151, 210, 0.24));
+}
+
+.agent-empty-state.is-ready > svg {
+  color: #5dcfff;
+  filter: drop-shadow(0 0 9px rgba(51, 186, 255, 0.38));
+}
+
+.agent-empty-state > span {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-empty-state small {
+  color: #5f90aa;
+  font: 8px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.14em;
+}
+
+.agent-empty-state strong {
+  color: #c5e6f5;
+  font: 500 20px/1.2 Bahnschrift, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.agent-empty-state p {
+  margin: 0;
+  color: #6e8b9a;
+  font: 11px/1.55 "Segoe UI", sans-serif;
+}
+
+.agent-alert-region {
+  min-height: 0;
+  display: grid;
+}
+
+.agent-alert-region.has-alert {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid rgba(179, 71, 41, 0.62);
+  border-bottom: 1px solid rgba(179, 71, 41, 0.42);
+  background: rgba(75, 21, 13, 0.36);
+  color: #ee9a7f;
+  font: 9px/1.35 "Cascadia Mono", Consolas, monospace;
+}
+
+.agent-alert-region strong {
+  color: #ffb097;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.agent-alert-region span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-alert-region small {
+  max-width: 390px;
+  overflow: hidden;
+  color: #b87865;
+  font: 7.5px/1.3 "Cascadia Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  grid-template-rows: 22px minmax(0, 1fr);
+  gap: 0 10px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid rgba(22, 103, 150, 0.58);
+  background: rgba(2, 11, 20, 0.96);
+}
+
+.agent-composer label {
+  grid-column: 1;
+  display: flex;
+  justify-content: space-between;
+  color: #6d9bb2;
+  font: 8px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.11em;
+}
+
+.agent-composer label small {
+  color: #486878;
+  letter-spacing: 0;
+}
+
+.agent-composer textarea {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  padding: 10px 12px;
+  border: 1px solid rgba(30, 112, 155, 0.62);
+  border-radius: 0;
+  outline: 0;
+  background: rgba(1, 8, 14, 0.9);
+  color: #d0e9f4;
+  caret-color: #59d2ff;
+  font: 12px/1.45 "Segoe UI", sans-serif;
+}
+
+.agent-composer textarea:focus {
+  border-color: rgba(65, 193, 255, 0.86);
+  box-shadow: 0 0 0 1px rgba(29, 137, 193, 0.28), 0 0 12px rgba(30, 159, 225, 0.12);
+}
+
+.agent-composer textarea:disabled {
+  color: #4e6672;
+  cursor: not-allowed;
+}
+
+.agent-composer > button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: stretch;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  border: 1px solid rgba(37, 146, 200, 0.7);
+  background: rgba(5, 55, 85, 0.58);
+  color: #aee9ff;
+  font: 700 8px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.agent-composer > button:hover:not(:disabled),
+.agent-composer > button:focus-visible:not(:disabled) {
+  border-color: rgba(84, 215, 255, 0.9);
+  background: rgba(10, 85, 126, 0.66);
+  box-shadow: 0 0 12px rgba(36, 176, 241, 0.2);
+  outline: 0;
+}
+
+.agent-composer > button.is-stop {
+  border-color: rgba(201, 75, 48, 0.7);
+  background: rgba(82, 26, 17, 0.62);
+  color: #ff9d82;
+}
+
+.agent-composer > button:disabled {
+  opacity: 0.34;
+  cursor: default;
+}
+
+.agent-composer > button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.agent-footer {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  border-top: 1px solid rgba(17, 70, 99, 0.48);
+  background: rgba(1, 8, 14, 0.96);
+  color: #4e7183;
+  font: 7.5px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+
+.agent-footer span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.agent-footer span i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #466f84;
+}
+
+.agent-footer span i.is-ready,
+.agent-footer span i.is-running {
+  background: #49d1ff;
+  box-shadow: 0 0 6px rgba(73, 209, 255, 0.58);
+}
+
+.agent-footer small {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-footer code {
+  color: #5b8194;
+  white-space: nowrap;
 }
 
 .workspace-window [data-window-drag-handle] {
@@ -9280,7 +10146,12 @@ button.process-grid:hover {
 @media (max-width: 900px), (max-height: 620px) {
   .workspace-window .explorer-titlebar > span,
   .workspace-window .terminal-link-status,
-  .workspace-window .system-inspector-titlebar code {
+  .workspace-window .system-inspector-titlebar code,
+  .workspace-window .agent-runtime-state,
+  .workspace-window .agent-context-strip code,
+  .workspace-window .agent-context-strip small,
+  .workspace-window .agent-footer small,
+  .workspace-window .agent-footer code {
     display: none;
   }
 
@@ -9295,13 +10166,27 @@ button.process-grid:hover {
   .workspace-window .system-inspector-titlebar {
     grid-template-columns: 32px minmax(0, 1fr) repeat(4, 38px);
   }
+
+  .workspace-window .agent-titlebar {
+    grid-template-columns: 38px minmax(0, 1fr) repeat(4, 38px);
+  }
+
+  .workspace-window .agent-context-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-window .agent-footer {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion="full"]) .workspace-window,
   :root:not([data-motion="full"]) .workspace-window .jarvis-explorer,
   :root:not([data-motion="full"]) .workspace-window .terminal-workbench,
-  :root:not([data-motion="full"]) .workspace-window .system-inspector {
+  :root:not([data-motion="full"]) .workspace-window .system-inspector,
+  :root:not([data-motion="full"]) .workspace-window .agent-workbench,
+  :root:not([data-motion="full"]) .jarvis-agent-launcher.is-working > i {
     transition: none;
     animation: none;
   }

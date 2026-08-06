@@ -38,13 +38,13 @@ test("motion and emission accept only the bounded product choices", () => {
 
 test("emission profiles preserve line color while scaling halo and bloom alpha", () => {
   const theme = {
-    "--glow-halo": "rgba(28, 157, 255, 0.34)",
-    "--glow-bloom": "rgba(0, 92, 238, 0.16)",
+    "--glow-halo": "rgba(255, 90, 0, 0.34)",
+    "--glow-bloom": "rgba(255, 90, 0, 0.12)",
   };
   assert.deepEqual(getEmissionVariables(theme, "standard"), theme);
   assert.deepEqual(getEmissionVariables(theme, "minimal"), {
-    "--glow-halo": "rgba(28, 157, 255, 0.082)",
-    "--glow-bloom": "rgba(0, 92, 238, 0.013)",
+    "--glow-halo": "rgba(255, 90, 0, 0.082)",
+    "--glow-bloom": "rgba(255, 90, 0, 0.010)",
   });
 });
 
@@ -75,7 +75,7 @@ test("interface reset changes only the bounded local preference schema", () => {
     emission: "standard",
   });
   assert.match(writes.at(-1)[1], /"motion":"system"/);
-  assert.equal(properties.get("--glow-halo"), "rgba(28, 157, 255, 0.34)");
+  assert.equal(properties.get("--glow-halo"), "rgba(255, 90, 0, 0.34)");
 
   delete global.window;
   delete global.document;

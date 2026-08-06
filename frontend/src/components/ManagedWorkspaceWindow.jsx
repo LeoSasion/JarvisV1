@@ -3,6 +3,12 @@ import {
   WORKSPACE_WINDOW_DEFINITIONS,
   constrainWindowBounds,
 } from "../workspace-window-state.js";
+import {
+  getDockedWindowBounds,
+  getLinkedWorkspaceVariant,
+  isDockedWindow,
+  isLinkedWindowSuppressed,
+} from "../workspace-layout-mode.js";
 
 const RESIZE_DIRECTIONS = Object.freeze([
   "n",
@@ -62,6 +68,7 @@ export function ManagedWorkspaceWindow({
   windowState,
   viewport,
   active,
+  layoutMode,
   onActivate,
   onCommitBounds,
   onToggleMaximize,
@@ -70,16 +77,21 @@ export function ManagedWorkspaceWindow({
   const frameRef = useRef(null);
   const gestureRef = useRef(null);
   const definition = WORKSPACE_WINDOW_DEFINITIONS[id];
-  const renderedBounds = windowState.maximized
-    ? getMaximizedBounds(viewport)
-    : windowState.bounds;
+  const docked = isDockedWindow(id, layoutMode);
+  const linkedVariant = getLinkedWorkspaceVariant(viewport);
+  const layoutSuppressed = layoutMode === "explorer-agent-linked"
+    && isLinkedWindowSuppressed(id, linkedVariant, active);
+  const renderedBounds = getDockedWindowBounds(id, layoutMode, viewport)
+    ?? (windowState.maximized ? getMaximizedBounds(viewport) : windowState.bounds);
   const style = useMemo(() => ({
     left: renderedBounds.x,
     top: renderedBounds.y,
     width: renderedBounds.width,
     height: renderedBounds.height,
-    zIndex: 60 + windowState.zIndex,
+    zIndex: docked ? (active ? 82 : 81) : 60 + windowState.zIndex,
   }), [
+    active,
+    docked,
     renderedBounds.height,
     renderedBounds.width,
     renderedBounds.x,
@@ -105,6 +117,19 @@ export function ManagedWorkspaceWindow({
 
   useEffect(() => () => stopGesture(false), [stopGesture]);
 
+  useEffect(() => {
+    stopGesture(false);
+  }, [
+    layoutMode,
+    stopGesture,
+    viewport.bottom,
+    viewport.height,
+    viewport.left,
+    viewport.right,
+    viewport.top,
+    viewport.width,
+  ]);
+
   const beginGesture = useCallback((event) => {
     if (!event.isPrimary || event.button !== 0) return;
     onActivate(id);
@@ -114,7 +139,7 @@ export function ManagedWorkspaceWindow({
     const dragHandle = target.closest("[data-window-drag-handle]");
     const blocked = target.closest("button, input, select, textarea, a, [data-no-window-drag]");
     const mode = resizeHandle ? "resize" : dragHandle && !blocked ? "drag" : null;
-    if (!mode || windowState.maximized) return;
+    if (!mode || windowState.maximized || docked) return;
 
     event.preventDefault();
     stopGesture(false);
@@ -155,6 +180,7 @@ export function ManagedWorkspaceWindow({
     window.addEventListener("pointercancel", gesture.onCancel, { once: true });
   }, [
     id,
+    docked,
     onActivate,
     stopGesture,
     viewport,
@@ -163,16 +189,17 @@ export function ManagedWorkspaceWindow({
   ]);
 
   const handleDoubleClick = useCallback((event) => {
+    if (docked) return;
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (!target.closest("[data-window-drag-handle]")) return;
     if (target.closest("button, input, select, textarea, a, [data-no-window-drag]")) return;
     event.preventDefault();
     onToggleMaximize(id);
-  }, [id, onToggleMaximize]);
+  }, [docked, id, onToggleMaximize]);
 
   const resizeWithKeyboard = useCallback((event, direction) => {
-    if (windowState.maximized) return;
+    if (windowState.maximized || docked) return;
     const horizontal = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
     const vertical = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
     if (!horizontal && !vertical) return;
@@ -189,7 +216,7 @@ export function ManagedWorkspaceWindow({
         viewport,
       ),
     );
-  }, [id, onCommitBounds, viewport, windowState.bounds, windowState.maximized]);
+  }, [docked, id, onCommitBounds, viewport, windowState.bounds, windowState.maximized]);
 
   return (
     <div
@@ -200,17 +227,25 @@ export function ManagedWorkspaceWindow({
         active ? "is-active" : "",
         windowState.maximized ? "is-maximized" : "",
         windowState.minimized ? "is-minimized" : "",
+        docked ? "is-docked" : "",
+        layoutMode ? `is-layout-${layoutMode}` : "",
+        layoutMode === "explorer-agent-linked" ? `is-linked-${linkedVariant}` : "",
+        layoutSuppressed ? "is-layout-suppressed" : "",
       ].filter(Boolean).join(" ")}
       style={style}
-      hidden={windowState.minimized}
-      aria-hidden={windowState.minimized}
+      hidden={windowState.minimized || layoutSuppressed}
+      aria-hidden={windowState.minimized || layoutSuppressed}
+      inert={layoutSuppressed || undefined}
       data-window-id={id}
       data-window-active={active ? "true" : "false"}
+      data-window-layout={layoutMode}
+      data-linked-variant={layoutMode === "explorer-agent-linked" ? linkedVariant : undefined}
+      data-window-layout-suppressed={layoutSuppressed ? "true" : "false"}
       onPointerDownCapture={beginGesture}
       onDoubleClick={handleDoubleClick}
     >
       {children}
-      {!windowState.maximized ? RESIZE_DIRECTIONS.map((direction) => (
+      {!windowState.maximized && !docked ? RESIZE_DIRECTIONS.map((direction) => (
         <span
           key={direction}
           className={`workspace-resize-handle is-${direction}`}

@@ -174,6 +174,39 @@ packaged apps are activated through `IApplicationActivationManager` with no
 arguments. Arbitrary shortcut paths, AppUserModelIDs, and command-line arguments
 are never accepted from WebView2.
 
+The center taskbar control opens the embedded Pi Agent conversation window; it
+does not replace JARVIS quick search. V1 is deliberately chat-only: the host
+starts Pi lazily on the first prompt with tools, extensions, skills, and project
+context disabled, and rejects tool-call events if a provider emits them. It does
+not download Pi or collect credentials at application runtime. Release builds
+stage the complete pinned Pi distribution under `AgentRuntime` and retain its
+directory structure, trust manifest, provenance, and MIT license. The bundled
+runtime takes precedence and must match the manifest embedded in `Jarvis.Host`;
+the host verifies the byte-identical manifest, deterministic 217-file runtime
+receipt, every upstream file hash, total size, and entry-point identity
+immediately before every lazy start. A missing, stale, modified, linked, or
+unexpected bundle file fails closed. Each accepted turn is also bounded to
+16,384 events, 1 MiB of assistant-output characters, and 32 MiB of raw event
+payload characters so
+repeated cumulative snapshots cannot create unbounded parse or allocation work.
+The host keeps the prompt command reservation until its matching RPC response
+arrives, preventing a cancelled older request from terminating a newer turn.
+
+An unpackaged developer may opt into an external native executable only by
+setting `JARVIS_ALLOW_EXTERNAL_PI_RUNTIME=1`, `JARVIS_PI_EXECUTABLE` to an
+absolute `.exe` path, and `JARVIS_PI_EXECUTABLE_SHA256` to its expected SHA-256.
+This override is intentionally never an automatic fallback for a damaged bundle.
+Neither path modifies global `PATH`, installs a global package, nor performs
+silent Pi upgrades. Agent state and an empty private package directory are kept
+under `%LOCALAPPDATA%\JARVIS\PiAgent`; provider credentials remain in the native
+runtime environment and are never sent to WebView2. Pi starts in offline mode to
+skip model-registry and version refreshes; provider inference still occurs only
+after the user submits a prompt. The child process is created suspended through
+native `CreateProcessW`, assigned to a kill-on-close Windows Job Object before
+its primary thread can run, and resumed only after stdio containment is
+complete. Startup fails closed and confirms termination when any launch or
+Job-assignment step fails.
+
 For native preview QA, set `JARVIS_TASKBAR_DIAGNOSTIC_FLYOUT_PROCESS` to a
 process name such as `msedge`. After the taskbar is ready, the host opens the
 same DWM-backed grouped-window flyout used by taskbar clicks. The variable is
@@ -204,10 +237,24 @@ repository root:
 .\scripts\publish-release.ps1 -Version 0.1.0
 ```
 
-The script rebuilds `frontend/dist`, publishes the native host, creates a
-portable ZIP, writes `version.json`, `RECOVERY.txt`, and `SHA256SUMS.txt`, then
-compiles `installer/JARVIS.iss` when Inno Setup 6 is available. Output is written
-under `artifacts/release` and `artifacts/installer`.
+The script first downloads or reuses the exact Pi archive pinned by
+`third_party/pi/runtime.json`, validates both archive and entry-point hashes,
+and stages the full distribution. Only then does it rebuild `frontend/dist`,
+publish the native host, create a portable ZIP, write `version.json`,
+`RECOVERY.txt`, and `SHA256SUMS.txt`, and compile `installer/JARVIS.iss` when
+Inno Setup 6 is available. Output is written under `artifacts/release` and
+`artifacts/installer`. For an air-gapped or reproducible release, provide the
+already-downloaded official archive explicitly:
+
+```powershell
+.\scripts\publish-release.ps1 -Version 0.1.0 `
+  -OfflinePiRuntime `
+  -PiRuntimeArchivePath .\artifacts\vendor\pi\0.83.0\pi-windows-x64.zip
+```
+
+The upstream Pi executable is currently unsigned. JARVIS therefore treats the
+repository-pinned version, source commit, asset URL, size, and SHA-256 as its
+explicit trust boundary; it never follows an upstream `latest` pointer.
 
 The installer is per-user (`%LOCALAPPDATA%\Programs\JARVIS`), does not require
 administrator privileges, and offers optional desktop-shortcut and sign-in
@@ -236,8 +283,12 @@ installation, run:
 
 The verifier refuses to run when an installation, startup registration, or
 JARVIS process already exists. Otherwise it uses an isolated workspace path,
-tests current-user installation, safe native launch, repair/reinstall, and
-uninstall, then confirms Explorer is still running and removes its test state.
+tests current-user installation, repair/reinstall, and uninstall, then confirms
+Explorer is still running and removes its test state. Its installed-host check
+uses a strict `--lifecycle-probe` mode that creates no `MainWindow`, does not
+touch the taskbar or native-window appearance, and writes an authenticated
+receipt beneath an isolated data root instead of using production JARVIS logs
+or WebView2 state.
 
 ## Bridge protocol
 
@@ -292,6 +343,11 @@ Supported methods:
 - `terminal.write` with an opaque host-generated session ID and bounded UTF-8 input
 - `terminal.resize` with bounded rows and columns
 - `terminal.close`
+- `agent.getState`
+- `agent.getMessages`
+- `agent.prompt` with bounded `{ "message": "...", "clientMessageId": "..." }`
+- `agent.abort`
+- `agent.newSession`
 - `taskbar.getSnapshot`
 - `taskbar.toggleWindow` with `{ "windowId": "0x..." }`
 - `taskbar.closeWindow` with `{ "windowId": "0x..." }`

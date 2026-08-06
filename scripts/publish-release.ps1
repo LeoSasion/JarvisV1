@@ -8,7 +8,11 @@ param(
 
     [switch]$SkipInstaller,
 
-    [switch]$SkipNodeInstall
+    [switch]$SkipNodeInstall,
+
+    [switch]$OfflinePiRuntime,
+
+    [string]$PiRuntimeArchivePath
 )
 
 Set-StrictMode -Version Latest
@@ -20,6 +24,7 @@ $frontendDist = Join-Path $frontendRoot 'dist'
 $projectPath = Join-Path $repositoryRoot 'host\Jarvis.Host\Jarvis.Host.csproj'
 $artifactsRoot = Join-Path $repositoryRoot 'artifacts'
 $frontendBuildRoot = Join-Path $artifactsRoot 'build\frontend'
+$piRuntimeBuildRoot = Join-Path $artifactsRoot 'build\pi-runtime'
 $releaseRoot = Join-Path $artifactsRoot 'release'
 $installerOutput = Join-Path $artifactsRoot 'installer'
 $packageName = "JARVIS-$Version-$Runtime"
@@ -28,6 +33,8 @@ $zipPath = Join-Path $releaseRoot "$packageName.zip"
 $installerScript = Join-Path $repositoryRoot 'installer\JARVIS.iss'
 $installerPath = Join-Path $installerOutput "JARVIS-Setup-$Version-win-x64.exe"
 $updateManifestPath = Join-Path $releaseRoot 'JARVIS-update-manifest.json'
+$piManifestPath = Join-Path $repositoryRoot 'third_party\pi\runtime.json'
+$piStagerPath = Join-Path $repositoryRoot 'scripts\stage-pi-runtime.ps1'
 $numericVersion = ($Version -split '[-+]')[0]
 $builtAtUtc = [DateTimeOffset]::UtcNow.ToString('O')
 
@@ -82,11 +89,49 @@ function Invoke-Checked {
 if (-not (Test-Path -LiteralPath $projectPath)) {
     throw "JARVIS host project was not found: $projectPath"
 }
+if (-not (Test-Path -LiteralPath $piManifestPath -PathType Leaf)) {
+    throw "The pinned Pi runtime manifest was not found: $piManifestPath"
+}
+if (-not (Test-Path -LiteralPath $piStagerPath -PathType Leaf)) {
+    throw "The fail-closed Pi runtime stager was not found: $piStagerPath"
+}
+
+$piManifest = Get-Content -LiteralPath $piManifestPath -Raw | ConvertFrom-Json
+if (-not ([string]$piManifest.runtime).Equals($Runtime, [System.StringComparison]::Ordinal)) {
+    throw "The Pi runtime manifest does not match release runtime '$Runtime'."
+}
+$piArchive = $piManifest.archive
+$piExecutable = $piManifest.executable
+
+Write-Host "[1/8] Verifying and staging pinned Pi Agent runtime..."
+$piStageArguments = @{
+    ManifestPath = $piManifestPath
+    Runtime = $Runtime
+    Destination = $piRuntimeBuildRoot
+}
+if ($OfflinePiRuntime) {
+    $piStageArguments['Offline'] = $true
+}
+if (-not [string]::IsNullOrWhiteSpace($PiRuntimeArchivePath)) {
+    $piStageArguments['ArchivePath'] = $PiRuntimeArchivePath
+}
+& $piStagerPath @piStageArguments | Out-Host
+
+$stagedPiExecutable = Join-Path $piRuntimeBuildRoot $piExecutable.relativePath
+$stagedPiManifest = Join-Path $piRuntimeBuildRoot 'runtime.json'
+$stagedPiLicense = Join-Path $piRuntimeBuildRoot 'LICENSE-Pi.txt'
+$stagedPiTreeReceipt = Join-Path $piRuntimeBuildRoot 'RUNTIME-SHA256SUMS.txt'
+if (-not (Test-Path -LiteralPath $stagedPiExecutable -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $stagedPiManifest -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $stagedPiLicense -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $stagedPiTreeReceipt -PathType Leaf)) {
+    throw 'Pi runtime staging completed without the executable, trust manifest, tree receipt, or license.'
+}
 
 $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 $dotnet = (Get-Command dotnet.exe -ErrorAction Stop).Source
 
-Write-Host "[1/7] Building clean frontend assets..."
+Write-Host "[2/8] Building clean frontend assets..."
 $nodeInstallArguments = @('ci', '--prefer-offline', '--no-audit')
 if ($SkipNodeInstall) {
     Write-Warning 'Locked npm install was skipped by request; existing node_modules will be used.'
@@ -131,7 +176,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $frontendDist 'index.html'))) {
     throw 'Frontend build completed without dist\index.html.'
 }
 
-Write-Host "[2/7] Publishing self-contained Windows host..."
+Write-Host "[3/8] Publishing self-contained Windows host..."
 New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
 $publishDirectory = Reset-ChildDirectory -Path $publishDirectory -Parent $releaseRoot
 Invoke-Checked -FilePath $dotnet -Arguments @(
@@ -167,7 +212,13 @@ if (-not (Test-Path -LiteralPath $hostExecutable) -or
     throw 'Release publish is incomplete: host executable or frontend entry point is missing.'
 }
 
-Write-Host "[3/7] Writing version and recovery notes..."
+$packagedPiRuntime = Join-Path $publishDirectory 'AgentRuntime'
+New-Item -ItemType Directory -Path $packagedPiRuntime -Force | Out-Null
+Copy-Item -Path (Join-Path $piRuntimeBuildRoot '*') -Destination $packagedPiRuntime -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'LICENSE') -Destination $publishDirectory -Force
+Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Destination $publishDirectory -Force
+
+Write-Host "[4/8] Writing version and recovery notes..."
 $versionPayload = [ordered]@{
     product = 'JARVIS Night Shell'
     version = $Version
@@ -181,10 +232,24 @@ $versionPayload = [ordered]@{
     safeModeEnvironment = 'JARVIS_KEEP_NATIVE_TASKBAR=1'
     minimumWindows = '10'
     requiresWebView2Evergreen = $true
+    agentRuntime = [ordered]@{
+        bundled = $true
+        component = $piManifest.id
+        version = $piManifest.version
+        runtime = $Runtime
+        sourceCommit = $piManifest.source.commit
+        entryPoint = "AgentRuntime/$($piExecutable.relativePath)"
+        executableSha256 = $piExecutable.sha256
+        runtimeTreeSha256 = $piArchive.treeSha256
+        permissionMode = $piManifest.policies.permissionMode
+        autoUpdate = $false
+        startupOffline = $true
+        authenticity = 'repository-pinned-sha256; upstream-unsigned'
+    }
 }
-$versionPayload | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $publishDirectory 'version.json') -Encoding utf8
+$versionPayload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $publishDirectory 'version.json') -Encoding utf8
 
-@'
+@"
 JARVIS Night Shell
 
 Run Jarvis.Host.exe to start JARVIS.
@@ -196,9 +261,15 @@ Recovery launch:
 
 The release is self-contained for .NET. Microsoft Edge WebView2 Evergreen Runtime
 must be installed. JARVIS checks this before changing the desktop or taskbar.
-'@ | Set-Content -LiteralPath (Join-Path $publishDirectory 'RECOVERY.txt') -Encoding utf8
 
-Write-Host "[4/7] Generating package checksums..."
+Pi Agent $($piManifest.version) is delivered as a private, pinned runtime under AgentRuntime.
+JARVIS starts it lazily in chat-only mode, does not add it to PATH, and never
+updates it independently. The host verifies its repository-pinned SHA-256 before launch.
+The upstream release is not code-signed; see THIRD_PARTY_NOTICES.md and
+AgentRuntime\PROVENANCE.txt for the exact trust boundary.
+"@ | Set-Content -LiteralPath (Join-Path $publishDirectory 'RECOVERY.txt') -Encoding utf8
+
+Write-Host "[5/8] Generating package checksums..."
 $checksumPath = Join-Path $publishDirectory 'SHA256SUMS.txt'
 $checksumLines = Get-ChildItem -LiteralPath $publishDirectory -File -Recurse |
     Where-Object FullName -ne $checksumPath |
@@ -210,7 +281,7 @@ $checksumLines = Get-ChildItem -LiteralPath $publishDirectory -File -Recurse |
     }
 $checksumLines | Set-Content -LiteralPath $checksumPath -Encoding ascii
 
-Write-Host "[5/7] Creating portable ZIP..."
+Write-Host "[6/8] Creating portable ZIP..."
 if (Test-Path -LiteralPath $zipPath) {
     Remove-Item -LiteralPath (Assert-ChildPath -Path $zipPath -Parent $releaseRoot) -Force
 }
@@ -223,7 +294,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $installerStatus = 'skipped'
 if (-not $SkipInstaller) {
-    Write-Host "[6/7] Looking for Inno Setup compiler..."
+    Write-Host "[7/8] Looking for Inno Setup compiler..."
     $compilerCandidates = @(
         (Get-Command iscc.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1),
         (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
@@ -252,7 +323,7 @@ if (-not $SkipInstaller) {
     }
 }
 
-Write-Host "[7/7] Writing update-channel manifest..."
+Write-Host "[8/8] Writing update-channel manifest..."
 $installerPackage = if ($installerStatus -eq 'built' -and (Test-Path -LiteralPath $installerPath)) {
     $item = Get-Item -LiteralPath $installerPath
     [ordered]@{
@@ -274,6 +345,28 @@ $updateManifest = [ordered]@{
     publishedAtUtc = $builtAtUtc
     minimumWindows = '10'
     requiresWebView2Evergreen = $true
+    components = [ordered]@{
+        piAgent = [ordered]@{
+            bundled = $true
+            version = $piManifest.version
+            releaseTag = $piManifest.release.tag
+            sourceCommit = $piManifest.source.commit
+            releaseUrl = $piManifest.release.url
+            sourceArchiveUrl = $piManifest.sourceArchive.url
+            sourceArchiveSha256 = $piManifest.sourceArchive.sha256
+            upstreamChecksumsUrl = $piManifest.release.checksumsUrl
+            upstreamChecksumsSha256 = $piManifest.release.checksumsSha256
+            runtime = $Runtime
+            archiveSha256 = $piArchive.sha256
+            executableSha256 = $piExecutable.sha256
+            runtimeTreeSha256 = $piArchive.treeSha256
+            license = $piManifest.license.spdx
+            permissionMode = $piManifest.policies.permissionMode
+            autoUpdate = $false
+            startupOffline = $true
+            upstreamAuthenticode = $piExecutable.authenticode
+        }
+    }
     packages = [ordered]@{
         installer = $installerPackage
         portable = [ordered]@{
@@ -283,8 +376,12 @@ $updateManifest = [ordered]@{
         }
     }
 }
-$updateManifest | ConvertTo-Json -Depth 6 |
+$updateManifest | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath $updateManifestPath -Encoding utf8
+
+if (Test-Path -LiteralPath $piRuntimeBuildRoot) {
+    Remove-Item -LiteralPath (Assert-ChildPath -Path $piRuntimeBuildRoot -Parent $artifactsRoot) -Recurse -Force
+}
 
 [pscustomobject]@{
     Product = 'JARVIS Night Shell'
@@ -294,5 +391,7 @@ $updateManifest | ConvertTo-Json -Depth 6 |
     PortableZip = $zipPath
     Installer = $installerStatus
     UpdateManifest = $updateManifestPath
+    PiAgentVersion = $piManifest.version
+    PiAgentExecutableSha256 = $piExecutable.sha256
     ExecutableSha256 = (Get-FileHash -LiteralPath $hostExecutable -Algorithm SHA256).Hash
 } | ConvertTo-Json -Depth 3

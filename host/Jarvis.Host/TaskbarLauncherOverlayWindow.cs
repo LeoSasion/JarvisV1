@@ -1,11 +1,10 @@
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
-using System.Windows.Media.Imaging;
+using Jarvis.Host.Infrastructure;
 using Jarvis.Host.Services;
 
 namespace Jarvis.Host;
@@ -90,41 +89,6 @@ internal abstract class TaskbarOverlayWindow : Window
             : SetWindowLong32(window, index, newValue);
 }
 
-internal sealed class TaskbarLauncherOverlayWindow : TaskbarOverlayWindow
-{
-    public TaskbarLauncherOverlayWindow(string imagePath)
-        : base("JARVIS Taskbar Launcher Overlay", CreateImage(imagePath))
-    {
-    }
-
-    private static UIElement CreateImage(string imagePath)
-    {
-        if (!File.Exists(imagePath))
-        {
-            throw new FileNotFoundException("The taskbar launcher asset is missing.", imagePath);
-        }
-
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.UriSource = new Uri(imagePath, UriKind.Absolute);
-        bitmap.EndInit();
-        bitmap.Freeze();
-
-        var image = new Image
-        {
-            Source = bitmap,
-            Stretch = Stretch.Uniform,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            SnapsToDevicePixels = true,
-            IsHitTestVisible = false,
-        };
-        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
-        return image;
-    }
-}
-
 internal sealed class TaskbarEdgeOverlayWindow : TaskbarOverlayWindow
 {
     public TaskbarEdgeOverlayWindow()
@@ -134,7 +98,11 @@ internal sealed class TaskbarEdgeOverlayWindow : TaskbarOverlayWindow
 
     private static UIElement CreateEdge()
     {
-        var brush = new SolidColorBrush(Color.FromArgb(235, 36, 151, 214));
+        var brush = new SolidColorBrush(Color.FromArgb(
+            176,
+            NativeVisualPalette.AccentColor.R,
+            NativeVisualPalette.AccentColor.G,
+            NativeVisualPalette.AccentColor.B));
         brush.Freeze();
 
         return new Border
@@ -147,10 +115,10 @@ internal sealed class TaskbarEdgeOverlayWindow : TaskbarOverlayWindow
             IsHitTestVisible = false,
             Effect = new DropShadowEffect
             {
-                BlurRadius = 6,
-                Color = Color.FromRgb(34, 207, 255),
+                BlurRadius = 4,
+                Color = NativeVisualPalette.AccentColor,
                 Direction = 0,
-                Opacity = 0.82,
+                Opacity = 0.56,
                 ShadowDepth = 0,
             },
         };

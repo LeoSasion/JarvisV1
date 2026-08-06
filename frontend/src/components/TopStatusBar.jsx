@@ -5,9 +5,11 @@ import {
   SearchRegular,
   Speaker2Regular,
   SpeakerOffRegular,
+  StopRegular,
   Wifi4Regular,
 } from "@fluentui/react-icons";
 import { usePlatformClock, useTrayStatus } from "../hooks/usePlatformData.js";
+import { AgentGlyph, JarvisMark } from "./VectorMarks.jsx";
 
 function TopCluster({ className = "", children, as = "div", ...props }) {
   const Tag = as;
@@ -18,7 +20,13 @@ function TopCluster({ className = "", children, as = "div", ...props }) {
   );
 }
 
-export function TopStatusBar({ onOpenCommand, onPower }) {
+export function TopStatusBar({
+  onOpenCommand,
+  onOpenAgent,
+  onAbortAgent,
+  agentState,
+  onPower,
+}) {
   const clock = usePlatformClock();
   const tray = useTrayStatus();
   const AudioIcon = tray.audio.muted ? SpeakerOffRegular : Speaker2Regular;
@@ -29,54 +37,75 @@ export function TopStatusBar({ onOpenCommand, onPower }) {
   const powerLabel = tray.power.batteryPresent
     ? `${Math.round(tray.power.percentage ?? 0)}%`
     : tray.power.acConnected ? "AC" : "POWER";
+  const agentStatus = agentState?.status ?? "unavailable";
+  const agentRunning = agentStatus === "running" || agentStatus === "starting";
+  const agentReady = Boolean(agentState?.available && agentStatus === "ready");
+  const agentStatusLabel = agentRunning
+    ? "PROCESSING"
+    : agentReady
+      ? "READY"
+      : "OFFLINE";
+  const commandBusLabel = agentState?.available
+    ? agentState?.connected ? "PROVIDER CONNECTED" : "LOCAL RUNTIME READY"
+    : "RUNTIME UNAVAILABLE";
 
   return (
     <header className="topbar hud-chassis" aria-label="JARVIS global status">
-      <TopCluster className="brand-cluster">
-        <img src="/assets/jarvis-top-brand-core-v1.png" alt="" className="brand-orb" />
-        <span className="brand-name">JARVIS</span>
-        <span className="brand-edition">NIGHT SHELL</span>
-      </TopCluster>
+      <div className="topbar__zone topbar__identity">
+        <TopCluster className="brand-cluster">
+          <JarvisMark className="brand-orb" />
+          <span className="brand-name">JARVIS</span>
+          <span className="brand-edition">LOCAL VISUAL FRAME</span>
+        </TopCluster>
+        <TopCluster
+          as="button"
+          type="button"
+          className="mic-cluster"
+          onClick={onOpenCommand}
+          title="Open local quick search"
+        >
+          <SearchRegular />
+          <span>LOCAL SEARCH</span>
+        </TopCluster>
+      </div>
 
-      <TopCluster
-        as="button"
-        type="button"
-        className="mic-cluster"
-        onClick={onOpenCommand}
-        title="Open local quick search"
-      >
-        <SearchRegular />
-        <span>LOCAL SEARCH</span>
-      </TopCluster>
+      <div className={`topbar__zone topbar__command-bus is-${agentStatus}`}>
+        <TopCluster className={`secure-cluster is-${agentStatus}`} title={agentStatusLabel} role="status">
+          <span>COMMAND BUS</span>
+          <strong>{commandBusLabel}</strong>
+        </TopCluster>
+        <TopCluster as="button" type="button" className="agent-cluster" onClick={onOpenAgent}>
+          <AgentGlyph className="agent-status-orb" state={agentRunning ? "working" : agentReady ? "ready" : "offline"} />
+          <span className="status-copy">
+            <strong>PI AGENT</strong>
+            <small>{agentStatusLabel}</small>
+          </span>
+        </TopCluster>
+        <TopCluster
+          as="button"
+          type="button"
+          className="stop-cluster"
+          disabled={!agentRunning}
+          onClick={() => { void onAbortAgent().catch(() => {}); }}
+          title={agentRunning ? "Stop active Agent response" : "No active Agent response"}
+        >
+          <span className="stop-token" aria-hidden="true"><StopRegular /></span>
+          <span>STOP</span>
+        </TopCluster>
+      </div>
 
-      <TopCluster className="secure-cluster" title="No remote agent is connected" role="status">
-        <span>AGENT NOT CONNECTED</span>
-      </TopCluster>
-
-      <TopCluster as="button" type="button" className="agent-cluster" onClick={onOpenCommand}>
-        <img src="/assets/jarvis-top-agent-ready-core-v1.png" alt="" className="agent-status-orb" />
-        <span className="status-copy">
-          <strong>LOCAL COMMAND</strong>
-          <small>Search apps, files and settings</small>
-        </span>
-      </TopCluster>
-
-      <TopCluster as="button" type="button" className="stop-cluster" disabled title="No active task">
-        <span className="stop-token" aria-hidden="true">7</span>
-        <span>STOP AGENT</span>
-      </TopCluster>
-
-      <TopCluster className="date-cluster">
-        <span>{clock.longDate}</span>
-      </TopCluster>
-
-      <TopCluster className="system-cluster">
-        <time dateTime={clock.dateTime}>{clock.time}</time>
-        <Wifi4Regular title={tray.network.available ? `Connected · ${tray.network.interfaceName ?? "Windows network"}` : "Network unavailable"} />
-        <AudioIcon title={`Audio ${audioLabel}`} />
-        <span className="battery-copy"><PowerIcon /> {powerLabel}</span>
-        <button type="button" onClick={onPower} aria-label="Power options"><PowerRegular /></button>
-      </TopCluster>
+      <div className="topbar__zone topbar__system">
+        <TopCluster className="date-cluster">
+          <span>{clock.longDate}</span>
+        </TopCluster>
+        <TopCluster className="system-cluster">
+          <time dateTime={clock.dateTime}>{clock.time}</time>
+          <Wifi4Regular title={tray.network.available ? `Connected · ${tray.network.interfaceName ?? "Windows network"}` : "Network unavailable"} />
+          <AudioIcon title={`Audio ${audioLabel}`} />
+          <span className="battery-copy"><PowerIcon /> {powerLabel}</span>
+          <button type="button" onClick={onPower} aria-label="Power options"><PowerRegular /></button>
+        </TopCluster>
+      </div>
     </header>
   );
 }

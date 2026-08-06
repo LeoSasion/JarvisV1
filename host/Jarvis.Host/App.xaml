@@ -2,5 +2,22 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
-  <Application.Resources />
+  <Application.Resources>
+    <Color x:Key="NativeShellBackgroundColor">#000000</Color>
+    <Color x:Key="NativeShellInkColor">#F5F1E9</Color>
+    <Color x:Key="NativeShellMutedColor">#837D75</Color>
+    <Color x:Key="NativeShellStructureColor">#4A4540</Color>
+    <Color x:Key="NativeShellAccentColor">#FF6A00</Color>
+
+    <SolidColorBrush x:Key="NativeShellBackgroundBrush"
+                     Color="{StaticResource NativeShellBackgroundColor}" />
+    <SolidColorBrush x:Key="NativeShellInkBrush"
+                     Color="{StaticResource NativeShellInkColor}" />
+    <SolidColorBrush x:Key="NativeShellMutedBrush"
+                     Color="{StaticResource NativeShellMutedColor}" />
+    <SolidColorBrush x:Key="NativeShellStructureBrush"
+                     Color="{StaticResource NativeShellStructureColor}" />
+    <SolidColorBrush x:Key="NativeShellAccentBrush"
+                     Color="{StaticResource NativeShellAccentColor}" />
+  </Application.Resources>
 </Application>

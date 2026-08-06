@@ -9,7 +9,7 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         Topmost="True"
-        Background="#01070D"
+        Background="{StaticResource NativeShellBackgroundBrush}"
         Opacity="0"
         IsHitTestVisible="False"
         SourceInitialized="OnSourceInitialized"
@@ -20,14 +20,14 @@
     <wv2:WebView2 x:Name="WebView"
                   HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch"
-                  DefaultBackgroundColor="#01070D" />
+                  DefaultBackgroundColor="#000000" />
 
     <Border x:Name="LoadingOverlay"
-            Background="#01070D"
+            Background="{StaticResource NativeShellBackgroundBrush}"
             IsHitTestVisible="False">
       <TextBlock x:Name="StatusText"
                  Text="INITIALIZING TASKBAR"
-                 Foreground="#79C7FF"
+                 Foreground="{StaticResource NativeShellMutedBrush}"
                  FontFamily="Consolas"
                  FontSize="11"
                  HorizontalAlignment="Center"

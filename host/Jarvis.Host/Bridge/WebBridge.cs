@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Jarvis.Host.Agents;
 using Jarvis.Host.Infrastructure;
 using Jarvis.Host.Services;
 using Microsoft.Web.WebView2.Core;
@@ -32,6 +33,7 @@ internal sealed class WebBridge : IDisposable
     private readonly SystemFeedService _systemFeedService;
     private readonly RuntimeDiagnosticsService _runtimeDiagnosticsService;
     private readonly SystemSessionActionService? _systemSessionActionService;
+    private readonly AgentCoordinator? _agentCoordinator;
     private readonly WindowsNotificationHistoryService _notificationHistoryService = new();
     private readonly DesktopClipboardService _clipboardService = new();
     private readonly Action _requestExit;
@@ -68,7 +70,8 @@ internal sealed class WebBridge : IDisposable
         Action<TaskbarFlyoutRequest>? showTaskbarFlyout = null,
         Action? hideTaskbarFlyout = null,
         bool terminalEnabled = true,
-        SystemSessionActionService? systemSessionActionService = null)
+        SystemSessionActionService? systemSessionActionService = null,
+        AgentCoordinator? agentCoordinator = null)
     {
         _webView = webView;
         _dispatcher = dispatcher;
@@ -84,6 +87,7 @@ internal sealed class WebBridge : IDisposable
         _systemFeedService = systemFeedService;
         _runtimeDiagnosticsService = runtimeDiagnosticsService;
         _systemSessionActionService = systemSessionActionService;
+        _agentCoordinator = agentCoordinator;
         _requestExit = requestExit;
         _showDesktop = showDesktop;
         _showTaskbarFlyout = showTaskbarFlyout;
@@ -107,6 +111,11 @@ internal sealed class WebBridge : IDisposable
         _trayStatusService.SnapshotChanged += OnTraySnapshotChanged;
         _systemFeedService.SnapshotChanged += OnSystemFeedChanged;
         _fileTransferCoordinator.TransferChanged += OnFileTransferChanged;
+        if (_agentCoordinator is not null)
+        {
+            _agentCoordinator.StateChanged += OnAgentStateChanged;
+            _agentCoordinator.EventReceived += OnAgentEventReceived;
+        }
         if (_terminalEnabled)
         {
             _terminalSessionService.OutputReceived += OnTerminalOutputReceived;
@@ -152,6 +161,14 @@ internal sealed class WebBridge : IDisposable
             @event = "desktop.entriesChanged",
             data = _desktopService.ListEntries()
         });
+        if (_agentCoordinator is not null)
+        {
+            Post(new
+            {
+                @event = "agent.stateChanged",
+                data = _agentCoordinator.GetStateSnapshot()
+            });
+        }
 
         return Task.CompletedTask;
     }
@@ -226,6 +243,11 @@ internal sealed class WebBridge : IDisposable
         JsonElement parameters,
         CancellationToken cancellationToken)
     {
+        if (method.StartsWith("agent.", StringComparison.Ordinal))
+        {
+            return await DispatchAgentAsync(method, parameters, cancellationToken);
+        }
+
         if (!_terminalEnabled && method.StartsWith("terminal.", StringComparison.Ordinal))
         {
             throw new BridgeFaultException(
@@ -364,6 +386,34 @@ internal sealed class WebBridge : IDisposable
             "lifecycle.exitToWindows" => new { exiting = true },
             "lifecycle.showDesktop" => ShowDesktop(GetRequestedPanel(parameters)),
             _ => throw new BridgeFaultException("METHOD_NOT_FOUND", $"Unknown bridge method: {method}")
+        };
+    }
+
+    private async Task<object> DispatchAgentAsync(
+        string method,
+        JsonElement parameters,
+        CancellationToken cancellationToken)
+    {
+        if (_agentCoordinator is null)
+        {
+            throw new BridgeFaultException(
+                "METHOD_NOT_AVAILABLE",
+                "Agent commands are available only on the JARVIS desktop surface.");
+        }
+
+        return method switch
+        {
+            "agent.getState" => await _agentCoordinator.GetStateAsync(cancellationToken),
+            "agent.getMessages" => await _agentCoordinator.GetMessagesAsync(cancellationToken),
+            "agent.prompt" => await _agentCoordinator.PromptAsync(
+                GetRequiredAgentMessage(parameters),
+                GetRequiredClientMessageId(parameters),
+                cancellationToken),
+            "agent.abort" => await _agentCoordinator.AbortAsync(cancellationToken),
+            "agent.newSession" => await _agentCoordinator.NewSessionAsync(cancellationToken),
+            _ => throw new BridgeFaultException(
+                "METHOD_NOT_FOUND",
+                $"Unknown bridge method: {method}")
         };
     }
 
@@ -757,6 +807,41 @@ internal sealed class WebBridge : IDisposable
         }
     }
 
+    private void OnAgentStateChanged(AgentStateSnapshot state)
+    {
+        PostAgentEvent("agent.stateChanged", state);
+    }
+
+    private void OnAgentEventReceived(AgentUiEvent value)
+    {
+        PostAgentEvent("agent.event", value);
+    }
+
+    private void PostAgentEvent(string eventName, object data)
+    {
+        if (_disposed || _shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = _dispatcher.BeginInvoke(
+                () =>
+                {
+                    if (!_disposed)
+                    {
+                        Post(new { @event = eventName, data });
+                    }
+                },
+                DispatcherPriority.Background);
+        }
+        catch (InvalidOperationException) when (_disposed || _dispatcher.HasShutdownStarted)
+        {
+            // A closing desktop renderer can reject its final agent event.
+        }
+    }
+
     private void OnTerminalOutputReceived(TerminalOutputChunk chunk)
     {
         if (_disposed || _shutdown.IsCancellationRequested)
@@ -929,6 +1014,54 @@ internal sealed class WebBridge : IDisposable
         }
 
         return valueElement.GetString()!;
+    }
+
+    private static string GetRequiredAgentMessage(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("message", out var messageElement) ||
+            messageElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(messageElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "agent.prompt requires a non-empty params.message string.");
+        }
+
+        var message = messageElement.GetString()!;
+        if (message.Length > 16_384 || message.Contains('\0'))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "agent.prompt params.message exceeds the chat-only input limit.");
+        }
+
+        return message;
+    }
+
+    private static string GetRequiredClientMessageId(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("clientMessageId", out var idElement) ||
+            idElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "agent.prompt requires params.clientMessageId.");
+        }
+
+        var clientMessageId = idElement.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(clientMessageId) ||
+            clientMessageId.Length > 128 ||
+            clientMessageId.Any(character =>
+                !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':')))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "agent.prompt params.clientMessageId is malformed.");
+        }
+
+        return clientMessageId;
     }
 
     private static string? GetOptionalTerminalProfile(JsonElement parameters)
@@ -1450,6 +1583,11 @@ internal sealed class WebBridge : IDisposable
             _trayStatusService.SnapshotChanged -= OnTraySnapshotChanged;
             _systemFeedService.SnapshotChanged -= OnSystemFeedChanged;
             _fileTransferCoordinator.TransferChanged -= OnFileTransferChanged;
+            if (_agentCoordinator is not null)
+            {
+                _agentCoordinator.StateChanged -= OnAgentStateChanged;
+                _agentCoordinator.EventReceived -= OnAgentEventReceived;
+            }
             if (_terminalEnabled)
             {
                 _terminalSessionService.OutputReceived -= OnTerminalOutputReceived;

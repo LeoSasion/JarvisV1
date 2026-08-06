@@ -1,11 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getLatestAgentRelationMessage } from "./agent-context-model.js";
 import { CommandOverlay } from "./components/CommandOverlay.jsx";
 import { CoreStage } from "./components/CoreStage.jsx";
 import { DesktopShortcuts } from "./components/DesktopShortcuts.jsx";
 import { ManagedWorkspaceWindow } from "./components/ManagedWorkspaceWindow.jsx";
+import { LinkedSystemRail } from "./components/LinkedSystemRail.jsx";
+import { LinkedWorkspaceRoutes } from "./components/LinkedWorkspaceRoutes.jsx";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { TelemetryRail } from "./components/TelemetryRail.jsx";
 import { TopStatusBar } from "./components/TopStatusBar.jsx";
+import { AgentGlyph, JarvisMark } from "./components/VectorMarks.jsx";
+import { useAgentSession } from "./hooks/useAgentSession.js";
 import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
 import { platform } from "./platform/index.js";
 import { isQuickSearchToggleShortcut } from "./quick-search.js";
@@ -15,9 +20,16 @@ import {
   planInternalShowDesktopToggle,
 } from "./show-desktop-model.js";
 import { subscribeWorkspaceCommands } from "./workspace-runtime-channel.js";
+import {
+  getLinkedWorkspaceVariant,
+  getWorkspaceLayoutMode,
+  isDockedWindow,
+} from "./workspace-layout-mode.js";
 
 const FileExplorerWindow = lazy(() => import("./components/FileExplorerWindow.jsx")
   .then((module) => ({ default: module.FileExplorerWindow })));
+const AgentConversationWindow = lazy(() => import("./components/AgentConversationWindow.jsx")
+  .then((module) => ({ default: module.AgentConversationWindow })));
 const ShellPanelLayer = lazy(() => import("./components/ShellPanels.jsx")
   .then((module) => ({ default: module.ShellPanelLayer })));
 const TerminalWorkbench = lazy(() => import("./components/TerminalWorkbench.jsx")
@@ -41,16 +53,30 @@ export function App() {
     toggleFromTaskbar: toggleWorkspaceWindowFromTaskbar,
     commitBounds: commitWorkspaceWindowBounds,
     cycle: cycleWorkspaceWindows,
-  } = useWorkspaceManager({ bottomInset: hasExternalTaskbar ? 90 : 128 });
+  } = useWorkspaceManager();
+  const agentSession = useAgentSession();
   const [selectedShortcut, setSelectedShortcut] = useState(null);
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [shellPanel, setShellPanel] = useState(null);
   const [explorerRequest, setExplorerRequest] = useState({ path: null, sequence: 0 });
+  const [explorerSelection, setExplorerSelection] = useState([]);
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
   const [toast, setToast] = useState("");
   const showDesktopRestoreIdsRef = useRef([]);
+  const workspaceLayoutMode = getWorkspaceLayoutMode(workspaceState.windows);
+  const linkedWorkspaceVariant = workspaceLayoutMode === "explorer-agent-linked"
+    ? getLinkedWorkspaceVariant(workspaceState.viewport)
+    : null;
+  const linkedAgentMessage = useMemo(
+    () => getLatestAgentRelationMessage(agentSession.messages, agentSession.context),
+    [agentSession.context, agentSession.messages],
+  );
+  const handleToggleWorkspaceMaximize = useCallback((id) => {
+    if (isDockedWindow(id, workspaceLayoutMode)) return;
+    toggleMaximizeWorkspaceWindow(id);
+  }, [toggleMaximizeWorkspaceWindow, workspaceLayoutMode]);
 
   const showToast = useCallback((message) => setToast(message), []);
   const finishBoot = useCallback(() => setBootActive(false), []);
@@ -114,6 +140,42 @@ export function App() {
     setCommandOpen(true);
   }, [hideTaskbarFlyout]);
 
+  const openAgent = useCallback(async () => {
+    await hideTaskbarFlyout();
+    setCommandOpen(false);
+    setShellPanel(null);
+    setActiveApp("jarvis:launcher");
+    openWorkspaceWindow("agent");
+  }, [hideTaskbarFlyout, openWorkspaceWindow]);
+
+  const toggleAgentFromTaskbar = useCallback(async () => {
+    await hideTaskbarFlyout();
+    setCommandOpen(false);
+    setShellPanel(null);
+    setActiveApp("jarvis:launcher");
+    toggleWorkspaceWindowFromTaskbar("agent");
+  }, [hideTaskbarFlyout, toggleWorkspaceWindowFromTaskbar]);
+
+  const linkExplorerSelectionToAgent = useCallback(async (entries) => {
+    const stagedItems = agentSession.addContextItems(entries);
+    if (!stagedItems.length) {
+      showToast("Select an Explorer item before linking Pi Agent");
+      return;
+    }
+    await openAgent();
+    showToast(`${stagedItems.length} Explorer reference${stagedItems.length === 1 ? "" : "s"} linked to Pi Agent`);
+  }, [agentSession.addContextItems, openAgent, showToast]);
+
+  const clearLinkedAgentContext = useCallback(() => {
+    if (agentSession.clearContext()) showToast("Explorer reference unlinked from Pi Agent");
+  }, [agentSession.clearContext, showToast]);
+
+  const reuseLinkedAgentResult = useCallback(() => {
+    agentSession.setDraft((current) => current.trim()
+      ? current
+      : "Refine the completed response into a concise, actionable next step.");
+  }, [agentSession.setDraft]);
+
   useEffect(() => {
     if (!toast) return undefined;
     const timer = window.setTimeout(() => setToast(""), 2600);
@@ -142,7 +204,7 @@ export function App() {
         minimizeWorkspaceWindow(activeWindowId);
       } else if (event.key === "F10") {
         event.preventDefault();
-        toggleMaximizeWorkspaceWindow(activeWindowId);
+        handleToggleWorkspaceMaximize(activeWindowId);
       }
     };
     window.addEventListener("keydown", handleShortcut);
@@ -151,7 +213,7 @@ export function App() {
     closeWorkspaceWindow,
     cycleWorkspaceWindows,
     minimizeWorkspaceWindow,
-    toggleMaximizeWorkspaceWindow,
+    handleToggleWorkspaceMaximize,
     workspaceState.activeId,
   ]);
 
@@ -192,6 +254,10 @@ export function App() {
         openTerminal();
         return;
       }
+      if (panel === "agent") {
+        void openAgent();
+        return;
+      }
       if (["start", "quick-settings", "date-time", "notifications", "session", "settings"].includes(panel)) {
         setCommandOpen(false);
         setShellPanel(panel);
@@ -204,7 +270,7 @@ export function App() {
       window.removeEventListener("jarvis:open-shell-panel", handleOpenPanel);
       window.removeEventListener("jarvis:open-command", handleOpenCommand);
     };
-  }, [openExplorer, openTerminal]);
+  }, [openAgent, openExplorer, openTerminal]);
 
   const openShortcut = useCallback(async (shortcut) => {
     const label = shortcut.label ?? shortcut.name;
@@ -465,11 +531,35 @@ export function App() {
     showToast,
   ]);
 
+  const hasVisibleWorkspaceWindow = Object.values(workspaceState.windows)
+    .some((windowState) => windowState.open && !windowState.minimized);
+  const workspaceAvailableWidth = Math.max(
+    1,
+    workspaceState.viewport.width - workspaceState.viewport.left - workspaceState.viewport.right,
+  );
+
   return (
-    <main className={`jarvis-shell is-mic-muted ${hasExternalTaskbar ? "has-external-taskbar" : ""}`}>
+    <main className={[
+      "jarvis-shell",
+      "is-mic-muted",
+      hasExternalTaskbar ? "has-external-taskbar" : "",
+      hasVisibleWorkspaceWindow ? "has-open-window" : "",
+      `is-layout-${workspaceLayoutMode}`,
+      linkedWorkspaceVariant ? `is-linked-${linkedWorkspaceVariant}` : "",
+    ].filter(Boolean).join(" ")}
+    style={{
+      "--workspace-top-inset": `${workspaceState.viewport.top}px`,
+      "--workspace-right-inset": `${workspaceState.viewport.right}px`,
+      "--workspace-bottom-inset": `${workspaceState.viewport.bottom}px`,
+      "--workspace-left-inset": `${workspaceState.viewport.left}px`,
+      "--workspace-available-width": `${workspaceAvailableWidth}px`,
+    }}>
       <div className="ambient-field" aria-hidden="true" />
       <TopStatusBar
         onOpenCommand={openCommand}
+        onOpenAgent={openAgent}
+        onAbortAgent={agentSession.abort}
+        agentState={agentSession.state}
         onPower={openSessionPanel}
       />
 
@@ -483,8 +573,12 @@ export function App() {
           onOpenSettings={openDesktopSettings}
           onNotify={showToast}
         />
-        <CoreStage listening={false} onActivate={openCommand} />
+        <CoreStage
+          listening={agentSession.state.status === "running"}
+          onActivate={openAgent}
+        />
         <TelemetryRail
+          agentState={agentSession.state}
           onInspect={inspect}
           onNotification={handleNotification}
         />
@@ -496,15 +590,56 @@ export function App() {
         </Suspense>
       ) : null}
 
+      {workspaceState.windows.agent.open ? (
+        <ManagedWorkspaceWindow
+          id="agent"
+          windowState={workspaceState.windows.agent}
+          viewport={workspaceState.viewport}
+          active={workspaceState.activeId === "agent"}
+          layoutMode={workspaceLayoutMode}
+          onActivate={activateWorkspaceWindow}
+          onCommitBounds={commitWorkspaceWindowBounds}
+          onToggleMaximize={handleToggleWorkspaceMaximize}
+        >
+          <Suspense fallback={null}>
+            <AgentConversationWindow
+              open
+              active={workspaceState.activeId === "agent" && !workspaceState.windows.agent.minimized}
+              maximized={workspaceState.windows.agent.maximized && !isDockedWindow("agent", workspaceLayoutMode)}
+              canMaximize={!isDockedWindow("agent", workspaceLayoutMode)}
+              state={agentSession.state}
+              messages={agentSession.messages}
+              historyError={agentSession.historyError}
+              sessionTransitioning={agentSession.sessionTransitioning}
+              draft={agentSession.draft}
+              linkedContext={agentSession.context}
+              linkedFlowPhase={agentSession.context.phase}
+              explorerSelection={explorerSelection}
+              onDraftChange={agentSession.setDraft}
+              onSend={agentSession.send}
+              onAbort={agentSession.abort}
+              onNewSession={agentSession.newSession}
+              onLinkExplorerSelection={linkExplorerSelectionToAgent}
+              onClearLinkedContext={clearLinkedAgentContext}
+              onReuseLinkedResult={reuseLinkedAgentResult}
+              onMinimize={() => minimizeWorkspaceWindow("agent")}
+              onToggleMaximize={() => handleToggleWorkspaceMaximize("agent")}
+              onClose={() => closeWorkspaceWindow("agent")}
+            />
+          </Suspense>
+        </ManagedWorkspaceWindow>
+      ) : null}
+
       {workspaceState.windows.explorer.open ? (
         <ManagedWorkspaceWindow
           id="explorer"
           windowState={workspaceState.windows.explorer}
           viewport={workspaceState.viewport}
           active={workspaceState.activeId === "explorer"}
+          layoutMode={workspaceLayoutMode}
           onActivate={activateWorkspaceWindow}
           onCommitBounds={commitWorkspaceWindowBounds}
-          onToggleMaximize={toggleMaximizeWorkspaceWindow}
+          onToggleMaximize={handleToggleWorkspaceMaximize}
         >
           <Suspense fallback={null}>
             <FileExplorerWindow
@@ -512,9 +647,14 @@ export function App() {
               active={workspaceState.activeId === "explorer" && !workspaceState.windows.explorer.minimized}
               initialPath={explorerRequest.path}
               requestSequence={explorerRequest.sequence}
-              maximized={workspaceState.windows.explorer.maximized}
+              maximized={workspaceState.windows.explorer.maximized && !isDockedWindow("explorer", workspaceLayoutMode)}
+              canMaximize={!isDockedWindow("explorer", workspaceLayoutMode)}
+              linkedContext={agentSession.context}
+              linkedFlowPhase={agentSession.context.phase}
+              onSelectionChange={setExplorerSelection}
+              onAddToAgentContext={linkExplorerSelectionToAgent}
               onMinimize={() => minimizeWorkspaceWindow("explorer")}
-              onToggleMaximize={() => toggleMaximizeWorkspaceWindow("explorer")}
+              onToggleMaximize={() => handleToggleWorkspaceMaximize("explorer")}
               onClose={() => closeWorkspaceWindow("explorer")}
               onToast={showToast}
             />
@@ -528,9 +668,10 @@ export function App() {
           windowState={workspaceState.windows.terminal}
           viewport={workspaceState.viewport}
           active={workspaceState.activeId === "terminal"}
+          layoutMode={workspaceLayoutMode}
           onActivate={activateWorkspaceWindow}
           onCommitBounds={commitWorkspaceWindowBounds}
-          onToggleMaximize={toggleMaximizeWorkspaceWindow}
+          onToggleMaximize={handleToggleWorkspaceMaximize}
         >
           <Suspense fallback={null}>
             <TerminalWorkbench
@@ -553,9 +694,10 @@ export function App() {
           windowState={workspaceState.windows.inspector}
           viewport={workspaceState.viewport}
           active={workspaceState.activeId === "inspector"}
+          layoutMode={workspaceLayoutMode}
           onActivate={activateWorkspaceWindow}
           onCommitBounds={commitWorkspaceWindowBounds}
-          onToggleMaximize={toggleMaximizeWorkspaceWindow}
+          onToggleMaximize={handleToggleWorkspaceMaximize}
         >
           <Suspense fallback={null}>
             <SystemInspector
@@ -572,12 +714,30 @@ export function App() {
         </ManagedWorkspaceWindow>
       ) : null}
 
+      {workspaceLayoutMode === "explorer-agent-linked" ? (
+        <>
+          <LinkedWorkspaceRoutes
+            phase={agentSession.context.phase}
+            relationId={agentSession.context.relationId}
+            targetKey={linkedAgentMessage?.id ?? null}
+            layoutVariant={linkedWorkspaceVariant}
+          />
+          <LinkedSystemRail
+            agentState={agentSession.state}
+            onInspect={inspect}
+            onNotification={handleNotification}
+          />
+        </>
+      ) : null}
+
       {!hasExternalTaskbar && (
         <Taskbar
           activeApp={activeApp}
           internalWindows={internalTaskbarWindows}
           onAppClick={handleAppClick}
           onOpenCommand={openCommand}
+          onToggleAgent={toggleAgentFromTaskbar}
+          agentState={agentSession.state}
           onOpenStart={() => openShellPanel("start")}
           onOpenQuickSettings={() => openShellPanel("quick-settings")}
           onOpenDateTime={() => openShellPanel("date-time")}
@@ -614,12 +774,12 @@ export function App() {
       ) : null}
 
       <div className={`system-toast ${toast ? "is-visible" : ""}`} role="status" aria-live="polite">
-        <img src="/assets/jarvis-top-agent-ready-core-v1.png" alt="" />
+        <AgentGlyph state="ready" />
         <span>{toast}</span>
       </div>
 
       <div className="desktop-only-notice" role="status">
-        <img src="/assets/jarvis-top-brand-core-v1.png" alt="" />
+        <JarvisMark />
         <strong>JARVIS NIGHT SHELL</strong>
         <span>Desktop viewport required</span>
       </div>

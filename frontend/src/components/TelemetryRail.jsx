@@ -7,6 +7,7 @@ import { useSystemFeed, useSystemSnapshot } from "../hooks/usePlatformData.js";
 import { HudPanel } from "./HudPanel.jsx";
 import { SparklineCanvas } from "./SparklineCanvas.jsx";
 import { WaveformCanvas } from "./WaveformCanvas.jsx";
+import { CoreNodeGlyph } from "./VectorMarks.jsx";
 
 function SegmentBar({ active = 10 }) {
   return (
@@ -42,22 +43,32 @@ function formatFeedTime(timestamp) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function TelemetryRail({ onInspect, onNotification }) {
+function getAgentStatusCopy(state) {
+  if (!state?.available) return { label: "AGENT OFFLINE", active: false };
+  if (state.status === "running" || state.status === "starting") {
+    return { label: "AGENT ACTIVE", active: true };
+  }
+  if (state.status === "error") return { label: "AGENT DEGRADED", active: false };
+  return { label: state.connected ? "AGENT CONNECTED" : "AGENT READY", active: false };
+}
+
+export function TelemetryRail({ agentState, onInspect, onNotification }) {
   const { processes, resources } = useSystemSnapshot();
   const feed = useSystemFeed();
   const visibleEvents = feed.items.slice(0, 3);
   const hasWarning = feed.items.some((item) => item.severity === "warning" || item.severity === "error");
+  const agentStatus = getAgentStatusCopy(agentState);
 
   return (
     <aside className="telemetry-rail" aria-label="System telemetry">
       <HudPanel title="JARVIS CORE" className="core-status-panel">
         <div className="core-status">
-          <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
+          <CoreNodeGlyph active={agentStatus.active} />
           <div className="core-status__copy">
             <span>CORE STATUS</span>
             <strong>LOCAL</strong>
-            <small>AGENT NOT CONNECTED</small>
-            <div className="core-wave"><WaveformCanvas active={false} compact /></div>
+            <small>{agentStatus.label}</small>
+            <div className="core-wave"><WaveformCanvas active={agentStatus.active} compact /></div>
           </div>
         </div>
       </HudPanel>

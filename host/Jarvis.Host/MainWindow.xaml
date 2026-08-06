@@ -7,7 +7,7 @@
         ResizeMode="NoResize"
         WindowStartupLocation="Manual"
         ShowInTaskbar="False"
-        Background="#020711"
+        Background="{StaticResource NativeShellBackgroundBrush}"
         AllowDrop="True"
         PreviewDragOver="OnPreviewDragOver"
         PreviewDrop="OnPreviewDrop"
@@ -20,15 +20,15 @@
     <wv2:WebView2 x:Name="WebView"
                   HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch"
-                  DefaultBackgroundColor="#020711" />
+                  DefaultBackgroundColor="#000000" />
 
     <Border x:Name="LoadingOverlay"
-            Background="#020711"
+            Background="{StaticResource NativeShellBackgroundBrush}"
             IsHitTestVisible="False">
       <StackPanel HorizontalAlignment="Center"
                   VerticalAlignment="Center">
         <TextBlock Text="J A R V I S"
-                   Foreground="#79C7FF"
+                   Foreground="{StaticResource NativeShellInkBrush}"
                    FontFamily="Segoe UI Light"
                    FontSize="34"
                    FontWeight="Light"
@@ -36,7 +36,7 @@
         <TextBlock x:Name="StatusText"
                    Text="INITIALIZING NATIVE HOST"
                    Margin="0,18,0,0"
-                   Foreground="#6C88A8"
+                   Foreground="{StaticResource NativeShellMutedBrush}"
                    FontFamily="Consolas"
                    FontSize="12"
                    HorizontalAlignment="Center" />

@@ -22,6 +22,7 @@ import {
   HomeRegular,
   ImageRegular,
   ListRegular,
+  LinkRegular,
   MoreHorizontalRegular,
   MusicNote2Regular,
   OpenRegular,
@@ -41,6 +42,7 @@ import {
 import { platform } from "../platform/index.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { ExplorerContextMenu } from "./ExplorerContextMenu.jsx";
+import { CoreNodeGlyph } from "./VectorMarks.jsx";
 import {
   canReplaceAllConflicts,
   getTransferSummary,
@@ -216,6 +218,31 @@ function formatModified(value) {
 function getDriveUsage(drive) {
   if (!drive.totalBytes) return 0;
   return Math.min(100, Math.max(0, ((drive.totalBytes - drive.freeBytes) / drive.totalBytes) * 100));
+}
+
+function ExplorerDriveStrip({ currentPath, drives, onNavigate }) {
+  if (!drives.length) return null;
+
+  return (
+    <nav className="explorer-drive-strip" aria-label="Storage volumes">
+      {drives.map((drive) => {
+        const usage = getDriveUsage(drive);
+        const active = currentPath.toLocaleLowerCase().startsWith(drive.path.toLocaleLowerCase());
+        return (
+          <button
+            key={drive.id}
+            type="button"
+            className={active ? "is-active" : ""}
+            onClick={() => onNavigate(drive.path)}
+          >
+            <span><HardDriveRegular aria-hidden="true" /><strong>{drive.label}</strong></span>
+            <i aria-hidden="true"><b style={{ "--drive-usage": `${usage}%` }} /></i>
+            <small>{formatFileSize(drive.freeBytes)} FREE / {formatFileSize(drive.totalBytes)}</small>
+          </button>
+        );
+      })}
+    </nav>
+  );
 }
 
 function EntryIcon({ kind }) {
@@ -397,6 +424,11 @@ export function FileExplorerWindow({
   initialPath,
   requestSequence,
   maximized,
+  canMaximize = true,
+  linkedContext = null,
+  linkedFlowPhase = "empty",
+  onSelectionChange,
+  onAddToAgentContext,
   onClose,
   onMinimize,
   onToggleMaximize,
@@ -670,6 +702,34 @@ export function FileExplorerWindow({
     () => selectedEntries.reduce((total, entry) => total + (entry.sizeBytes ?? 0), 0),
     [selectedEntries],
   );
+  const agentContextSelection = useMemo(
+    () => selectedEntries.map((entry) => ({
+      id: entry.path,
+      path: entry.path,
+      name: entry.name,
+      kind: entry.kind,
+      typeLabel: entry.typeLabel,
+      sizeBytes: entry.sizeBytes,
+      modified: entry.modified,
+      isDirectory: entry.isDirectory,
+      isLinked: entry.isLinked,
+    })),
+    [selectedEntries],
+  );
+  const linkedPathSet = useMemo(
+    () => new Set((linkedContext?.items ?? []).map((entry) => entry.path.toLocaleLowerCase())),
+    [linkedContext?.items],
+  );
+  const linkedRelationId = linkedContext?.relationId ?? null;
+  const linkedOriginLabel = linkedContext?.items?.length === 1
+    ? linkedContext.items[0].name
+    : linkedContext?.items?.length
+      ? `${linkedContext.items.length} LINKED SOURCES`
+      : null;
+
+  useEffect(() => {
+    onSelectionChange?.(agentContextSelection);
+  }, [agentContextSelection, onSelectionChange]);
   const transferActive = Boolean(transfer && !isTransferTerminal(transfer.status));
   const canPaste = Boolean(
     clipboard?.paths.length &&
@@ -1398,6 +1458,9 @@ export function FileExplorerWindow({
     visibleEntries.length,
     deferredSearch,
   );
+  const currentNodeLabel = snapshot.breadcrumbs.at(-1)?.label
+    ?? snapshot.currentPath
+    ?? "THIS PC";
 
   return (
     <div ref={explorerLayerRef} className="explorer-layer" aria-hidden={false}>
@@ -1405,7 +1468,7 @@ export function FileExplorerWindow({
         <header
           className="explorer-titlebar"
           data-window-drag-handle
-          aria-keyshortcuts="Alt+F4 Alt+F9 Alt+F10"
+          aria-keyshortcuts={canMaximize ? "Alt+F4 Alt+F9 Alt+F10" : "Alt+F4 Alt+F9"}
         >
           <FolderRegular aria-hidden="true" />
           <strong>FILE EXPLORER</strong>
@@ -1414,7 +1477,10 @@ export function FileExplorerWindow({
             <button type="button" aria-label="Minimize JARVIS File Explorer" onClick={onMinimize}>—</button>
             <button
               type="button"
-              aria-label={maximized ? "Restore JARVIS File Explorer" : "Maximize JARVIS File Explorer"}
+              disabled={!canMaximize}
+              aria-label={canMaximize
+                ? maximized ? "Restore JARVIS File Explorer" : "Maximize JARVIS File Explorer"
+                : "Explorer layout is controlled by the workspace"}
               onClick={onToggleMaximize}
             >
               {maximized ? "❐" : "□"}
@@ -1569,6 +1635,11 @@ export function FileExplorerWindow({
           </aside>
 
           <section className={`explorer-files is-${viewMode}`} aria-label="Folder contents">
+            <header className="explorer-workspace-heading">
+              <span>LOCAL STORAGE // CURRENT NODE</span>
+              <h1>{currentNodeLabel}</h1>
+              <small>{searchSummary.label} · SORT {sortKey.toUpperCase()} {sortDirection === "ascending" ? "ASC" : "DESC"}</small>
+            </header>
             {viewMode === "list" ? (
               <div className="explorer-list-heading" aria-label="Sortable file columns">
                 {EXPLORER_SORT_COLUMNS.map((column) => {
@@ -1597,6 +1668,7 @@ export function FileExplorerWindow({
             <div
               ref={fileViewportRef}
               className="explorer-file-viewport"
+              data-linked-scroll-viewport="explorer"
               tabIndex={visibleEntries.length === 0 ? 0 : -1}
               aria-keyshortcuts="Shift+F10"
               onDragOver={allowFileDrop}
@@ -1644,6 +1716,7 @@ export function FileExplorerWindow({
               ) : null}
               {!error ? visibleEntries.map((entry) => {
                 const selected = selectedPathSet.has(entry.path);
+                const agentLinked = linkedPathSet.has(entry.path.toLocaleLowerCase());
                 return (
                   <button
                     key={entry.path}
@@ -1652,7 +1725,12 @@ export function FileExplorerWindow({
                       else entryRefs.current.delete(entry.path);
                     }}
                     type="button"
-                    className={`explorer-entry ${selected ? "is-selected" : ""} ${clipboardPathSet.has(entry.path) ? "is-cut" : ""}`}
+                    className={`explorer-entry ${selected ? "is-selected" : ""} ${agentLinked ? "is-agent-linked" : ""} ${clipboardPathSet.has(entry.path) ? "is-cut" : ""}`}
+                    data-agent-linked-origin={agentLinked ? "true" : undefined}
+                    data-agent-relation-origin={agentLinked && linkedPathSet.size === 1
+                      ? linkedRelationId
+                      : undefined}
+                    data-agent-linked-phase={agentLinked ? linkedFlowPhase : undefined}
                     title={entry.path}
                     aria-pressed={selected}
                     aria-haspopup="menu"
@@ -1743,9 +1821,18 @@ export function FileExplorerWindow({
                 );
               }) : null}
             </div>
+            <ExplorerDriveStrip
+              currentPath={snapshot.currentPath}
+              drives={snapshot.drives}
+              onNavigate={navigate}
+            />
           </section>
 
           <aside className="explorer-inspector" aria-label="Selected item details">
+            <header className="explorer-inspector-heading">
+              <span>INSPECTOR // SELECTED ITEM</span>
+              <i aria-hidden="true" />
+            </header>
             {selectedEntries.length > 1 ? (
               <>
                 <div className="explorer-preview-icon is-multiple"><CopyRegular /></div>
@@ -1757,6 +1844,7 @@ export function FileExplorerWindow({
                   <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
+                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK PI ABOUT SELECTION</button>
                   <button type="button" onClick={() => copySelection("copy")}><CopyRegular />COPY SELECTION</button>
                   <button type="button" onClick={() => copySelection("move")}><CutRegular />CUT SELECTION</button>
                   <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />MOVE TO RECYCLE BIN</button>
@@ -1774,6 +1862,7 @@ export function FileExplorerWindow({
                   <div><dt>LINKED</dt><dd>{selectedEntry.isLinked ? "YES" : "NO"}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
+                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK PI ABOUT THIS</button>
                   <button type="button" onClick={() => openEntry(selectedEntry)}><OpenRegular />{selectedEntry.isDirectory ? "OPEN FOLDER" : "OPEN FILE"}</button>
                   <button type="button" onClick={openRenameDialog}><RenameRegular />RENAME</button>
                   <button type="button" onClick={() => openInWindows(selectedEntry.path)}><FolderRegular />OPEN IN WINDOWS</button>
@@ -1782,13 +1871,54 @@ export function FileExplorerWindow({
               </>
             ) : (
               <div className="explorer-inspector-empty">
-                <img src="/assets/jarvis-right-core-status-v1.png" alt="" />
+                <CoreNodeGlyph />
                 <strong>SELECT AN ITEM</strong>
                 <span>Ctrl/Shift enables multi-selection. File operations remain recoverable where possible.</span>
               </div>
             )}
           </aside>
         </div>
+
+        <section
+          className={`explorer-selection-summary${linkedContext?.items?.length ? " has-agent-context" : ""}`}
+          aria-label="Current Explorer selection summary"
+        >
+          <div className="explorer-selection-summary__identity">
+            <span className={`explorer-selection-summary__icon is-${selectedEntry?.kind ?? "folder"}`}>
+              {selectedEntry ? <EntryIcon kind={selectedEntry.kind} /> : <FolderRegular />}
+            </span>
+            <span>
+              <strong>{selectedEntries.length > 1 ? `${selectedEntries.length} ITEMS` : selectedEntry?.name ?? currentNodeLabel}</strong>
+              <small>{selectedEntries.length > 1 ? "MULTI-SELECTION" : selectedEntry?.typeLabel ?? "CURRENT FOLDER"}</small>
+            </span>
+          </div>
+          <dl>
+            <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath || "THIS PC"}</dd></div>
+            <div><dt>SIZE</dt><dd>{selectedEntries.length ? formatFileSize(selectionSize) : searchSummary.label}</dd></div>
+            <div><dt>MODIFIED</dt><dd>{selectedEntry ? formatModified(selectedEntry.modified) : "—"}</dd></div>
+          </dl>
+          <button
+            type="button"
+            className="explorer-link-agent-action"
+            disabled={agentContextSelection.length === 0}
+            onClick={() => onAddToAgentContext?.(agentContextSelection)}
+          >
+            {linkedRelationId ? (
+              <span
+                className="explorer-linked-origin-port"
+                data-agent-relation-origin={linkedRelationId}
+                aria-hidden="true"
+              />
+            ) : null}
+            <LinkRegular />
+            <span>{linkedContext?.items?.length ? "RELINK PI" : "ASK PI"}</span>
+            <small>{linkedOriginLabel
+              ? `LINKED · ${linkedOriginLabel}`
+              : agentContextSelection.length
+                ? `${agentContextSelection.length} SOURCE${agentContextSelection.length === 1 ? "" : "S"}`
+                : "SELECT ITEM"}</small>
+          </button>
+        </section>
 
         <footer className="explorer-statusbar">
           <span>{searchSummary.label}</span>

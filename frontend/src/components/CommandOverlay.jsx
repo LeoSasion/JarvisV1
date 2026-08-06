@@ -33,6 +33,7 @@ import {
 import { quickLaunchItems, quickSettingItems } from "../quick-search-catalog.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
+import { AgentGlyph } from "./VectorMarks.jsx";
 import { useQuickSearchHistory } from "../hooks/useQuickSearchHistory.js";
 
 function QuickSearchIcon({ result }) {
@@ -194,7 +195,7 @@ export function CommandOverlay({
         aria-busy={busy}
       >
         <header className="command-header">
-          <span><img src="/assets/jarvis-top-agent-ready-core-v1.png" alt="" /> JARVIS SEARCH</span>
+          <span><AgentGlyph state="ready" /> JARVIS SEARCH</span>
           <small>{surfaceLabel}</small>
           <button type="button" onClick={onClose} aria-label="Close quick search" disabled={busy}><DismissRegular /></button>
         </header>
