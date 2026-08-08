@@ -4,9 +4,13 @@ import {
   WORKSPACE_LAYOUT_MODES,
   LINKED_WORKSPACE_VARIANTS,
   getDockedWindowBounds,
+  getLinkedPaneToggleTarget,
   getLinkedWorkspaceVariant,
+  getSystemNoticePlacement,
   getWorkspaceLayoutMode,
+  isCompactLinkedVariant,
   isDockedWindow,
+  isLinkedPaneToggleShortcut,
   isLinkedWindowSuppressed,
 } from "../src/workspace-layout-mode.js";
 
@@ -95,4 +99,43 @@ test("linked breakpoints include workspace insets exactly once", () => {
   assert.equal(getLinkedWorkspaceVariant(viewport(1204)), LINKED_WORKSPACE_VARIANTS.TWO_PANE);
   assert.equal(getLinkedWorkspaceVariant(viewport(943)), LINKED_WORKSPACE_VARIANTS.SINGLE_PANE);
   assert.equal(getLinkedWorkspaceVariant(viewport(944)), LINKED_WORKSPACE_VARIANTS.DRAWER);
+});
+
+test("compact linked variants expose a deterministic pane toggle", () => {
+  assert.equal(isCompactLinkedVariant(LINKED_WORKSPACE_VARIANTS.DRAWER), true);
+  assert.equal(isCompactLinkedVariant(LINKED_WORKSPACE_VARIANTS.SINGLE_PANE), true);
+  assert.equal(isCompactLinkedVariant(LINKED_WORKSPACE_VARIANTS.TWO_PANE), false);
+  assert.equal(getLinkedPaneToggleTarget("explorer", LINKED_WORKSPACE_VARIANTS.DRAWER), "agent");
+  assert.equal(getLinkedPaneToggleTarget("agent", LINKED_WORKSPACE_VARIANTS.SINGLE_PANE), "explorer");
+  assert.equal(getLinkedPaneToggleTarget("explorer", LINKED_WORKSPACE_VARIANTS.TWO_PANE), null);
+});
+
+test("Alt+F8 is the exact linked-pane keyboard toggle", () => {
+  assert.equal(isLinkedPaneToggleShortcut({ key: "F8", altKey: true }), true);
+  assert.equal(isLinkedPaneToggleShortcut({ key: "F8", altKey: true, repeat: true }), false);
+  assert.equal(isLinkedPaneToggleShortcut({ key: "F8", altKey: true, ctrlKey: true }), false);
+  assert.equal(isLinkedPaneToggleShortcut({ key: "F8", altKey: true, shiftKey: true }), false);
+  assert.equal(isLinkedPaneToggleShortcut({ key: "F9", altKey: true }), false);
+});
+
+test("notices avoid taskbar-adjacent controls whenever a workspace surface is active", () => {
+  assert.equal(getSystemNoticePlacement({
+    workspaceMode: WORKSPACE_LAYOUT_MODES.DESKTOP,
+  }), "desktop-bottom-end");
+  assert.equal(getSystemNoticePlacement({
+    workspaceMode: WORKSPACE_LAYOUT_MODES.EXPLORER_AGENT_LINKED,
+    linkedVariant: LINKED_WORKSPACE_VARIANTS.DRAWER,
+    activeId: "explorer",
+    noticeSource: "explorer",
+  }), "workspace-top-start");
+  assert.equal(getSystemNoticePlacement({
+    workspaceMode: WORKSPACE_LAYOUT_MODES.EXPLORER_AGENT_LINKED,
+    linkedVariant: LINKED_WORKSPACE_VARIANTS.SINGLE_PANE,
+    activeId: "explorer",
+    noticeSource: "agent",
+  }), "workspace-top-end");
+  assert.equal(getSystemNoticePlacement({
+    workspaceMode: WORKSPACE_LAYOUT_MODES.FLOATING,
+    shellPanel: "settings",
+  }), "shell-top");
 });

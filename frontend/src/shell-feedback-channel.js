@@ -54,48 +54,86 @@ export function publishShellFeedback(feedback) {
   return true;
 }
 
-export function consumeStoredShellFeedback(storage) {
+function readStoredShellFeedback(storage) {
+  let raw;
   try {
-    const rawValue = storage?.getItem?.(SHELL_FEEDBACK_STORAGE_KEY) ?? null;
-    if (rawValue === null) return null;
-    const feedback = normalizeShellFeedbackPayload(JSON.parse(rawValue));
-    storage.removeItem(SHELL_FEEDBACK_STORAGE_KEY);
-    return feedback;
+    raw = storage?.getItem?.(SHELL_FEEDBACK_STORAGE_KEY) ?? null;
   } catch {
-    try {
-      storage?.removeItem?.(SHELL_FEEDBACK_STORAGE_KEY);
-    } catch {
-      // A blocked storage surface simply cannot provide replay.
-    }
-    return null;
+    return { raw: null, feedback: null };
+  }
+  if (raw === null) return { raw, feedback: null };
+  try {
+    return { raw, feedback: normalizeShellFeedbackPayload(JSON.parse(raw)) };
+  } catch {
+    return { raw, feedback: null };
   }
 }
 
+function acknowledgeStoredShellFeedback(storage, { expectedId = null, expectedRaw = null } = {}) {
+  try {
+    const currentRaw = storage?.getItem?.(SHELL_FEEDBACK_STORAGE_KEY) ?? null;
+    if (currentRaw === null || (expectedRaw !== null && currentRaw !== expectedRaw)) return false;
+    if (expectedId !== null) {
+      const current = normalizeShellFeedbackPayload(JSON.parse(currentRaw));
+      if (current?.id !== expectedId) return false;
+    }
+    storage.removeItem(SHELL_FEEDBACK_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function consumeStoredShellFeedback(storage) {
+  const stored = readStoredShellFeedback(storage);
+  if (stored.raw === null) return null;
+  acknowledgeStoredShellFeedback(storage, {
+    expectedId: stored.feedback?.id ?? null,
+    expectedRaw: stored.raw,
+  });
+  return stored.feedback;
+}
+
 export function subscribeShellFeedback(listener) {
-  let lastId = null;
-  const deliver = (value) => {
-    const feedback = normalizeShellFeedbackPayload(value);
-    if (!feedback || feedback.id === lastId) return;
-    lastId = feedback.id;
+  const deliveredIds = new Set();
+  const deliver = (feedback) => {
+    if (deliveredIds.has(feedback.id)) return;
     listener(feedback);
-  };
-  const handleStorage = (event) => {
-    if (event.key !== SHELL_FEEDBACK_STORAGE_KEY) return;
-    try {
-      deliver(JSON.parse(event.newValue ?? "null"));
-      consumeStoredShellFeedback(window.localStorage);
-    } catch {
-      consumeStoredShellFeedback(window.localStorage);
+    deliveredIds.add(feedback.id);
+    if (deliveredIds.size > 32) {
+      deliveredIds.delete(deliveredIds.values().next().value);
     }
   };
+  const handleStorage = (event) => {
+    if (event.key !== SHELL_FEEDBACK_STORAGE_KEY || event.newValue == null) return;
+    let feedback = null;
+    try {
+      feedback = normalizeShellFeedbackPayload(JSON.parse(event.newValue));
+    } catch {
+      // The bounded payload validator below treats malformed JSON as invalid.
+    }
+    if (feedback) deliver(feedback);
+    acknowledgeStoredShellFeedback(window.localStorage, {
+      expectedId: feedback?.id ?? null,
+      expectedRaw: event.newValue,
+    });
+  };
   const handleLocal = (event) => {
-    deliver(event.detail);
-    consumeStoredShellFeedback(window.localStorage);
+    const feedback = normalizeShellFeedbackPayload(event.detail);
+    if (!feedback) return;
+    deliver(feedback);
+    acknowledgeStoredShellFeedback(window.localStorage, { expectedId: feedback.id });
   };
   window.addEventListener("storage", handleStorage);
   window.addEventListener(localFeedbackEvent, handleLocal);
-  const storedFeedback = consumeStoredShellFeedback(window.localStorage);
-  if (storedFeedback) deliver(storedFeedback);
+  const stored = readStoredShellFeedback(window.localStorage);
+  if (stored.feedback) deliver(stored.feedback);
+  if (stored.raw !== null) {
+    acknowledgeStoredShellFeedback(window.localStorage, {
+      expectedId: stored.feedback?.id ?? null,
+      expectedRaw: stored.raw,
+    });
+  }
   return () => {
     window.removeEventListener("storage", handleStorage);
     window.removeEventListener(localFeedbackEvent, handleLocal);

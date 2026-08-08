@@ -83,6 +83,25 @@ test("quick search spans installed apps, windows, desktop entries, and settings"
   assert.equal(searchQuickIndex(index, "network settings")[0].kind, "setting");
 });
 
+test("help, shortcuts, and recovery resolve to the in-shell help center", () => {
+  const index = createQuickSearchIndex({
+    ...catalog,
+    launchItems: [
+      ...catalog.launchItems,
+      {
+        id: "jarvis-help",
+        label: "JARVIS Help & Shortcuts",
+        target: "jarvis-help:",
+        keywords: "help shortcuts recovery keyboard safety 帮助 快捷键 恢复",
+        priority: 91,
+      },
+    ],
+  });
+  for (const query of ["help", "shortcuts", "recovery", "快捷键"]) {
+    assert.equal(searchQuickIndex(index, query)[0].target, "jarvis-help:");
+  }
+});
+
 test("empty Quick Access prioritizes bounded recent applications without changing explicit matches", () => {
   const index = createQuickSearchIndex({
     ...catalog,

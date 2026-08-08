@@ -24,8 +24,11 @@ function normalizeText(value, fallback, maximumLength) {
 }
 
 function inferLegacySeverity(message) {
-  const actionableMessage = message.replace(/\b(?:0|no)\s+fail(?:ed|ures?)\b/giu, "");
-  return /\b(?:unable|failed|failure|failures|cannot|could not|error|unavailable)\b|(?:无法|失败|不可用|错误|未能)/iu.test(actionableMessage)
+  const actionableMessage = message.replace(
+    /\b(?:0\s+(?:failed|failures?|errors?)|no\s+(?:failures?|errors?)|without\s+(?:failures?|errors?)|error[- ]free)\b/giu,
+    "",
+  );
+  return /\b(?:unable|failed|failures?|cannot|errors?|unavailable|denied)\b|\b(?:could not|did not succeed|timed out)\b|(?:无法|失败|不可用|错误|未能)/iu.test(actionableMessage)
     ? "error"
     : "info";
 }

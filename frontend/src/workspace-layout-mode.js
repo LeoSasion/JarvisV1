@@ -110,3 +110,49 @@ export function isLinkedWindowSuppressed(id, variant, active) {
   }
   return variant === LINKED_WORKSPACE_VARIANTS.DRAWER && id === "agent";
 }
+
+export function isCompactLinkedVariant(variant) {
+  return variant === LINKED_WORKSPACE_VARIANTS.DRAWER
+    || variant === LINKED_WORKSPACE_VARIANTS.SINGLE_PANE;
+}
+
+export function getLinkedPaneToggleTarget(activeId, variant) {
+  if (!isCompactLinkedVariant(variant)) return null;
+  return activeId === "agent" ? "explorer" : "agent";
+}
+
+export function isLinkedPaneToggleShortcut(eventLike = {}) {
+  return eventLike.key === "F8"
+    && eventLike.altKey === true
+    && eventLike.ctrlKey !== true
+    && eventLike.metaKey !== true
+    && eventLike.shiftKey !== true
+    && eventLike.repeat !== true
+    && eventLike.defaultPrevented !== true;
+}
+
+export function getSystemNoticePlacement({
+  workspaceMode,
+  linkedVariant,
+  activeId,
+  noticeSource,
+  shellPanel,
+  commandOpen = false,
+} = {}) {
+  if (shellPanel || commandOpen) return "shell-top";
+  if (workspaceMode === WORKSPACE_LAYOUT_MODES.EXPLORER_AGENT_LINKED) {
+    const sourcePane = noticeSource === "agent" || noticeSource === "explorer"
+      ? noticeSource
+      : activeId;
+    if (sourcePane === "explorer") return "workspace-top-start";
+    if (sourcePane === "agent") return "workspace-top-end";
+    return isCompactLinkedVariant(linkedVariant) ? "workspace-top-end" : "workspace-top-start";
+  }
+  if (workspaceMode === WORKSPACE_LAYOUT_MODES.EXPLORER_FOCUS) {
+    return "workspace-top-end";
+  }
+  if (workspaceMode === WORKSPACE_LAYOUT_MODES.FLOATING) {
+    return "workspace-top-end";
+  }
+  return "desktop-bottom-end";
+}

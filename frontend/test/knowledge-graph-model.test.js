@@ -15,6 +15,12 @@ test("knowledge graph remains disconnected without a verified source", () => {
   assert.equal(presentation.status, "disconnected");
   assert.equal(presentation.title, "SOURCE DISCONNECTED");
   assert.match(presentation.announcement, /No verified knowledge source is connected/u);
+  assert.deepEqual(presentation.actions.map((action) => action.id), [
+    "search-local",
+    "open-files",
+    "desktop-only",
+  ]);
+  assert.equal(presentation.actions.some((action) => /agent|connected/iu.test(`${action.label} ${action.detail}`)), false);
 });
 
 test("knowledge graph exposes counts only after a verified connection", () => {
@@ -27,4 +33,5 @@ test("knowledge graph exposes counts only after a verified connection", () => {
   assert.equal(presentation.sourceCount, 2);
   assert.equal(presentation.relationCount, 48);
   assert.match(presentation.detail, /2 SOURCES \/ 48 RELATIONS/u);
+  assert.deepEqual(presentation.actions, []);
 });

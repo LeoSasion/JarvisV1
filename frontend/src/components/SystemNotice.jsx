@@ -5,7 +5,7 @@ import {
   InfoRegular,
 } from "@fluentui/react-icons";
 
-export function SystemNotice({ notice, onDismiss }) {
+export function SystemNotice({ notice, onDismiss, placement = "desktop-bottom-end" }) {
   if (!notice) return null;
   const Icon = notice.severity === "ok"
     ? CheckmarkCircleRegular
@@ -16,7 +16,8 @@ export function SystemNotice({ notice, onDismiss }) {
 
   return (
     <section
-      className={`system-notice is-${notice.severity}`}
+      className={`system-notice is-${notice.severity} is-placement-${placement}`}
+      data-placement={placement}
       role={urgent ? "alert" : "status"}
       aria-live={urgent ? "assertive" : "polite"}
       aria-atomic="true"

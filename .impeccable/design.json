@@ -1,115 +1,97 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-07T18:31:00.592Z",
+  "generatedAt": "2026-08-08T01:25:47.315Z",
   "title": "Design System: JARVIS Operator Blackbox",
   "extensions": {
     "colorMeta": {
       "blackbox-black": {
         "role": "neutral",
         "displayName": "Blackbox Black",
-        "canonical": "#000000",
         "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
       },
       "canvas-black": {
         "role": "neutral",
         "displayName": "Canvas Black",
-        "canonical": "#010101",
         "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
       },
       "surface-quiet": {
         "role": "neutral",
         "displayName": "Quiet Black",
-        "canonical": "#020202",
         "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
       },
       "surface-raised": {
         "role": "neutral",
         "displayName": "Raised Black",
-        "canonical": "#050505",
         "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
       },
       "surface-high": {
         "role": "neutral",
         "displayName": "High Black",
-        "canonical": "#080808",
         "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
       },
       "instrument-white": {
         "role": "neutral",
         "displayName": "Instrument White",
-        "canonical": "#f5f1e9",
         "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
       },
       "ink-secondary": {
         "role": "neutral",
         "displayName": "Secondary Instrument Ink",
-        "canonical": "#c0bbb3",
         "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
       },
       "ink-muted": {
         "role": "neutral",
         "displayName": "Muted Instrument Ink",
-        "canonical": "#837d75",
         "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
       },
       "frame-weak": {
         "role": "neutral",
         "displayName": "Weak Frame Gray",
-        "canonical": "rgba(245, 241, 233, 0.15)",
-        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+        "tonalRamp": ["oklch(15% 0.01 85 / 0.15)", "oklch(26% 0.01 85 / 0.15)", "oklch(38% 0.01 85 / 0.15)", "oklch(50% 0.01 85 / 0.15)", "oklch(62% 0.01 85 / 0.15)", "oklch(74% 0.01 85 / 0.15)", "oklch(86% 0.01 85 / 0.15)", "oklch(95% 0.01 85 / 0.15)"]
       },
       "frame": {
         "role": "neutral",
         "displayName": "Frame Gray",
-        "canonical": "rgba(245, 241, 233, 0.28)",
-        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+        "tonalRamp": ["oklch(15% 0.01 85 / 0.28)", "oklch(26% 0.01 85 / 0.28)", "oklch(38% 0.01 85 / 0.28)", "oklch(50% 0.01 85 / 0.28)", "oklch(62% 0.01 85 / 0.28)", "oklch(74% 0.01 85 / 0.28)", "oklch(86% 0.01 85 / 0.28)", "oklch(95% 0.01 85 / 0.28)"]
       },
       "frame-strong": {
         "role": "neutral",
         "displayName": "Strong Frame Gray",
-        "canonical": "rgba(245, 241, 233, 0.54)",
-        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+        "tonalRamp": ["oklch(15% 0.01 85 / 0.54)", "oklch(26% 0.01 85 / 0.54)", "oklch(38% 0.01 85 / 0.54)", "oklch(50% 0.01 85 / 0.54)", "oklch(62% 0.01 85 / 0.54)", "oklch(74% 0.01 85 / 0.54)", "oklch(86% 0.01 85 / 0.54)", "oklch(95% 0.01 85 / 0.54)"]
       },
       "signal-core": {
         "role": "primary",
         "displayName": "Signal Core",
-        "canonical": "#ff5a00",
         "tonalRamp": ["oklch(15% 0.12 45)", "oklch(26% 0.16 45)", "oklch(38% 0.19 45)", "oklch(52% 0.22 45)", "oklch(64% 0.2 45)", "oklch(76% 0.16 45)", "oklch(87% 0.1 45)", "oklch(95% 0.04 45)"]
       },
       "command-orange": {
         "role": "primary",
         "displayName": "Command Orange",
-        "canonical": "#ff6a00",
         "tonalRamp": ["oklch(15% 0.12 48)", "oklch(26% 0.16 48)", "oklch(38% 0.19 48)", "oklch(52% 0.22 48)", "oklch(64% 0.2 48)", "oklch(76% 0.16 48)", "oklch(87% 0.1 48)", "oklch(95% 0.04 48)"]
       },
       "command-orange-pale": {
-        "role": "primary",
+        "role": "tertiary",
         "displayName": "Command Orange Pale",
-        "canonical": "#ffb13f",
         "tonalRamp": ["oklch(15% 0.1 68)", "oklch(26% 0.13 68)", "oklch(38% 0.16 68)", "oklch(52% 0.18 68)", "oklch(64% 0.17 68)", "oklch(76% 0.14 68)", "oklch(87% 0.09 68)", "oklch(95% 0.04 68)"]
       },
       "command-fill": {
         "role": "primary",
         "displayName": "Command Fill",
-        "canonical": "rgb(255 106 0 / 4%)",
-        "tonalRamp": ["oklch(15% 0.12 48)", "oklch(26% 0.16 48)", "oklch(38% 0.19 48)", "oklch(52% 0.22 48)", "oklch(64% 0.2 48)", "oklch(76% 0.16 48)", "oklch(87% 0.1 48)", "oklch(95% 0.04 48)"]
+        "tonalRamp": ["oklch(15% 0.12 48 / 0.04)", "oklch(26% 0.16 48 / 0.04)", "oklch(38% 0.19 48 / 0.04)", "oklch(52% 0.22 48 / 0.04)", "oklch(64% 0.2 48 / 0.04)", "oklch(76% 0.16 48 / 0.04)", "oklch(87% 0.1 48 / 0.04)", "oklch(95% 0.04 48 / 0.04)"]
       },
       "command-fill-strong": {
         "role": "primary",
         "displayName": "Strong Command Fill",
-        "canonical": "rgb(255 106 0 / 7%)",
-        "tonalRamp": ["oklch(15% 0.12 48)", "oklch(26% 0.16 48)", "oklch(38% 0.19 48)", "oklch(52% 0.22 48)", "oklch(64% 0.2 48)", "oklch(76% 0.16 48)", "oklch(87% 0.1 48)", "oklch(95% 0.04 48)"]
+        "tonalRamp": ["oklch(15% 0.12 48 / 0.07)", "oklch(26% 0.16 48 / 0.07)", "oklch(38% 0.19 48 / 0.07)", "oklch(52% 0.22 48 / 0.07)", "oklch(64% 0.2 48 / 0.07)", "oklch(76% 0.16 48 / 0.07)", "oklch(87% 0.1 48 / 0.07)", "oklch(95% 0.04 48 / 0.07)"]
       },
       "status-warning": {
         "role": "tertiary",
         "displayName": "Tactical Warning",
-        "canonical": "#ff9b50",
         "tonalRamp": ["oklch(15% 0.09 58)", "oklch(26% 0.13 58)", "oklch(38% 0.16 58)", "oklch(52% 0.19 58)", "oklch(64% 0.18 58)", "oklch(76% 0.14 58)", "oklch(87% 0.09 58)", "oklch(95% 0.04 58)"]
       },
       "status-danger": {
         "role": "tertiary",
         "displayName": "Tactical Danger",
-        "canonical": "#ff5a3c",
         "tonalRamp": ["oklch(15% 0.11 30)", "oklch(26% 0.15 30)", "oklch(38% 0.18 30)", "oklch(52% 0.21 30)", "oklch(64% 0.19 30)", "oklch(76% 0.15 30)", "oklch(87% 0.09 30)", "oklch(95% 0.04 30)"]
       }
     },
@@ -124,22 +106,40 @@
     "shadows": [
       { "name": "status-emission", "value": "0 0 4px rgb(255 106 0 / 38%)", "purpose": "Local live marker, selected node, or active route terminal." },
       { "name": "active-emission", "value": "0 0 6px rgb(255 106 0 / 28%)", "purpose": "Restrained working-state halo attached to its owner." },
-      { "name": "focus-inset", "value": "0 0 0 1px rgb(255 106 0 / 28%) inset", "purpose": "Focus reinforcement without floating elevation." }
+      { "name": "focus-inset", "value": "0 0 0 1px rgb(255 106 0 / 28%) inset", "purpose": "Focus reinforcement without floating elevation." },
+      { "name": "transient-command-menu", "value": "8px 12px 24px rgb(0 0 0 / 72%)", "purpose": "Depth reserved for a temporary desktop, Explorer, or taskbar command menu above the working surface." },
+      { "name": "actionable-notice", "value": "0 12px 36px rgb(0 0 0 / 48%)", "purpose": "Persistent warning or error notice that must remain legible above the taskbar until acknowledged." },
+      { "name": "linked-drawer", "value": "-18px 0 44px rgb(0 0 0 / 82%)", "purpose": "Narrow-layout Agent drawer separation; never used on resting panels." }
     ],
     "motion": [
       { "name": "state-fast", "value": "120ms cubic-bezier(0.2, 0.75, 0.2, 1)", "purpose": "Immediate control and taskbar state response." },
       { "name": "state-base", "value": "160ms cubic-bezier(0.2, 0.75, 0.2, 1)", "purpose": "Standard panel and flyout entry." },
       { "name": "linked-layout", "value": "240ms cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "Explorer and Agent causal-workspace layout transition." },
+      { "name": "linked-payload-entry", "value": "180ms ease-out", "purpose": "Bounded file-context payload admission." },
+      { "name": "linked-result-entry", "value": "220ms ease-out", "purpose": "Completed linked Agent result admission." },
       { "name": "route-reveal", "value": "360ms cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "Reveal the one currently active relation route." },
-      { "name": "vector-flow", "value": "7.2s linear", "purpose": "Low-frequency motion on a genuinely live knowledge route." }
+      { "name": "core-deemphasis", "value": "180ms ease", "purpose": "Knowledge-graph opacity and filter transition when managed work takes focus." },
+      { "name": "telemetry-toggle", "value": "140ms ease", "purpose": "Compact disclosure-chevron response in the telemetry rail." },
+      { "name": "agent-working-signal", "value": "1.4s steps(2, end)", "purpose": "Discrete Agent working-state pulse rather than ambient decoration." },
+      { "name": "vector-flow", "value": "7.2s linear", "purpose": "Low-frequency motion on a genuinely live knowledge route." },
+      { "name": "reduced-motion", "value": "none", "purpose": "Disable nonessential animation under prefers-reduced-motion or the shell's reduced-motion setting." }
     ],
     "breakpoints": [
       { "name": "wide-desktop", "value": "1500px" },
+      { "name": "linked-three-pane", "value": "1440px" },
+      { "name": "rail-density", "value": "1380px" },
       { "name": "standard-desktop", "value": "1260px" },
       { "name": "linked-workspace-collapse", "value": "1180px" },
+      { "name": "topbar-compact", "value": "1080px" },
       { "name": "compact-desktop", "value": "1040px" },
+      { "name": "linked-single-pane", "value": "920px" },
+      { "name": "system-notice-stack", "value": "820px" },
       { "name": "narrow-fallback", "value": "720px" },
-      { "name": "short-desktop", "value": "820px height" }
+      { "name": "short-desktop-height", "value": "820px" },
+      { "name": "short-linked-height", "value": "720px" },
+      { "name": "taskbar-apps-container", "value": "520px" },
+      { "name": "explorer-inspector-container", "value": "1039px" },
+      { "name": "explorer-nav-container", "value": "819px" }
     ]
   },
   "components": [
@@ -150,6 +150,14 @@
       "description": "A square tactical action with a sparse orange focus response.",
       "html": "<button class=\"ds-command-button\">EXECUTE</button>",
       "css": ".ds-command-button { min-height: 34px; padding: 0 12px; border: 1px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-2, #c0bbb3); font: 600 11px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; text-transform: uppercase; transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease; } .ds-command-button:hover { color: var(--ink-1, #f5f1e9); border-color: var(--signal-hot, #ff6a00); background: var(--signal-fill, rgb(255 106 0 / 4%)); } .ds-command-button:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: 2px; } .ds-command-button:active { box-shadow: 0 -1px 0 var(--signal-hot, #ff6a00) inset; }"
+    },
+    {
+      "name": "Active Command Button",
+      "kind": "button",
+      "refersTo": "command-button-active",
+      "description": "The armed command variant: selected or executable, never a decorative orange state.",
+      "html": "<button class=\"ds-command-button-active\" aria-pressed=\"true\">ACTIVE COMMAND</button>",
+      "css": ".ds-command-button-active { min-height: 34px; padding: 0 12px; border: 1px solid var(--signal-hot, #ff6a00); border-radius: 0; background: var(--signal-fill, rgb(255 106 0 / 4%)); color: var(--ink-1, #f5f1e9); box-shadow: 0 -1px 0 var(--signal-hot, #ff6a00) inset; font: 600 11px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; text-transform: uppercase; transition: background-color 120ms ease, box-shadow 120ms ease; } .ds-command-button-active:hover { background: var(--signal-fill-strong, rgb(255 106 0 / 7%)); } .ds-command-button-active:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: 2px; } .ds-command-button-active:active { box-shadow: 0 -2px 0 var(--signal-hot, #ff6a00) inset; }"
     },
     {
       "name": "Command Input",
@@ -169,11 +177,11 @@
     },
     {
       "name": "Agent Taskbar Slot",
-      "kind": "nav",
+      "kind": "button",
       "refersTo": "taskbar-agent",
-      "description": "The only persistent Agent launcher, placed directly after Start.",
-      "html": "<button class=\"ds-agent-slot\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\"></rect><path d=\"M12 2v4M12 18v4M2 12h4M18 12h4\"></path><rect class=\"ds-agent-core\" x=\"10\" y=\"10\" width=\"4\" height=\"4\"></rect></svg><span><strong>PI AGENT</strong><small>OPEN</small></span></button>",
-      "css": ".ds-agent-slot { height: 56px; min-width: 176px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 10px; padding: 0 14px; border: 0; border-right: .5px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-1, #f5f1e9); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); text-align: left; } .ds-agent-slot svg { width: 24px; fill: none; stroke: var(--signal-hot, #ff6a00); stroke-width: 1; } .ds-agent-slot .ds-agent-core { fill: var(--signal-hot, #ff6a00); } .ds-agent-slot span { display: grid; gap: 3px; } .ds-agent-slot strong { font-size: 11px; letter-spacing: .08em; } .ds-agent-slot small { color: var(--signal-hot, #ff6a00); font-size: 9px; letter-spacing: .1em; } .ds-agent-slot:hover { background: var(--signal-fill, rgb(255 106 0 / 4%)); } .ds-agent-slot:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: -2px; }"
+      "description": "The single provider-neutral Agent launcher directly after Start, with dynamic provider and runtime status.",
+      "html": "<button class=\"ds-agent-slot\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\"></rect><path d=\"M12 2v4M12 18v4M2 12h4M18 12h4\"></path><rect class=\"ds-agent-core\" x=\"10\" y=\"10\" width=\"4\" height=\"4\"></rect></svg><span><strong>AGENT</strong><small>PROVIDER · READY</small></span><i aria-hidden=\"true\"></i></button>",
+      "css": ".ds-agent-slot { height: 56px; min-width: 176px; display: grid; grid-template-columns: 28px 1fr 4px; align-items: center; gap: 10px; padding: 0 14px; border: 0; border-right: .5px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-1, #f5f1e9); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); text-align: left; } .ds-agent-slot svg { width: 24px; fill: none; stroke: var(--ink-2, #c0bbb3); stroke-width: 1; } .ds-agent-slot .ds-agent-core { fill: var(--ink-3, #837d75); } .ds-agent-slot span { display: grid; gap: 3px; } .ds-agent-slot strong { font-size: 11px; letter-spacing: .08em; } .ds-agent-slot small { color: var(--ink-3, #837d75); font-size: 9px; letter-spacing: .1em; } .ds-agent-slot > i { width: 3px; height: 3px; background: var(--ink-3, #837d75); } .ds-agent-slot:hover { background: var(--signal-fill, rgb(255 106 0 / 4%)); } .ds-agent-slot:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: -2px; } .ds-agent-slot.ds-is-active { box-shadow: 0 -2px 0 var(--signal-hot, #ff6a00) inset; } .ds-agent-slot.ds-is-active svg, .ds-agent-slot.ds-is-active small, .ds-agent-slot.ds-is-working svg, .ds-agent-slot.ds-is-working small { color: var(--signal-hot, #ff6a00); stroke: var(--signal-hot, #ff6a00); } .ds-agent-slot.ds-is-working .ds-agent-core, .ds-agent-slot.ds-is-working > i { fill: var(--signal-hot, #ff6a00); background: var(--signal-hot, #ff6a00); box-shadow: 0 0 4px rgb(255 106 0 / 38%); }"
     },
     {
       "name": "Explorer Ledger Row",
@@ -185,9 +193,9 @@
     {
       "name": "Context Menu Command",
       "kind": "nav",
-      "description": "A flat menu command with a compact icon, label, and keyboard hint.",
+      "description": "A transient command overlay with compact icon, label, keyboard hint, and one shared desktop/Explorer/taskbar interaction grammar.",
       "html": "<div class=\"ds-context-menu\" role=\"menu\"><header><strong>ITEM COMMANDS</strong><small>1 SELECTED</small></header><button role=\"menuitem\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"></path></svg><span>OPEN</span><kbd>ENTER</kbd></button></div>",
-      "css": ".ds-context-menu { width: 240px; border: 1px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-2, #c0bbb3); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-context-menu header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid var(--structure, rgba(245,241,233,.28)); } .ds-context-menu header strong { color: var(--ink-1, #f5f1e9); font-size: 10px; letter-spacing: .1em; } .ds-context-menu header small { color: var(--ink-3, #837d75); font-size: 8px; } .ds-context-menu button { width: 100%; min-height: 34px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 0 10px; border: 0; border-radius: 0; background: transparent; color: var(--ink-2, #c0bbb3); font: 10px/1 inherit; text-align: left; } .ds-context-menu svg { width: 16px; fill: none; stroke: currentColor; } .ds-context-menu kbd { color: var(--ink-3, #837d75); font: 8px/1 inherit; } .ds-context-menu button:hover, .ds-context-menu button:focus-visible { outline: 0; color: var(--ink-1, #f5f1e9); background: var(--signal-fill, rgb(255 106 0 / 4%)); box-shadow: 2px 0 0 var(--signal-hot, #ff6a00) inset; }"
+      "css": ".ds-context-menu { width: 240px; border: .5px solid var(--structure-strong, rgba(245,241,233,.54)); border-radius: 0; background: var(--surface-0, #020202); color: var(--ink-2, #c0bbb3); box-shadow: 8px 12px 24px rgb(0 0 0 / 72%); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-context-menu header { height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: .5px solid var(--structure, rgba(245,241,233,.28)); } .ds-context-menu header strong { color: var(--ink-1, #f5f1e9); font-size: 10px; letter-spacing: .1em; } .ds-context-menu header small { color: var(--ink-3, #837d75); font-size: 8px; } .ds-context-menu button { width: 100%; min-height: 34px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 0 10px; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--ink-2, #c0bbb3); font: 10px/1 inherit; text-align: left; } .ds-context-menu svg { width: 16px; fill: none; stroke: currentColor; } .ds-context-menu kbd { color: var(--ink-3, #837d75); font: 8px/1 inherit; } .ds-context-menu button:hover, .ds-context-menu button:focus-visible { outline: 0; border-color: var(--signal-hot, #ff6a00); color: var(--ink-1, #f5f1e9); background: var(--signal-fill, rgb(255 106 0 / 4%)); box-shadow: none; } .ds-context-menu button:hover svg, .ds-context-menu button:focus-visible svg { color: var(--signal-hot, #ff6a00); }"
     },
     {
       "name": "Linked Agent Payload",
@@ -197,11 +205,18 @@
       "css": ".ds-linked-payload { display: grid; grid-template-columns: 24px minmax(0,1fr) auto auto; align-items: center; gap: 12px; padding: 13px 14px 13px 10px; border: 1px solid rgb(255 106 0 / 28%); border-radius: 0; background: rgb(255 106 0 / 2%); color: var(--ink-2, #c0bbb3); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-payload-node { width: 8px; height: 8px; justify-self: center; border: 1px solid var(--signal-hot, #ff6a00); background: var(--signal-hot, #ff6a00); box-shadow: 0 0 4px rgb(255 106 0 / 38%); } .ds-linked-payload > span:nth-child(2) { min-width: 0; display: grid; gap: 5px; } .ds-linked-payload small, .ds-linked-payload code { color: var(--ink-3, #837d75); font: 8px/1.2 inherit; letter-spacing: .08em; } .ds-linked-payload strong { overflow: hidden; color: var(--ink-1, #f5f1e9); font: 600 10px/1.2 inherit; text-overflow: ellipsis; white-space: nowrap; } .ds-linked-payload button { align-self: stretch; padding: 0 12px; border: 0; border-left: 1px solid rgba(245,241,233,.14); border-radius: 0; background: transparent; color: var(--ink-2, #c0bbb3); font: 9px/1 inherit; } .ds-linked-payload button:hover, .ds-linked-payload button:focus-visible { outline: 0; color: var(--signal-hot, #ff6a00); background: var(--signal-fill, rgb(255 106 0 / 4%)); box-shadow: 0 -2px 0 var(--signal-hot, #ff6a00) inset; }"
     },
     {
+      "name": "Actionable System Notice",
+      "kind": "custom",
+      "description": "A persistent warning or error notice with explicit recovery actions and assertive semantics.",
+      "html": "<section class=\"ds-system-notice ds-is-error\" role=\"alert\" aria-live=\"assertive\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 3 2.8 20h18.4L12 3Z\"></path><path d=\"M12 9v5M12 17.5v.5\"></path></svg><span class=\"ds-system-notice-copy\"><strong>WINDOW CONTROL FAILED</strong><small>The native operation did not complete. Retry or inspect system activity.</small></span><span class=\"ds-system-notice-actions\"><button>RETRY</button><button>DETAILS</button></span><button class=\"ds-system-notice-dismiss\" aria-label=\"Dismiss notification\">×</button></section>",
+      "css": ".ds-system-notice { width: min(560px, calc(100vw - 36px)); min-height: 58px; display: grid; grid-template-columns: 22px minmax(0,1fr) auto 32px; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border: .5px solid var(--structure-strong, rgba(245,241,233,.54)); border-left: 2px solid var(--ink-2, #c0bbb3); border-radius: 0; color: var(--ink-2, #c0bbb3); background: var(--void, #000); box-shadow: 0 12px 36px rgb(0 0 0 / 48%); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-system-notice.ds-is-warning, .ds-system-notice.ds-is-error { border-left-color: var(--signal-hot, #ff6a00); } .ds-system-notice > svg { width: 18px; fill: none; stroke: var(--signal-hot, #ff6a00); stroke-width: 1.25; } .ds-system-notice-copy { min-width: 0; display: grid; gap: 4px; } .ds-system-notice-copy strong { color: var(--ink-1, #f5f1e9); font-size: 11px; line-height: 1.2; letter-spacing: .06em; } .ds-system-notice-copy small { overflow-wrap: anywhere; color: var(--ink-3, #837d75); font-size: 10px; line-height: 1.35; } .ds-system-notice-actions { display: flex; gap: 6px; } .ds-system-notice-actions button, .ds-system-notice-dismiss { min-height: 32px; padding: 0 10px; border: .5px solid var(--structure-strong, rgba(245,241,233,.54)); border-radius: 0; color: var(--ink-2, #c0bbb3); background: transparent; font: 9px/1 inherit; letter-spacing: .08em; } .ds-system-notice-dismiss { width: 32px; padding: 0; } .ds-system-notice-actions button:hover, .ds-system-notice-actions button:focus-visible, .ds-system-notice-dismiss:hover, .ds-system-notice-dismiss:focus-visible { outline: 0; border-color: var(--signal-hot, #ff6a00); color: var(--signal-hot, #ff6a00); background: var(--signal-fill, rgb(255 106 0 / 4%)); } @media (max-width: 820px) { .ds-system-notice { width: calc(100vw - 16px); grid-template-columns: 20px minmax(0,1fr) 32px; } .ds-system-notice-actions { grid-column: 2 / -1; } }"
+    },
+    {
       "name": "Knowledge Graph Signal",
       "kind": "custom",
-      "description": "A passive point-line relation with one live command path.",
-      "html": "<svg class=\"ds-knowledge-signal\" viewBox=\"0 0 320 120\" role=\"img\" aria-label=\"Knowledge relation\"><path class=\"ds-edge\" d=\"M20 88 L102 26 L190 70 L300 20\"></path><path class=\"ds-route\" d=\"M20 88 L102 26 L190 70\"></path><rect x=\"16\" y=\"84\" width=\"8\" height=\"8\"></rect><rect x=\"98\" y=\"22\" width=\"8\" height=\"8\"></rect><rect class=\"ds-hot\" x=\"186\" y=\"66\" width=\"8\" height=\"8\"></rect><rect x=\"296\" y=\"16\" width=\"8\" height=\"8\"></rect><text x=\"202\" y=\"73\">ACTIVE RELATION</text></svg>",
-      "css": ".ds-knowledge-signal { width: 320px; height: 120px; background: var(--void, #000); color: var(--signal-hot, #ff6a00); shape-rendering: geometricPrecision; } .ds-knowledge-signal path, .ds-knowledge-signal rect { vector-effect: non-scaling-stroke; } .ds-knowledge-signal .ds-edge { fill: none; stroke: var(--structure, rgba(245,241,233,.28)); stroke-width: 1; opacity: .45; } .ds-knowledge-signal .ds-route { fill: none; stroke: var(--signal-hot, #ff6a00); stroke-width: 1.25; stroke-dasharray: 10 8; } .ds-knowledge-signal rect { fill: var(--ink-2, #c0bbb3); } .ds-knowledge-signal rect.ds-hot { fill: var(--signal-hot, #ff6a00); filter: drop-shadow(0 0 4px rgb(255 106 0 / 38%)); } .ds-knowledge-signal text { fill: var(--ink-1, #f5f1e9); font: 600 9px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; }"
+      "description": "A truthful passive schema preview: neutral while disconnected, with orange reserved for a host-verified live relation.",
+      "html": "<svg class=\"ds-knowledge-signal ds-is-disconnected\" viewBox=\"0 0 320 120\" role=\"img\" aria-label=\"Knowledge source disconnected\"><path class=\"ds-edge\" d=\"M20 88 L102 26 L190 70 L300 20\"></path><path class=\"ds-route\" d=\"M20 88 L102 26 L190 70\"></path><rect x=\"16\" y=\"84\" width=\"8\" height=\"8\"></rect><rect x=\"98\" y=\"22\" width=\"8\" height=\"8\"></rect><rect class=\"ds-hot\" x=\"186\" y=\"66\" width=\"8\" height=\"8\"></rect><rect x=\"296\" y=\"16\" width=\"8\" height=\"8\"></rect><text x=\"202\" y=\"73\">SOURCE DISCONNECTED</text></svg>",
+      "css": ".ds-knowledge-signal { width: 320px; height: 120px; background: var(--void, #000); color: var(--ink-3, #837d75); shape-rendering: geometricPrecision; } .ds-knowledge-signal path, .ds-knowledge-signal rect { vector-effect: non-scaling-stroke; } .ds-knowledge-signal .ds-edge { fill: none; stroke: var(--structure, rgba(245,241,233,.28)); stroke-width: 1; opacity: .45; } .ds-knowledge-signal .ds-route { fill: none; stroke: var(--structure-strong, rgba(245,241,233,.54)); stroke-width: 1; opacity: .34; } .ds-knowledge-signal rect { fill: var(--ink-3, #837d75); } .ds-knowledge-signal text { fill: var(--ink-2, #c0bbb3); font: 600 9px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; } .ds-knowledge-signal.ds-is-connected .ds-route { stroke: var(--signal-hot, #ff6a00); stroke-width: 1.25; stroke-dasharray: 10 8; opacity: 1; } .ds-knowledge-signal.ds-is-connected rect.ds-hot { fill: var(--signal-hot, #ff6a00); filter: drop-shadow(0 0 4px rgb(255 106 0 / 38%)); } .ds-knowledge-signal.ds-is-connected text { fill: var(--ink-1, #f5f1e9); } @media (prefers-reduced-motion: reduce) { .ds-knowledge-signal .ds-route { animation: none; } }"
     }
   ],
   "narrative": {

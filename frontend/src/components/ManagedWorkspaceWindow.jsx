@@ -221,6 +221,7 @@ export function ManagedWorkspaceWindow({
   return (
     <div
       ref={frameRef}
+      id={`workspace-window-${id}`}
       className={[
         "workspace-window",
         `is-${id}`,

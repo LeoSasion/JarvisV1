@@ -53,6 +53,15 @@ export const quickLaunchItems = Object.freeze([
     priority: 92,
   },
   {
+    id: "jarvis-help",
+    label: "JARVIS Help & Shortcuts",
+    target: "jarvis-help:",
+    Icon: PulseRegular,
+    processes: [],
+    keywords: "help shortcuts recovery keyboard safety metadata 帮助 快捷键 恢复 键盘 安全",
+    priority: 91,
+  },
+  {
     id: "settings",
     label: "Windows Settings",
     target: "ms-settings:",

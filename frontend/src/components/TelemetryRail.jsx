@@ -7,6 +7,11 @@ import {
 import { useMemo, useState } from "react";
 import { mergeSystemFeedEvents } from "../feedback-model.js";
 import { useSystemFeed, useSystemSnapshot } from "../hooks/usePlatformData.js";
+import {
+  getCompactTelemetrySummary,
+  getTelemetryPriorityPresentation,
+  getTelemetryRailMode,
+} from "../telemetry-rail-model.js";
 import { HudPanel } from "./HudPanel.jsx";
 import { SparklineCanvas } from "./SparklineCanvas.jsx";
 
@@ -50,53 +55,47 @@ function formatFeedTime(timestamp) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function TelemetryRail({ localEvents = [], onInspect, onNotification }) {
+export function TelemetryRail({ compact = false, localEvents = [], onInspect, onNotification }) {
   const { processes, resources } = useSystemSnapshot();
   const feed = useSystemFeed();
   const events = useMemo(
     () => mergeSystemFeedEvents(localEvents, feed.items),
     [feed.items, localEvents],
   );
-  const feedFailed = Boolean(feed.error);
-  const feedConnecting = feed.loading && events.length === 0;
-  const hasWarning = feedFailed || events.some((item) => item.severity === "warning" || item.severity === "error");
-  const priorityEvent = events.find((item) => item.severity === "error" || item.severity === "warning")
-    ?? events[0]
-    ?? null;
   const [resourcesExpanded, setResourcesExpanded] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   const visibleResources = resourcesExpanded ? resources : resources.slice(0, 2);
   const visibleEvents = events.slice(0, 5);
   const unreadCount = Math.min(99, events.filter((item) => item.unread).length);
-  const priorityState = feedFailed
-    ? {
-      className: "has-warning",
-      icon: AlertRegular,
-      title: "TELEMETRY DEGRADED",
-      detail: "System feed unavailable",
-      meta: feed.error?.message ?? String(feed.error),
-    }
-    : feedConnecting
-      ? {
-        className: "is-connecting",
-        icon: InfoRegular,
-        title: "STATUS SYNCHRONIZING",
-        detail: "System feed connecting",
-        meta: "Waiting for the first host snapshot",
-      }
-      : {
-        className: hasWarning ? "has-warning" : "is-nominal",
-        icon: hasWarning ? AlertRegular : CheckmarkCircleRegular,
-        title: hasWarning ? "ATTENTION REQUIRED" : "SYSTEM NOMINAL",
-        detail: priorityEvent?.title ?? "No critical session events",
-        meta: priorityEvent?.detail || `${events.length} session events available`,
-      };
-  const PriorityIcon = priorityState.icon;
+  const priorityState = getTelemetryPriorityPresentation({
+    events,
+    feedError: feed.error,
+    feedLoading: feed.loading,
+  });
+  const railMode = getTelemetryRailMode({ compact, priorityKind: priorityState.kind });
+  const compactSummary = getCompactTelemetrySummary(resources);
+  const PriorityIcon = priorityState.kind === "warning"
+    ? AlertRegular
+    : priorityState.kind === "connecting"
+      ? InfoRegular
+      : CheckmarkCircleRegular;
 
   return (
-    <aside className="telemetry-rail" aria-label="System telemetry">
-      <HudPanel title="SYSTEM PRIORITY" className={`priority-panel ${priorityState.className}`}>
+    <aside className={`telemetry-rail is-${railMode}`} aria-label="System telemetry">
+      {railMode === "compact-nominal" ? (
+        <button
+          type="button"
+          className="telemetry-compact-summary"
+          onClick={() => onInspect("System Health")}
+          aria-label={compactSummary.label}
+        >
+          <CheckmarkCircleRegular aria-hidden="true" />
+          <span><strong>SYSTEM NOMINAL</strong><small>CPU {compactSummary.cpu} · MEMORY {compactSummary.memory}</small></span>
+          <ChevronRightRegular aria-hidden="true" />
+        </button>
+      ) : <>
+        <HudPanel title="SYSTEM PRIORITY" className={`priority-panel ${priorityState.className}`}>
         <button type="button" className="telemetry-priority" onClick={() => onInspect("System Health")}>
           <PriorityIcon />
           <span>
@@ -106,9 +105,9 @@ export function TelemetryRail({ localEvents = [], onInspect, onNotification }) {
           </span>
           <ChevronRightRegular className="telemetry-row-affordance" aria-hidden="true" />
         </button>
-      </HudPanel>
+        </HudPanel>
 
-      <HudPanel
+        <HudPanel
         title="SYSTEM RESOURCES"
         className="resources-panel"
         action={resources.length > 2 ? (
@@ -122,7 +121,8 @@ export function TelemetryRail({ localEvents = [], onInspect, onNotification }) {
             <ResourceRow key={resource.id} resource={resource} onInspect={onInspect} />
           ))}
         </div>
-      </HudPanel>
+        </HudPanel>
+      </>}
 
       <HudPanel
         title="SYSTEM ACTIVITY"

@@ -299,7 +299,7 @@ public partial class MainWindow : Window
         }
 
         var normalizedPanel = requestedPanel.Trim().ToLowerInvariant();
-        if (normalizedPanel is not ("start" or "quick-settings" or "date-time" or "notifications" or "session" or "command" or "explorer" or "settings" or "terminal"))
+        if (normalizedPanel is not ("start" or "quick-settings" or "date-time" or "notifications" or "session" or "command" or "explorer" or "settings" or "terminal" or "help"))
         {
             HostLog.Warning($"Ignored unsupported diagnostic shell panel: {requestedPanel}.");
             return;

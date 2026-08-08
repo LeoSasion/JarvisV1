@@ -4,6 +4,7 @@ import { useAgentSession } from "./hooks/useAgentSession.js";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
 import { publishShellFeedback } from "./shell-feedback-channel.js";
+import { isHelpShortcut } from "./shell-shortcuts.js";
 import {
   getVisibleInternalWindowIds,
   planInternalShowDesktopToggle,
@@ -58,6 +59,16 @@ export function TaskbarSurface() {
     }
   }, [hideTaskbarFlyout, reportTaskbarFault]);
 
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if (!isHelpShortcut(event)) return;
+      event.preventDefault();
+      void showDesktopPanel("help");
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [showDesktopPanel]);
+
   const closeTaskbarWindow = useCallback(async (windowId) => {
     if (windowId.startsWith("jarvis:")) {
       const internalWindowId = windowId.slice("jarvis:".length);
@@ -108,6 +119,10 @@ export function TaskbarSurface() {
       }
       if (builtinId === "jarvis-settings") {
         await showDesktopPanel("settings");
+        return;
+      }
+      if (builtinId === "jarvis-help") {
+        await showDesktopPanel("help");
         return;
       }
       if (builtinId === "terminal") {

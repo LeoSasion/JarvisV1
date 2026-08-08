@@ -1,5 +1,11 @@
 const MAX_GRAPH_COUNT = 100_000;
 
+export const DISCONNECTED_GRAPH_ACTIONS = Object.freeze([
+  Object.freeze({ id: "search-local", label: "SEARCH LOCAL", detail: "Find apps, files, and active windows" }),
+  Object.freeze({ id: "open-files", label: "OPEN FILES", detail: "Choose a verified local source" }),
+  Object.freeze({ id: "desktop-only", label: "DESKTOP ONLY", detail: "Keep the graph quiet for this session" }),
+]);
+
 function normalizeCount(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return 0;
@@ -29,6 +35,7 @@ export function getKnowledgeGraphPresentation(rawState) {
       detail: "Connect a verified local source to activate relations.",
       meta: "ENTITY / RELATION / SOURCE",
       announcement: "Local knowledge graph structure preview. No verified knowledge source is connected.",
+      actions: DISCONNECTED_GRAPH_ACTIONS,
     };
   }
 
@@ -39,5 +46,6 @@ export function getKnowledgeGraphPresentation(rawState) {
     detail: `${state.sourceCount} SOURCE${state.sourceCount === 1 ? "" : "S"} / ${state.relationCount} RELATIONS`,
     meta: "VERIFIED LOCAL GRAPH",
     announcement: `Local knowledge graph connected to ${state.sourceCount} verified source${state.sourceCount === 1 ? "" : "s"}.`,
+    actions: [],
   };
 }

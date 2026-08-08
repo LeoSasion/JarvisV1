@@ -5,6 +5,7 @@ import { CoreStage } from "./components/CoreStage.jsx";
 import { DesktopShortcuts } from "./components/DesktopShortcuts.jsx";
 import { ManagedWorkspaceWindow } from "./components/ManagedWorkspaceWindow.jsx";
 import { LinkedSystemRail } from "./components/LinkedSystemRail.jsx";
+import { LinkedWorkspaceHandle } from "./components/LinkedWorkspaceHandle.jsx";
 import { LinkedWorkspaceRoutes } from "./components/LinkedWorkspaceRoutes.jsx";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { TelemetryRail } from "./components/TelemetryRail.jsx";
@@ -20,6 +21,7 @@ import { useAgentSession } from "./hooks/useAgentSession.js";
 import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
 import { platform } from "./platform/index.js";
 import { isQuickSearchToggleShortcut } from "./quick-search.js";
+import { isHelpShortcut } from "./shell-shortcuts.js";
 import { recordRecentApplication } from "./recent-applications.js";
 import { subscribeShellFeedback } from "./shell-feedback-channel.js";
 import {
@@ -29,8 +31,11 @@ import {
 import { subscribeWorkspaceCommands } from "./workspace-runtime-channel.js";
 import {
   getLinkedWorkspaceVariant,
+  getLinkedPaneToggleTarget,
+  getSystemNoticePlacement,
   getWorkspaceLayoutMode,
   isDockedWindow,
+  isLinkedPaneToggleShortcut,
 } from "./workspace-layout-mode.js";
 
 const FileExplorerWindow = lazy(() => import("./components/FileExplorerWindow.jsx")
@@ -70,6 +75,7 @@ export function App() {
   const [explorerSelection, setExplorerSelection] = useState([]);
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
+  const [graphLaunchpadHidden, setGraphLaunchpadHidden] = useState(false);
   const [notice, setNotice] = useState(null);
   const [localFeedEvents, setLocalFeedEvents] = useState([]);
   const showDesktopRestoreIdsRef = useRef([]);
@@ -81,6 +87,19 @@ export function App() {
     () => getLatestAgentRelationMessage(agentSession.messages, agentSession.context),
     [agentSession.context, agentSession.messages],
   );
+  const noticePlacement = getSystemNoticePlacement({
+    workspaceMode: workspaceLayoutMode,
+    linkedVariant: linkedWorkspaceVariant,
+    activeId: workspaceState.activeId,
+    noticeSource: notice?.source,
+    shellPanel,
+    commandOpen,
+  });
+  const linkedWorkspaceAnnouncement = workspaceLayoutMode === "explorer-agent-linked"
+    ? workspaceState.activeId === "agent"
+      ? "Linked workspace. Agent pane active."
+      : "Linked workspace. Explorer pane active. Agent remains linked."
+    : "";
   const handleToggleWorkspaceMaximize = useCallback((id) => {
     if (isDockedWindow(id, workspaceLayoutMode)) return;
     toggleMaximizeWorkspaceWindow(id);
@@ -247,8 +266,19 @@ export function App() {
     }
   }, [notice?.id]);
 
+  const clearLocalFeed = useCallback(() => setLocalFeedEvents([]), []);
+  const markLocalFeedRead = useCallback(() => {
+    setLocalFeedEvents((current) => current.map((event) => ({ ...event, unread: false })));
+  }, []);
+
   useEffect(() => {
     const handleShortcut = (event) => {
+      if (isHelpShortcut(event)) {
+        event.preventDefault();
+        setCommandOpen(false);
+        setShellPanel("help");
+        return;
+      }
       if (isQuickSearchToggleShortcut(event)) {
         event.preventDefault();
         setCommandOpen((current) => !current);
@@ -258,6 +288,17 @@ export function App() {
       if (event.ctrlKey && event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
         event.preventDefault();
         cycleWorkspaceWindows(event.key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+      if (
+        workspaceLayoutMode === "explorer-agent-linked"
+        && isLinkedPaneToggleShortcut(event)
+      ) {
+        const targetId = getLinkedPaneToggleTarget(workspaceState.activeId, linkedWorkspaceVariant);
+        if (targetId) {
+          event.preventDefault();
+          activateWorkspaceWindow(targetId);
+        }
         return;
       }
       if (!activeWindowId || !event.altKey || event.ctrlKey || event.metaKey) return;
@@ -275,11 +316,14 @@ export function App() {
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [
+    activateWorkspaceWindow,
     closeWorkspaceWindow,
     cycleWorkspaceWindows,
     minimizeWorkspaceWindow,
     handleToggleWorkspaceMaximize,
+    linkedWorkspaceVariant,
     workspaceState.activeId,
+    workspaceLayoutMode,
   ]);
 
   useEffect(() => subscribeWorkspaceCommands(({ id, action }) => {
@@ -323,7 +367,7 @@ export function App() {
         void openAgent();
         return;
       }
-      if (["start", "quick-settings", "date-time", "notifications", "session", "settings"].includes(panel)) {
+      if (["start", "quick-settings", "date-time", "notifications", "session", "settings", "help"].includes(panel)) {
         setCommandOpen(false);
         setShellPanel(panel);
       }
@@ -467,6 +511,11 @@ export function App() {
         showToast("JARVIS runtime settings ready");
         return;
       }
+      if (builtinId === "jarvis-help") {
+        setCommandOpen(false);
+        setShellPanel("help");
+        return;
+      }
       if (builtinId === "terminal") {
         openTerminal();
         showToast("ConPTY terminal ready");
@@ -574,6 +623,11 @@ export function App() {
   }, []);
 
   const launchShellApp = useCallback(async ({ label, target }) => {
+    if (target.toLowerCase() === "jarvis-help:") {
+      setCommandOpen(false);
+      setShellPanel("help");
+      return;
+    }
     if (target.toLowerCase() === "jarvis-settings:") {
       setShellPanel("settings");
       showToast("JARVIS runtime settings ready");
@@ -675,6 +729,15 @@ export function App() {
     1,
     workspaceState.viewport.width - workspaceState.viewport.left - workspaceState.viewport.right,
   );
+  const openGraphFiles = useCallback(() => {
+    openExplorer();
+    showToast({
+      severity: "info",
+      source: "desktop",
+      title: "Choose a verified local source",
+      detail: "Open a file or folder to begin local graph work. No source is connected until selection is explicit.",
+    });
+  }, [openExplorer, showToast]);
 
   return (
     <main className={[
@@ -710,8 +773,18 @@ export function App() {
           onOpenSettings={openDesktopSettings}
           onNotify={showDesktopFeedback}
         />
-        <CoreStage />
+        <CoreStage
+          desktopOnly={graphLaunchpadHidden}
+          onOpenSearch={openCommand}
+          onOpenFiles={openGraphFiles}
+          onKeepDesktop={() => {
+            setGraphLaunchpadHidden(true);
+            showToast("Knowledge graph start options hidden for this session");
+          }}
+          onRestoreLaunchpad={() => setGraphLaunchpadHidden(false)}
+        />
         <TelemetryRail
+          compact={workspaceAvailableWidth <= 1080}
           localEvents={localFeedEvents}
           onInspect={inspect}
           onNotification={handleNotification}
@@ -723,6 +796,15 @@ export function App() {
           <BootSequence onComplete={finishBoot} />
         </Suspense>
       ) : null}
+
+      <LinkedWorkspaceHandle
+        activeId={workspaceState.activeId}
+        variant={linkedWorkspaceVariant}
+        onActivate={activateWorkspaceWindow}
+      />
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {linkedWorkspaceAnnouncement}
+      </div>
 
       {workspaceState.windows.agent.open ? (
         <ManagedWorkspaceWindow
@@ -895,6 +977,9 @@ export function App() {
             onOpenPanel={navigateShellPanel}
             onExit={exitToWindows}
             onToast={showSettingsFeedback}
+            localFeedEvents={localFeedEvents}
+            onClearLocalFeed={clearLocalFeed}
+            onMarkLocalFeedRead={markLocalFeedRead}
           />
         </Suspense>
       ) : null}
@@ -907,7 +992,7 @@ export function App() {
         />
       ) : null}
 
-      <SystemNotice notice={notice} onDismiss={dismissNotice} />
+      <SystemNotice notice={notice} onDismiss={dismissNotice} placement={noticePlacement} />
 
       <div className="desktop-only-notice" role="status">
         <JarvisMark />

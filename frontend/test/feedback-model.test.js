@@ -30,11 +30,31 @@ test("legacy English and Chinese failures are promoted while confirmations remai
   assert.equal(createShellFeedback("Unable to open application").severity, "error");
   assert.equal(createShellFeedback("Windows 剪贴板暂时不可用").severity, "error");
   assert.equal(createShellFeedback("1 completed · 1 failed").severity, "error");
+  assert.equal(createShellFeedback("Rename failed: Access denied").severity, "error");
+  assert.equal(createShellFeedback("Transfer completed with 2 errors").severity, "error");
+  assert.equal(createShellFeedback("Requested Clipboard operation did not succeed").severity, "error");
   assert.equal(createShellFeedback("1 completed · 0 failed").severity, "info");
+  assert.equal(createShellFeedback("Transfer completed with no errors").severity, "info");
   const confirmation = createShellFeedback("Path copied");
   assert.equal(confirmation.severity, "info");
   assert.equal(confirmation.persistent, false);
   assert.equal(confirmation.timeoutMs, 2600);
+});
+
+test("explicit severity takes precedence over legacy failure inference", () => {
+  const acknowledgedFailure = createShellFeedback({
+    severity: "info",
+    title: "Rename failed but was already handled",
+  });
+  const degradedOperation = createShellFeedback({
+    severity: "warning",
+    title: "Transfer failed over to the supported fallback",
+  });
+
+  assert.equal(acknowledgedFailure.severity, "info");
+  assert.equal(acknowledgedFailure.persistent, false);
+  assert.equal(degradedOperation.severity, "warning");
+  assert.equal(degradedOperation.persistent, true);
 });
 
 test("transient confirmations cannot displace an unresolved serious notice", () => {

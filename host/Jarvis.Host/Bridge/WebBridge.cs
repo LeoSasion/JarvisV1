@@ -1647,7 +1647,7 @@ internal sealed class WebBridge : IDisposable
         }
     }
 
-    private static string? GetRequestedPanel(JsonElement parameters)
+    internal static string? GetRequestedPanel(JsonElement parameters)
     {
         if (parameters.ValueKind != JsonValueKind.Object)
         {
@@ -1658,7 +1658,7 @@ internal sealed class WebBridge : IDisposable
             panelElement.ValueKind == JsonValueKind.String)
         {
             var panel = panelElement.GetString();
-            if (panel is "command" or "start" or "quick-settings" or "date-time" or "notifications" or "session" or "explorer" or "settings" or "terminal")
+            if (panel is "command" or "start" or "quick-settings" or "date-time" or "notifications" or "session" or "explorer" or "settings" or "terminal" or "help")
             {
                 return panel;
             }

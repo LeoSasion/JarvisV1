@@ -71,6 +71,8 @@ import {
   shiftCalendarMonth,
   toLocalDateKey,
 } from "../date-time-panel-model.js";
+import { mergeSystemFeedEvents } from "../feedback-model.js";
+import { filterHelpSections, helpCenterSections } from "../help-center-model.js";
 import { useRecentApplicationIds } from "../hooks/useRecentApplications.js";
 import { clearRecentApplications } from "../recent-applications.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
@@ -486,6 +488,7 @@ function StartPanel({
   onLaunch,
   onLaunchInstalled,
   onActivateWindow,
+  onOpenHelp,
   onOpenSession,
 }) {
   const taskbar = useTaskbarSnapshot();
@@ -763,6 +766,7 @@ function StartPanel({
 
       <footer className="start-footer">
         <span><strong>{system.status.machineName}</strong><small>{system.status.osDescription}</small></span>
+        <button type="button" onClick={onOpenHelp}><PulseRegular /><span>Help</span></button>
         <button type="button" onClick={() => onLaunch({ label: "JARVIS Settings", target: "jarvis-settings:" })}><SettingsRegular /><span>Settings</span></button>
         <button type="button" className="is-exit" onClick={onOpenSession}><PowerRegular /><span>Session controls</span></button>
       </footer>
@@ -877,23 +881,42 @@ function QuickSettingsPanel({ onClose, onLaunch }) {
   );
 }
 
-function NotificationsPanel({ onClose, onLaunch }) {
+function NotificationsPanel({
+  localEvents = [],
+  onClearLocalFeed,
+  onClose,
+  onLaunch,
+  onMarkLocalFeedRead,
+}) {
   const feed = useSystemFeed();
   const notificationHistory = useNotificationHistory();
   const [feedFilter, setFeedFilter] = useState("all");
   const [feedQuery, setFeedQuery] = useState("");
   const deferredFeedQuery = useDeferredValue(feedQuery);
+  const events = useMemo(
+    () => mergeSystemFeedEvents(localEvents, feed.items, 50),
+    [feed.items, localEvents],
+  );
   const visibleFeedItems = useMemo(
-    () => filterSystemFeed(feed.items, {
+    () => filterSystemFeed(events, {
       filter: feedFilter,
       query: deferredFeedQuery,
     }),
-    [deferredFeedQuery, feed.items, feedFilter],
+    [deferredFeedQuery, events, feedFilter],
   );
   const feedSummary = useMemo(
-    () => getSystemFeedFilterSummary(feed.items, visibleFeedItems),
-    [feed.items, visibleFeedItems],
+    () => getSystemFeedFilterSummary(events, visibleFeedItems),
+    [events, visibleFeedItems],
   );
+  const unreadCount = events.filter((item) => item.unread).length;
+  const markAllRead = async () => {
+    await Promise.allSettled([markSystemFeedRead()]);
+    onMarkLocalFeedRead?.();
+  };
+  const clearAll = async () => {
+    await Promise.allSettled([clearSystemFeed()]);
+    onClearLocalFeed?.();
+  };
   const actionTargets = {
     "open-network-settings": { label: "Network settings", target: "ms-settings:network-status" },
     "open-sound-settings": { label: "Sound settings", target: "ms-settings:sound" },
@@ -962,10 +985,10 @@ function NotificationsPanel({ onClose, onLaunch }) {
       <div className="shell-notification-list">
         {feed.loading ? <p className="system-feed-empty">Connecting to the JARVIS event stream…</p> : null}
         {feed.error ? <p className="runtime-settings-error" role="alert"><AlertRegular />{feed.error}</p> : null}
-        {!feed.loading && !feed.error && feed.items.length === 0
+        {!feed.loading && !feed.error && events.length === 0
           ? <p className="system-feed-empty">No JARVIS events in this session.</p>
           : null}
-        {!feed.loading && !feed.error && feed.items.length > 0 && visibleFeedItems.length === 0
+        {!feed.loading && !feed.error && events.length > 0 && visibleFeedItems.length === 0
           ? <p className="system-feed-empty">No events match the current feed filter.</p>
           : null}
         {visibleFeedItems.map((item) => {
@@ -989,8 +1012,8 @@ function NotificationsPanel({ onClose, onLaunch }) {
       </div>
       <footer className="notification-footer">
         <span>{feedSummary.visibleUnread} VISIBLE UNREAD · {feedSummary.label}</span>
-        <button type="button" disabled={feed.unreadCount === 0} onClick={() => void markSystemFeedRead()}>MARK ALL READ</button>
-        <button type="button" disabled={feed.items.length === 0} onClick={() => void clearSystemFeed()}>CLEAR</button>
+        <button type="button" disabled={unreadCount === 0} onClick={() => void markAllRead()}>MARK ALL READ</button>
+        <button type="button" disabled={events.length === 0} onClick={() => void clearAll()}>CLEAR</button>
       </footer>
     </section>
   );
@@ -1491,16 +1514,77 @@ function SessionControlPanel({ onClose, onExit, onToast }) {
   );
 }
 
+function HelpCenterPanel({ onClose, onOpenPanel }) {
+  const [query, setQuery] = useState("");
+  const visibleSections = useMemo(() => filterHelpSections(query), [query]);
+
+  return (
+    <section
+      className="shell-panel help-center-panel"
+      role="dialog"
+      aria-modal="false"
+      aria-label="JARVIS help and shortcuts"
+    >
+      <PanelHeader eyebrow="LOCAL GUIDE · F1" title="HELP / SHORTCUTS" onClose={onClose} />
+      <label className="help-center-search">
+        <SearchRegular aria-hidden="true" />
+        <input
+          autoFocus
+          data-dialog-initial-focus="true"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search tasks, shortcuts, privacy, recovery"
+          aria-label="Search JARVIS help"
+        />
+        <kbd>F1</kbd>
+      </label>
+      <div className="help-center-layout">
+        <nav aria-label="Help categories">
+          {helpCenterSections.map((section, index) => (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => document.getElementById(`help-${section.id}`)?.scrollIntoView({ block: "start" })}
+            >
+              <code>{String(index + 1).padStart(2, "0")}</code><span>{section.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="help-center-ledger" aria-live="polite">
+          {visibleSections.length > 0 ? visibleSections.map((section) => (
+            <section key={section.id} id={`help-${section.id}`}>
+              <header><small>{section.label}</small><strong>{section.title}</strong><p>{section.summary}</p></header>
+              <dl>
+                {section.entries.map((entry) => (
+                  <div key={`${section.id}:${entry.command}`}>
+                    <dt>{entry.command}</dt><dd>{entry.detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )) : <p className="shell-empty-state">No help entry matches this search.</p>}
+        </div>
+      </div>
+      <footer className="help-center-footer">
+        <span><ShieldRegular /> EXPLORER STAYS RUNNING · NATIVE TASKBAR RESTORES ON EXIT</span>
+        <button type="button" onClick={() => onOpenPanel("session")}>SESSION CONTROL</button>
+        <button type="button" onClick={() => onOpenPanel("settings")}>RECOVERY CHECK</button>
+      </footer>
+    </section>
+  );
+}
+
 const runtimeSettingsSections = Object.freeze([
   { id: "settings-general", label: "GENERAL" },
   { id: "settings-taskbar", label: "TASKBAR" },
   { id: "settings-windows", label: "WINDOWS" },
   { id: "settings-interface", label: "INTERFACE" },
   { id: "settings-integration", label: "INTEGRATION" },
+  { id: "settings-help", label: "HELP" },
   { id: "settings-recovery", label: "RECOVERY" },
 ]);
 
-function RuntimeSettingsPanel({ onClose, onToast }) {
+function RuntimeSettingsPanel({ onClose, onToast, onOpenHelp }) {
   const panelRef = useRef(null);
   const [runtime, setRuntime] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -1681,6 +1765,20 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
       <div id="settings-integration" className="runtime-settings-section-anchor">
         <NativeIntegrationSettings onToast={onToast} />
       </div>
+
+      <section
+        id="settings-help"
+        className="runtime-settings-section-anchor runtime-help-entry"
+        aria-label="JARVIS help and shortcuts"
+      >
+        <span><PulseRegular /></span>
+        <span>
+          <small>HELP / SHORTCUTS / RECOVERY</small>
+          <strong>OPEN THE LOCAL OPERATIONS MAP</strong>
+          <p>Press F1 anywhere in JARVIS for file, window, Agent-link, privacy, and safe-exit guidance.</p>
+        </span>
+        <button type="button" onClick={onOpenHelp}>OPEN HELP CENTER</button>
+      </section>
 
       <section
         id="settings-recovery"
@@ -2423,6 +2521,9 @@ export function ShellPanelLayer({
   onOpenPanel,
   onExit,
   onToast,
+  localFeedEvents,
+  onClearLocalFeed,
+  onMarkLocalFeedRead,
 }) {
   const panelRef = useRef(null);
   useDialogFocusTrap(panelRef, Boolean(panel), { onEscape: onClose });
@@ -2439,12 +2540,21 @@ export function ShellPanelLayer({
             onLaunch={onLaunch}
             onLaunchInstalled={onLaunchInstalled}
             onActivateWindow={onActivateWindow}
+            onOpenHelp={() => onOpenPanel("help")}
             onOpenSession={() => onOpenPanel("session")}
           />
         ) : null}
         {panel === "quick-settings" ? <QuickSettingsPanel onClose={onClose} onLaunch={onLaunch} /> : null}
         {panel === "date-time" ? <DateTimePanel onClose={onClose} onLaunch={onLaunch} /> : null}
-        {panel === "notifications" ? <NotificationsPanel onClose={onClose} onLaunch={onLaunch} /> : null}
+        {panel === "notifications" ? (
+          <NotificationsPanel
+            localEvents={localFeedEvents}
+            onClearLocalFeed={onClearLocalFeed}
+            onClose={onClose}
+            onLaunch={onLaunch}
+            onMarkLocalFeedRead={onMarkLocalFeedRead}
+          />
+        ) : null}
         {panel === "session" ? (
           <SessionControlPanel
             onClose={onClose}
@@ -2452,7 +2562,14 @@ export function ShellPanelLayer({
             onToast={onToast}
           />
         ) : null}
-        {panel === "settings" ? <RuntimeSettingsPanel onClose={onClose} onToast={onToast} /> : null}
+        {panel === "settings" ? (
+          <RuntimeSettingsPanel
+            onClose={onClose}
+            onToast={onToast}
+            onOpenHelp={() => onOpenPanel("help")}
+          />
+        ) : null}
+        {panel === "help" ? <HelpCenterPanel onClose={onClose} onOpenPanel={onOpenPanel} /> : null}
       </div>
     </div>
   );

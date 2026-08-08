@@ -53,7 +53,7 @@ typography:
     letterSpacing: "0.1em"
   meta:
     fontFamily: "Cascadia Mono, Cascadia Code, Consolas, monospace"
-    fontSize: "10px"
+    fontSize: "11px"
     fontWeight: 400
     lineHeight: 1.2
     letterSpacing: "0.1em"
@@ -212,7 +212,7 @@ copy.
   measures bounded rather than stretching prose across a full monitor.
 - **Label** (Cascadia Mono, weight 600, 11px, line-height 1, letter-spacing
   0.1em): Uppercase commands, tabs, status keys, and navigation items.
-- **Meta** (Cascadia Mono, weight 400, 10px, line-height 1.2, letter-spacing
+- **Meta** (Cascadia Mono, weight 400, 11px, line-height 1.2, letter-spacing
   0.1em): Timestamps, dimensions, paths, counters, capabilities, and secondary
   telemetry.
 
@@ -247,21 +247,25 @@ columns when space permits. The linked Explorer/Agent workspace becomes one
 causal composition rather than adjacent framed panels; its route overlay follows
 the currently related source and message.
 
-Responsive behavior is desktop-first. Width breakpoints around 1500px and 1260px
-compress chrome and supporting columns; near 1040px and below, secondary detail
-yields before primary work. Height compression begins around 820px. Container
-queries remove the Explorer inspector before compromising the file list.
+Responsive behavior is desktop-first. The top rail compresses around 1380px and
+1080px. Linked workspaces move through three-pane, two-pane, drawer, and
+single-pane states at available widths of 1440px, 1180px, and 920px. Explorer
+container queries remove its inspector at 1039px, its navigation at 819px, and
+taskbar labels yield at the 520px application-container threshold. Height
+compression begins at 820px, with the shortest linked composition at 720px.
 
 Spacing follows the observed 4px base rhythm: 4, 8, 12, 16, and 24px. Dense
-regions may use ledger lines instead of extra padding, but interactive hit areas
-must remain usable even when their visible chrome is thin.
+regions may use ledger lines instead of extra padding, but operational text does
+not fall below 11px and persistent interactive hit areas do not fall below 24px.
 
 ## Elevation & Depth
 
 The system is flat by default. Resting surfaces do not float above Blackbox Black;
 they are distinguished by structural hairlines, tonal steps close to black, and
 the priority of their content. Persistent shadows are not part of ordinary
-window, panel, menu, or taskbar geometry.
+window, panel, or taskbar geometry. Transient context menus, notices, drawers,
+and task-focused overlays may use one bounded black shadow to separate an
+actionable layer from live content.
 
 Depth appears as a response to state. A small local orange emission may mark an
 active node, live route, focused control, or ready system channel. Stronger
@@ -276,6 +280,8 @@ must not imply nonexistent activity or blur the underlying vector geometry.
   currently working state; never a panel-wide ambient fog.
 - **Focus inset** (`0 0 0 1px rgb(255 106 0 / 28%) inset`): Reinforces an active
   field or command without lifting it from the surface.
+- **Transient overlay** (`0 12px 36px rgb(0 0 0 / 48%)`): Notices, menus, and
+  temporary drawers only; never a resting card treatment.
 
 ### Named Rules
 
@@ -376,11 +382,12 @@ a route anchor.
 
 ### Knowledge Graph
 
-The desktop center is a passive deterministic vector field. Low-contrast edges
-and labels provide structure; a small subset of nodes and routes receive Command
-Orange. It has no generic Agent call-to-action and must not claim a knowledge
-source is connected until the host provides one. Ambient motion remains restrained
-and has a reduced-motion fallback.
+The desktop center is a deterministic vector field. Low-contrast edges and
+labels provide structure; a small subset of nodes and routes receive Command
+Orange. When no verified source exists, an open three-command ledger may offer
+local search, Explorer, or a desktop-only session; it never claims that choosing
+a file has already connected the graph. It has no generic Agent call-to-action.
+Ambient motion remains restrained and has a reduced-motion fallback.
 
 ## Do's and Don'ts
 

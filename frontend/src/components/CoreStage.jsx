@@ -1,13 +1,37 @@
-import { useEffect, useRef } from "react";
+import {
+  ChevronRightRegular,
+  DesktopRegular,
+  FolderRegular,
+  SearchRegular,
+} from "@fluentui/react-icons";
+import { useEffect, useMemo, useRef } from "react";
 import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
 import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
-export function CoreStage({ graphState = null }) {
+const actionIcons = Object.freeze({
+  "search-local": SearchRegular,
+  "open-files": FolderRegular,
+  "desktop-only": DesktopRegular,
+});
+
+export function CoreStage({
+  graphState = null,
+  desktopOnly = false,
+  onOpenSearch,
+  onOpenFiles,
+  onKeepDesktop,
+  onRestoreLaunchpad,
+}) {
   const stageRef = useRef(null);
   const rectRef = useRef(null);
   const pointerRef = useRef(null);
   const frameRef = useRef(0);
   const presentation = getKnowledgeGraphPresentation(graphState);
+  const actionHandlers = useMemo(() => ({
+    "search-local": onOpenSearch,
+    "open-files": onOpenFiles,
+    "desktop-only": onKeepDesktop,
+  }), [onKeepDesktop, onOpenFiles, onOpenSearch]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -57,7 +81,7 @@ export function CoreStage({ graphState = null }) {
   return (
     <section
       ref={stageRef}
-      className={`core-stage is-${presentation.status}`}
+      className={`core-stage is-${presentation.status} ${desktopOnly ? "is-desktop-only" : ""}`}
       onPointerEnter={() => {
         rectRef.current = stageRef.current?.getBoundingClientRect() ?? null;
       }}
@@ -75,6 +99,27 @@ export function CoreStage({ graphState = null }) {
           <small>{presentation.meta}</small>
         </div>
       </div>
+      {!presentation.connected && !desktopOnly ? (
+        <nav className="core-stage__launchpad" aria-label="Start a local JARVIS task">
+          <header><span>NO VERIFIED SOURCE</span><strong>CHOOSE A LOCAL START</strong></header>
+          {presentation.actions.map((action, index) => {
+            const Icon = actionIcons[action.id];
+            return (
+              <button key={action.id} type="button" onClick={actionHandlers[action.id]}>
+                <code>{String(index + 1).padStart(2, "0")}</code>
+                <Icon aria-hidden="true" />
+                <span><strong>{action.label}</strong><small>{action.detail}</small></span>
+                <ChevronRightRegular aria-hidden="true" />
+              </button>
+            );
+          })}
+        </nav>
+      ) : null}
+      {!presentation.connected && desktopOnly ? (
+        <button type="button" className="core-stage__restore" onClick={onRestoreLaunchpad}>
+          <span>LOCAL GRAPH</span><strong>SHOW START OPTIONS</strong><ChevronRightRegular aria-hidden="true" />
+        </button>
+      ) : null}
     </section>
   );
 }
