@@ -38,7 +38,7 @@ public partial class TaskbarFlyoutWindow : Window
     private readonly string _mode;
     private readonly TaskbarFlyoutRequest _request;
     private readonly bool _autoDismiss;
-    private readonly Action<string, string> _contextAction;
+    private readonly Action<string, string, string?> _contextAction;
     private readonly Action _closed;
     private readonly DispatcherTimer _cursorTimer;
     private readonly Dictionary<IntPtr, FrameworkElement> _thumbnails = new();
@@ -56,7 +56,7 @@ public partial class TaskbarFlyoutWindow : Window
         int anchorScreenX,
         TaskbarFlyoutRequest request,
         bool autoDismiss,
-        Action<string, string> contextAction,
+        Action<string, string, string?> contextAction,
         Action closed)
     {
         _windows = windows;
@@ -90,13 +90,22 @@ public partial class TaskbarFlyoutWindow : Window
         }
 
         var maximum = _mode == "overflow" ? 10 : 6;
-        var visibleWindows = _windows.Take(Math.Clamp(limit ?? maximum, 1, maximum)).ToArray();
+        var requestedLimit = Math.Clamp(limit ?? maximum, 1, maximum);
+        var visibleWindows = _windows.Take(requestedLimit).ToArray();
+        var remainingOverflowSlots = Math.Max(0, requestedLimit - visibleWindows.Length);
+        var visibleOverflowItems = _mode == "overflow"
+            ? _request.OverflowItems.Take(remainingOverflowSlots).ToArray()
+            : Array.Empty<TaskbarOverflowItem>();
+        var totalItemCount = _mode == "overflow"
+            ? _windows.Count + _request.OverflowItems.Count
+            : _windows.Count;
+        var visibleItemCount = visibleWindows.Length + visibleOverflowItems.Length;
         TitleText.Text = _mode == "overflow" ? "TASK OVERFLOW" : "WINDOW GROUP";
         var meta = _mode == "overflow"
-            ? $"{_windows.Count} RUNNING APPS"
+            ? $"{totalItemCount} APPLICATIONS"
             : $"{_windows.Count} OPEN WINDOWS";
-        MetaText.Text = visibleWindows.Length < _windows.Count
-            ? $"{meta} · SHOWING {visibleWindows.Length}"
+        MetaText.Text = visibleItemCount < totalItemCount
+            ? $"{meta} · SHOWING {visibleItemCount}"
             : meta;
 
         foreach (var window in visibleWindows)
@@ -104,6 +113,10 @@ public partial class TaskbarFlyoutWindow : Window
             CardsPanel.Children.Add(_mode == "overflow"
                 ? CreateOverflowCard(window)
                 : CreatePreviewCard(window));
+        }
+        foreach (var item in visibleOverflowItems)
+        {
+            CardsPanel.Children.Add(CreateRendererOverflowCard(item));
         }
     }
 
@@ -166,7 +179,7 @@ public partial class TaskbarFlyoutWindow : Window
             }
 
             CloseSafely();
-            _contextAction(itemId, action);
+            _contextAction(itemId, action, null);
         };
         return button;
     }
@@ -238,6 +251,78 @@ public partial class TaskbarFlyoutWindow : Window
 
         card.Child = grid;
         return card;
+    }
+
+    private FrameworkElement CreateRendererOverflowCard(TaskbarOverflowItem item)
+    {
+        var button = new Button
+        {
+            Width = 260,
+            Height = 66,
+            Margin = new Thickness(5),
+            Padding = new Thickness(12, 7, 10, 7),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Foreground = TextBrush,
+            Background = PanelBrush,
+            BorderBrush = CardBorderBrush,
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand,
+            ToolTip = $"Open {item.Label}"
+        };
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(38) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var mark = new TextBlock
+        {
+            Text = "◇",
+            Foreground = NativeVisualPalette.AccentBrush,
+            FontFamily = new FontFamily("Segoe UI Symbol"),
+            FontSize = 22,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        grid.Children.Add(mark);
+
+        var copy = new StackPanel
+        {
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        copy.Children.Add(new TextBlock
+        {
+            Text = item.Label,
+            Foreground = TextBrush,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 11,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        copy.Children.Add(new TextBlock
+        {
+            Text = item.Meta,
+            Margin = new Thickness(0, 3, 0, 0),
+            Foreground = MutedTextBrush,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 8.5,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        });
+        Grid.SetColumn(copy, 1);
+        grid.Children.Add(copy);
+        button.Content = grid;
+        button.MouseEnter += (_, _) =>
+        {
+            button.BorderBrush = CardBorderHoverBrush;
+            button.Background = PanelHoverBrush;
+        };
+        button.MouseLeave += (_, _) =>
+        {
+            button.BorderBrush = CardBorderBrush;
+            button.Background = PanelBrush;
+        };
+        button.Click += (_, _) =>
+        {
+            CloseSafely();
+            _contextAction(item.ItemId, "activate", item.WindowId);
+        };
+        return button;
     }
 
     private Border CreateCardShell(double width, double height, TaskbarWindowSnapshot window)
@@ -416,7 +501,10 @@ public partial class TaskbarFlyoutWindow : Window
             return;
         }
 
-        var maximumCount = Math.Max(1, Math.Min(_windows.Count, _mode == "overflow" ? 10 : 6));
+        var itemCount = _mode == "overflow"
+            ? _windows.Count + _request.OverflowItems.Count
+            : _windows.Count;
+        var maximumCount = Math.Max(1, Math.Min(itemCount, _mode == "overflow" ? 10 : 6));
         var cardWidth = _mode == "overflow" ? 270 : 242;
         var cardHeight = _mode == "overflow" ? 76 : 168;
         var preferredColumns = _mode == "overflow" ? Math.Min(maximumCount, 2) : Math.Min(maximumCount, 3);

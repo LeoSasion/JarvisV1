@@ -842,41 +842,6 @@ button.top-cluster:hover:not(:disabled) {
   height: 23px;
 }
 
-.secure-cluster svg,
-.agent-cluster svg {
-  color: var(--energy-cyan);
-}
-
-.agent-status-orb {
-  width: 52px;
-  height: 52px;
-  flex: 0 0 auto;
-  object-fit: contain;
-  transform: translateY(4px);
-}
-
-.agent-cluster {
-  gap: 4px;
-  padding-left: 12px;
-}
-
-.status-copy {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.status-copy strong {
-  color: var(--text-1);
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.status-copy small {
-  color: var(--text-3);
-  font: 10px/1 "Segoe UI", sans-serif;
-}
-
 .stop-cluster {
   color: var(--danger);
 }
@@ -1407,45 +1372,6 @@ button.top-cluster:hover:not(:disabled) {
   pointer-events: none;
   transform: translate3d(var(--parallax-x), var(--parallax-y), 0);
   transition: transform 280ms ease-out;
-}
-
-.core-stage__image {
-  width: 122%;
-  height: 112%;
-  object-fit: contain;
-  user-select: none;
-  filter: brightness(0.93) contrast(1.08) saturate(1.04);
-  animation: core-breathe 8s ease-in-out infinite;
-  transform-origin: 50% 48%;
-}
-
-.core-stage.is-listening .core-stage__image {
-  animation-duration: 5.5s;
-  filter: brightness(1) contrast(1.08) saturate(1.07);
-}
-
-.core-hotspot {
-  position: absolute;
-  left: 50%;
-  top: 46%;
-  z-index: 2;
-  width: clamp(120px, 11vw, 180px);
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  cursor: pointer;
-}
-
-.core-hotspot:focus-visible {
-  outline-offset: 8px;
-  border-radius: 50%;
-}
-
-@keyframes core-breathe {
-  0%, 100% { transform: scale(1); opacity: 0.93; }
-  50% { transform: scale(1.008); opacity: 1; }
 }
 
 .telemetry-rail {
@@ -2189,7 +2115,9 @@ button.process-grid:hover {
   bottom: calc(var(--taskbar-bottom) + var(--taskbar-height) + 8px);
   z-index: 120;
   width: min(738px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--taskbar-bottom) - var(--taskbar-height) - 24px);
   padding: 0 10px 10px;
+  overflow-y: auto;
   transform: translateX(-50%);
   border: var(--taskbar-hairline) solid var(--taskbar-line);
   border-radius: 0;

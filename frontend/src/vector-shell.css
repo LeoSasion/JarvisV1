@@ -170,7 +170,7 @@ textarea:focus-visible {
   top: 0;
   height: var(--top-height);
   display: grid;
-  grid-template-columns: minmax(390px, 1fr) minmax(520px, 1.25fr) auto;
+  grid-template-columns: minmax(390px, 1fr) minmax(320px, 0.8fr) auto;
   align-items: stretch;
   padding-inline: 20px;
   background: var(--surface-0);
@@ -231,8 +231,7 @@ textarea:focus-visible {
   padding-left: 0;
 }
 
-.brand-orb,
-.agent-status-orb {
+.brand-orb {
   width: 28px;
   height: 28px;
   flex: 0 0 auto;
@@ -249,8 +248,7 @@ textarea:focus-visible {
   text-shadow: none;
 }
 
-.brand-edition,
-.status-copy small {
+.brand-edition {
   color: var(--ink-2);
   font: var(--type-meta)/1 var(--font-data);
   letter-spacing: 0.08em;
@@ -291,23 +289,6 @@ textarea:focus-visible {
   color: var(--ink-1);
   font-size: 10px;
   font-weight: 400;
-}
-
-.agent-cluster {
-  min-width: 188px;
-  padding-inline: var(--space-4);
-  background: var(--signal-fill);
-}
-
-.agent-cluster:hover,
-.agent-cluster:focus-visible {
-  background: var(--signal-fill-strong);
-}
-
-.status-copy strong {
-  color: var(--ink-1);
-  font: 600 12px/1 var(--font-display);
-  letter-spacing: 0.08em;
 }
 
 .stop-cluster {
@@ -398,22 +379,26 @@ textarea:focus-visible {
   transition-duration: 180ms;
 }
 
-.neural-vector-field {
+.knowledge-graph-field {
   width: 100%;
   height: 100%;
-  color: var(--signal);
-  opacity: 0.98;
+  color: var(--ink-3);
+  opacity: 0.72;
   shape-rendering: geometricPrecision;
 }
 
-.neural-vector-field line,
-.neural-vector-field path,
-.neural-vector-field polyline,
-.neural-vector-field rect {
+.knowledge-graph-field.is-connected {
+  opacity: 0.98;
+}
+
+.knowledge-graph-field line,
+.knowledge-graph-field path,
+.knowledge-graph-field polyline,
+.knowledge-graph-field rect {
   vector-effect: non-scaling-stroke;
 }
 
-.neural-vector-field__grid {
+.knowledge-graph-field__grid {
   fill: none;
   stroke: var(--structure-weak);
   stroke-width: 1;
@@ -421,89 +406,131 @@ textarea:focus-visible {
   opacity: 0.12;
 }
 
-.neural-vector-field__datum {
+.knowledge-graph-field__datum {
   fill: none;
   stroke: var(--structure);
   stroke-width: 1;
   opacity: 0.5;
 }
 
-.neural-vector-field__edges {
-  stroke: color-mix(in srgb, var(--signal) 34%, var(--ink-3));
+.knowledge-graph-field__clusters {
+  fill: none;
+  stroke: var(--structure-weak);
   stroke-width: 1;
-  opacity: 0.34;
+  stroke-dasharray: 3 10;
+  opacity: 0.42;
 }
 
-.neural-vector-field__routes,
-.neural-vector-field__signal-halo,
-.neural-vector-field__signal {
+.knowledge-graph-field__edges {
+  stroke: color-mix(in srgb, var(--ink-3) 58%, transparent);
+  stroke-width: 1;
+  opacity: 0.3;
+}
+
+.knowledge-graph-field__routes,
+.knowledge-graph-field__signal-halo,
+.knowledge-graph-field__signal {
   fill: none;
   stroke-linejoin: miter;
 }
 
-.neural-vector-field__routes {
+.knowledge-graph-field__routes {
+  stroke: var(--structure);
+  stroke-width: 1;
+  opacity: 0.4;
+}
+
+.knowledge-graph-field.is-connected .knowledge-graph-field__routes {
   stroke: var(--signal-dim);
   stroke-width: 1.25;
   opacity: 0.86;
 }
 
-.neural-vector-field__signal-halo {
+.knowledge-graph-field__signal-halo {
   stroke: var(--signal);
   stroke-width: 7;
   opacity: 0.16;
 }
 
-.neural-vector-field__signal {
+.knowledge-graph-field__signal {
   stroke: var(--signal-hot);
   stroke-width: 1.65;
   stroke-dasharray: 12 10;
   opacity: 0.94;
 }
 
-.neural-vector-field__signal path:first-child {
+.knowledge-graph-field__signal path:first-child {
   animation: vector-flow 7.2s linear infinite;
 }
 
-.neural-vector-field__core {
+.knowledge-graph-field__focus {
   fill: none;
+  stroke: var(--structure-strong);
+  stroke-width: 1;
+  filter: none;
+}
+
+.knowledge-graph-field.is-connected .knowledge-graph-field__focus {
   stroke: var(--signal-hot);
-  stroke-width: 1.8;
+  stroke-width: 1.4;
   filter: drop-shadow(var(--glow-status));
 }
 
-.neural-vector-field__core-axis {
-  stroke: var(--signal);
-  stroke-dasharray: 2 5;
-}
-
-.neural-vector-field__core rect,
-.neural-vector-field__nodes rect {
-  fill: var(--ink-2);
+.knowledge-graph-field__focus text {
+  fill: var(--ink-1);
   stroke: none;
-  opacity: 0.84;
+  font: 600 10px/1 var(--font-data);
+  letter-spacing: 0.12em;
+  filter: none;
 }
 
-.neural-vector-field__nodes rect.is-hot,
-.neural-vector-field__core rect {
+.knowledge-graph-field__focus text.is-muted {
+  fill: var(--ink-3);
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.knowledge-graph-field__focus rect,
+.knowledge-graph-field__nodes rect {
+  fill: var(--ink-3);
+  stroke: none;
+  opacity: 0.58;
+}
+
+.knowledge-graph-field__nodes rect.is-hot,
+.knowledge-graph-field__focus rect {
+  fill: var(--ink-2);
+  filter: none;
+  opacity: 0.9;
+}
+
+.knowledge-graph-field.is-connected .knowledge-graph-field__nodes rect.is-hot,
+.knowledge-graph-field.is-connected .knowledge-graph-field__focus rect {
   fill: var(--signal-hot);
   filter: drop-shadow(var(--glow-status));
   opacity: 1;
 }
 
-.neural-vector-field__labels {
+.knowledge-graph-field__nodes rect.is-entity {
+  fill: var(--ink-1);
+}
+
+.knowledge-graph-field__nodes rect.is-event,
+.knowledge-graph-field__nodes rect.is-task {
+  opacity: 0.56;
+}
+
+.knowledge-graph-field__labels {
   fill: var(--ink-2);
   font: 10px/1 var(--font-data);
   letter-spacing: 0.13em;
   opacity: 0.96;
 }
 
-.neural-vector-field.is-active .neural-vector-field__core path:first-child,
-.neural-vector-field.is-active .neural-vector-field__signal path:first-child {
-  stroke: var(--signal-hot);
-}
-
-.neural-vector-field.is-active .neural-vector-field__signal path:first-child {
-  animation-duration: 1.7s;
+.knowledge-graph-field__labels text:not(:first-child) {
+  fill: var(--ink-3);
+  font-size: 8px;
+  letter-spacing: 0.11em;
 }
 
 @keyframes vector-flow {
@@ -523,92 +550,20 @@ textarea:focus-visible {
 }
 
 .core-stage__readout strong {
-  color: var(--signal-hot);
+  color: var(--ink-2);
   font: 600 12px/1 var(--font-display);
   letter-spacing: 0.08em;
+  text-shadow: none;
+}
+
+.core-stage.is-connected .core-stage__readout strong {
+  color: var(--signal-hot);
   text-shadow: var(--glow-status);
 }
 
 .core-stage__readout small {
   color: var(--ink-2);
   font: 10px/1 var(--font-data);
-}
-
-.core-hotspot {
-  top: 50%;
-  width: 164px;
-  aspect-ratio: auto;
-  min-height: 88px;
-  display: grid;
-  grid-template-columns: 52px 1fr;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  border: 2px solid var(--signal-hot);
-  border-radius: 0;
-  color: var(--signal-hot);
-  background: var(--signal-fill-strong);
-  box-shadow: none;
-}
-
-.core-hotspot:hover {
-  color: var(--signal-hot);
-  background: var(--surface-2);
-  border-color: var(--signal-hot);
-}
-
-.core-hotspot:focus-visible {
-  border-radius: 0;
-}
-
-.core-hotspot__mark {
-  position: relative;
-  width: 46px;
-  height: 46px;
-  display: block;
-  filter: drop-shadow(var(--glow-status));
-}
-
-.core-hotspot__mark i {
-  position: absolute;
-  width: 11px;
-  height: 11px;
-  border-color: currentColor;
-  border-style: solid;
-}
-
-.core-hotspot__mark i:nth-child(1) { top: 0; left: 0; border-width: 1px 0 0 1px; }
-.core-hotspot__mark i:nth-child(2) { top: 0; right: 0; border-width: 1px 1px 0 0; }
-.core-hotspot__mark i:nth-child(3) { right: 0; bottom: 0; border-width: 0 1px 1px 0; }
-.core-hotspot__mark i:nth-child(4) { bottom: 0; left: 0; border-width: 0 0 1px 1px; }
-
-.core-hotspot__mark b {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  background: var(--signal-hot);
-  box-shadow: var(--glow-status);
-  transform: translate(-50%, -50%);
-}
-
-.core-hotspot__copy {
-  display: grid;
-  gap: 5px;
-  text-align: left;
-}
-
-.core-hotspot__copy strong {
-  color: var(--ink-1);
-  font: 600 13px/1 var(--font-display);
-  letter-spacing: 0.12em;
-}
-
-.core-hotspot__copy small {
-  color: var(--signal);
-  font: 10px/1 var(--font-data);
-  white-space: nowrap;
 }
 
 .jarvis-shell.has-open-window .core-stage,
@@ -1665,19 +1620,14 @@ textarea:focus-visible {
 
 @media (max-width: 1380px) {
   .topbar {
-    grid-template-columns: minmax(300px, 1fr) minmax(420px, 1.2fr) auto;
+    grid-template-columns: minmax(300px, 1fr) minmax(280px, 0.8fr) auto;
     padding-inline: 10px;
   }
 
   .brand-edition,
   .secure-cluster > span,
-  .date-cluster,
-  .status-copy small {
+  .date-cluster {
     display: none;
-  }
-
-  .agent-cluster {
-    min-width: 112px;
   }
 }
 
@@ -1699,7 +1649,7 @@ textarea:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .jarvis-agent-launcher .agent-glyph.is-working .vector-mark__signal,
-  .neural-vector-field__signal path:first-child {
+  .knowledge-graph-field__signal path:first-child {
     animation: none;
   }
 
@@ -1751,7 +1701,7 @@ body,
 
 .topbar {
   height: var(--top-height);
-  grid-template-columns: minmax(360px, 1.05fr) minmax(560px, 1.2fr) auto;
+  grid-template-columns: minmax(360px, 1.05fr) minmax(320px, 0.8fr) auto;
   padding-inline: 8px;
   border-top: 0;
   border-bottom: var(--rail-outline) solid var(--structure-strong);
@@ -1787,8 +1737,7 @@ body,
   min-width: 184px;
 }
 
-.brand-orb,
-.agent-status-orb {
+.brand-orb {
   color: var(--ink-1);
   filter: none;
 }
@@ -1799,7 +1748,6 @@ body,
 }
 
 .brand-edition,
-.status-copy small,
 .date-cluster,
 .system-cluster {
   color: var(--ink-3);
@@ -1807,23 +1755,15 @@ body,
 
 .mic-cluster:hover,
 .mic-cluster:focus-visible,
-.agent-cluster:hover,
-.agent-cluster:focus-visible,
 .stop-cluster:hover:not(:disabled),
 .system-cluster button:hover {
   color: var(--ink-1);
   background: var(--signal-fill);
 }
 
-.secure-cluster > span,
-.agent-cluster .agent-status-orb,
-.agent-cluster .status-copy small {
+.secure-cluster > span {
   color: var(--signal-hot);
   text-shadow: none;
-}
-
-.agent-cluster {
-  background: transparent;
 }
 
 .stop-token,
@@ -1873,37 +1813,21 @@ body,
   border-inline-color: var(--structure-weak);
 }
 
-.neural-vector-field {
+.knowledge-graph-field {
   color: var(--signal-hot);
   opacity: 0.62;
 }
 
-.neural-vector-field__grid,
-.neural-vector-field__datum,
-.neural-vector-field__edges {
+.knowledge-graph-field__grid,
+.knowledge-graph-field__datum,
+.knowledge-graph-field__edges {
   stroke: var(--structure);
 }
 
-.neural-vector-field__signal-halo {
+.knowledge-graph-field__signal-halo {
   opacity: 0.05;
 }
 
-.core-hotspot {
-  min-height: 72px;
-  border: 1px solid var(--structure-strong);
-  color: var(--ink-2);
-  background: var(--void);
-  box-shadow: none;
-}
-
-.core-hotspot:hover,
-.core-hotspot:focus-visible {
-  border-color: var(--signal-hot);
-  color: var(--signal-hot);
-  background: var(--signal-fill);
-}
-
-.core-hotspot__mark,
 .core-status > .vector-mark {
   filter: none;
 }
@@ -3093,7 +3017,7 @@ body,
   color: var(--ink-2);
 }
 
-.neural-vector-field {
+.knowledge-graph-field {
   opacity: 0.74;
 }
 
@@ -3454,7 +3378,7 @@ body,
 
 @media (max-width: 1380px) {
   .topbar {
-    grid-template-columns: minmax(220px, 1fr) minmax(360px, 1.2fr) auto;
+    grid-template-columns: minmax(220px, 1fr) minmax(280px, 0.8fr) auto;
   }
 }
 
@@ -3987,7 +3911,7 @@ body,
 }
 
 /* Linked operations field -------------------------------------------------
-   Explorer and Pi are one causal workspace, not adjacent framed windows.
+   Explorer and the active Agent are one causal workspace, not adjacent framed windows.
    Only sources, payloads, results, and editable directives receive a full
    boundary. Everything else is organized by spacing, ledger lines, and live
    route nodes. */
@@ -5037,5 +4961,479 @@ body,
   .agent-linked-result,
   .explorer-entry.is-selected {
     border-color: Highlight !important;
+  }
+}
+
+/* Impeccable frontend hardening: truthful graph, priority telemetry and deterministic taskbar density. */
+
+.knowledge-graph-field.is-disconnected {
+  color: var(--ink-3);
+  opacity: 0.52;
+}
+
+.knowledge-graph-field.is-disconnected .knowledge-graph-field__routes {
+  stroke: var(--structure-strong);
+  opacity: 0.34;
+}
+
+.knowledge-graph-field.is-disconnected .knowledge-graph-field__focus,
+.knowledge-graph-field.is-disconnected .knowledge-graph-field__nodes rect {
+  filter: none;
+}
+
+.core-stage.is-disconnected .core-stage__readout strong {
+  color: var(--ink-2);
+  text-shadow: none;
+}
+
+.mic-cluster kbd {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: var(--stroke) solid var(--structure);
+  color: var(--ink-3);
+  font: 9px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.topbar__command-bus:not(.is-running):not(.is-starting) .secure-cluster > span {
+  color: var(--ink-3);
+}
+
+.topbar__command-bus.is-running .secure-cluster > span,
+.topbar__command-bus.is-starting .secure-cluster > span,
+.topbar__command-bus.is-running .secure-cluster > strong,
+.topbar__command-bus.is-starting .secure-cluster > strong {
+  color: var(--signal-hot);
+}
+
+.telemetry-rail {
+  display: grid;
+  grid-template-rows: none;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--structure-strong) transparent;
+}
+
+.telemetry-rail .hud-panel {
+  min-height: 0;
+  overflow: visible;
+  border-top-color: var(--structure-strong);
+  background: transparent;
+}
+
+.telemetry-rail .hud-panel::after {
+  width: 24px;
+  height: var(--stroke);
+  background: var(--structure-strong);
+  box-shadow: none;
+}
+
+.telemetry-rail .priority-panel.has-warning::after {
+  width: 56px;
+  background: var(--signal-hot);
+}
+
+.telemetry-rail .hud-panel__header {
+  min-height: 32px;
+  height: auto;
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.telemetry-rail .hud-panel__toggle {
+  grid-column: 1 / 3;
+  width: 100%;
+  min-width: 0;
+  min-height: 31px;
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  color: var(--ink-1);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.telemetry-rail .hud-panel__action {
+  grid-column: 3;
+  justify-self: end;
+  margin-left: 0;
+}
+
+.telemetry-rail .hud-panel__toggle:hover,
+.telemetry-rail .hud-panel__toggle:focus-visible {
+  color: var(--signal-hot);
+  background: transparent;
+}
+
+.telemetry-rail .hud-panel__toggle > svg {
+  justify-self: end;
+  transition: transform 140ms ease;
+}
+
+.telemetry-rail .hud-panel.is-open .hud-panel__toggle > svg {
+  transform: rotate(180deg);
+}
+
+.telemetry-rail .hud-panel__body,
+.telemetry-rail .core-status-panel .hud-panel__body,
+.telemetry-rail .resources-panel .hud-panel__body,
+.telemetry-rail .notifications-panel .hud-panel__body,
+.telemetry-rail .activity-panel .hud-panel__body {
+  height: auto;
+  min-height: 0;
+}
+
+.telemetry-priority {
+  width: 100%;
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border: 0;
+  color: var(--ink-2);
+  background: transparent;
+  text-align: left;
+}
+
+.telemetry-priority > svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-2);
+}
+
+.priority-panel.has-warning .telemetry-priority > svg,
+.priority-panel.has-warning .telemetry-priority strong {
+  color: var(--signal-hot);
+}
+
+.telemetry-priority > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.telemetry-priority strong,
+.telemetry-priority small,
+.telemetry-priority em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-priority strong {
+  color: var(--ink-1);
+  font: 600 11px/1.2 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.telemetry-priority small {
+  color: var(--ink-2);
+  font: 10px/1.2 var(--font-data);
+}
+
+.telemetry-priority em {
+  color: var(--ink-3);
+  font: normal 10px/1.2 var(--font-data);
+}
+
+.telemetry-inline-action {
+  min-height: 24px;
+  padding: 0 6px;
+  border: 0;
+  color: var(--ink-3);
+  background: transparent;
+  font: 9px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.telemetry-inline-action:hover,
+.telemetry-inline-action:focus-visible {
+  color: var(--signal-hot);
+  background: transparent;
+}
+
+.telemetry-count {
+  color: var(--ink-3);
+  font: 10px/1 var(--font-data);
+}
+
+.telemetry-row-affordance {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  opacity: 0.72;
+}
+
+.telemetry-rail :where(.resource-row, .notification-row) {
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 0.7fr) 14px;
+}
+
+.telemetry-rail .notification-row {
+  grid-template-columns: 18px minmax(0, 1fr) auto 14px;
+}
+
+.telemetry-rail :where(.resource-row, .process-grid:not(.process-grid--header), .notification-row, .telemetry-priority):hover,
+.telemetry-rail :where(.resource-row, .process-grid:not(.process-grid--header), .notification-row, .telemetry-priority):focus-visible {
+  color: var(--ink-1);
+  background: var(--signal-fill);
+}
+
+.telemetry-rail :where(.resource-row, .notification-row, .telemetry-priority):hover .telemetry-row-affordance,
+.telemetry-rail :where(.resource-row, .notification-row, .telemetry-priority):focus-visible .telemetry-row-affordance {
+  color: var(--signal-hot);
+  opacity: 1;
+}
+
+.telemetry-loading,
+.system-feed-empty {
+  margin: 0;
+  padding: 8px;
+  color: var(--ink-3);
+  font: 9px/1.3 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.taskbar-apps,
+.jarvis-taskbar-surface .taskbar-apps {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  overflow: hidden;
+}
+
+.taskbar-apps.is-density-measuring > button {
+  visibility: hidden;
+}
+
+.taskbar-apps > button,
+.jarvis-taskbar-surface .taskbar-apps > button {
+  flex: 0 0 var(--taskbar-item-width, 48px);
+  width: var(--taskbar-item-width, 48px);
+  min-width: var(--taskbar-item-width, 48px);
+  max-width: var(--taskbar-item-width, 48px);
+  padding-inline: 10px;
+}
+
+.taskbar-apps > button[data-density="full"] > span,
+.jarvis-taskbar-surface .taskbar-apps > button[data-density="full"] > span {
+  display: block;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.taskbar-apps > button[data-density="icon"] > span,
+.jarvis-taskbar-surface .taskbar-apps > button[data-density="icon"] > span {
+  display: none;
+}
+
+.taskbar-apps > .taskbar-overflow-button,
+.jarvis-taskbar-surface .taskbar-apps > .taskbar-overflow-button {
+  flex-basis: 48px;
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+
+.taskbar-apps > .taskbar-measure-layer,
+.jarvis-taskbar-surface .taskbar-apps > .taskbar-measure-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  display: block !important;
+  overflow: visible;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.taskbar-apps .taskbar-app-measure,
+.jarvis-taskbar-surface .taskbar-apps .taskbar-app-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  height: var(--taskbar-height);
+  display: inline-flex !important;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  color: var(--ink-2);
+  font: 10px/1 var(--font-data);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.taskbar-apps .taskbar-app-measure > span,
+.jarvis-taskbar-surface .taskbar-apps .taskbar-app-measure > span {
+  display: inline !important;
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.taskbar-app-measure__icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  flex: 0 0 22px;
+  place-items: center;
+}
+
+.taskbar-app-measure__icon :where(img, svg) {
+  width: 22px;
+  height: 22px;
+}
+
+.taskbar-app-measure > small {
+  min-width: 17px;
+  text-align: center;
+}
+
+.jarvis-agent-launcher__copy small {
+  color: var(--ink-3);
+}
+
+.jarvis-agent-launcher.is-active .jarvis-agent-launcher__copy small,
+.jarvis-agent-launcher.is-working .jarvis-agent-launcher__copy small {
+  color: var(--signal-hot);
+}
+
+.system-notice {
+  position: fixed;
+  z-index: 260;
+  right: 18px;
+  bottom: calc(var(--taskbar-height) + 16px);
+  width: min(680px, calc(100vw - 36px));
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto 32px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border: var(--stroke) solid var(--structure-strong);
+  border-left: 2px solid var(--ink-2);
+  color: var(--ink-2);
+  background: var(--void);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 48%);
+}
+
+.system-notice.is-warning,
+.system-notice.is-error {
+  border-left-color: var(--signal-hot);
+}
+
+.system-notice__icon {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-2);
+}
+
+.system-notice.is-warning .system-notice__icon,
+.system-notice.is-error .system-notice__icon {
+  color: var(--signal-hot);
+}
+
+.system-notice__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.system-notice__copy strong {
+  color: var(--ink-1);
+  font: 600 11px/1.2 var(--font-data);
+  letter-spacing: 0.06em;
+}
+
+.system-notice__copy small {
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+  font: 10px/1.35 var(--font-data);
+}
+
+.system-notice__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.system-notice__actions button,
+.system-notice__dismiss {
+  min-height: 32px;
+  padding: 0 10px;
+  border: var(--stroke) solid var(--structure-strong);
+  color: var(--ink-2);
+  background: transparent;
+  font: 9px/1 var(--font-data);
+  letter-spacing: 0.08em;
+}
+
+.system-notice__actions button:hover,
+.system-notice__actions button:focus-visible,
+.system-notice__dismiss:hover,
+.system-notice__dismiss:focus-visible {
+  border-color: var(--signal-hot);
+  color: var(--signal-hot);
+  background: var(--signal-fill);
+}
+
+.system-notice__dismiss {
+  width: 32px;
+  padding: 0;
+}
+
+@media (max-width: 1380px) {
+  .mic-cluster kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .system-notice {
+    right: 8px;
+    bottom: calc(var(--taskbar-height) + 8px);
+    width: calc(100vw - 16px);
+    grid-template-columns: 20px minmax(0, 1fr) 32px;
+  }
+
+  .system-notice__actions {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .telemetry-rail .hud-panel__toggle > svg {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .taskbar-apps > button.is-active,
+  .jarvis-agent-launcher.is-active,
+  .system-notice {
+    border-color: Highlight !important;
+  }
+
+  .taskbar-apps > button.is-running:not(.is-active)::before,
+  .taskbar-apps > button.is-active::after {
+    background: Highlight !important;
   }
 }

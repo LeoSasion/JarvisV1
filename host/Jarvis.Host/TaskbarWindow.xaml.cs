@@ -472,7 +472,7 @@ public partial class TaskbarWindow : Window
             .OrderByDescending(window => window.Active)
             .ThenBy(window => window.Minimized)
             .ToArray();
-        if (windows.Length == 0 && request.Mode != "context")
+        if (windows.Length == 0 && request.Mode != "context" && request.OverflowItems.Count == 0)
         {
             return;
         }
@@ -491,7 +491,7 @@ public partial class TaskbarWindow : Window
         _flyoutWindow.Show();
     }
 
-    private async void ForwardTaskbarContextAction(string itemId, string action)
+    private async void ForwardTaskbarContextAction(string itemId, string action, string? windowId = null)
     {
         if (_isClosing || WebView.CoreWebView2 is null)
         {
@@ -500,7 +500,7 @@ public partial class TaskbarWindow : Window
 
         try
         {
-            var detail = JsonSerializer.Serialize(new { itemId, action });
+            var detail = JsonSerializer.Serialize(new { itemId, action, windowId });
             await WebView.CoreWebView2.ExecuteScriptAsync(
                 $"window.dispatchEvent(new CustomEvent('jarvis:taskbar-action', {{ detail: {detail} }}));");
         }
@@ -558,6 +558,7 @@ public partial class TaskbarWindow : Window
                 new TaskbarFlyoutRequest(
                     "windows",
                     windowIds,
+                    Array.Empty<TaskbarOverflowItem>(),
                     _bounds.Width / 2d,
                     _bounds.Width,
                     null,

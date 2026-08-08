@@ -162,28 +162,28 @@ export function DesktopContextMenu({
               disabled={selectionCount !== 1}
               onClick={() => onOpen(shortcut)}
             >
-              打开
+              Open
             </MenuItem>
             <MenuItem
               icon={FolderOpenRegular}
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onOpenLocation(shortcut)}
             >
-              打开文件所在位置
+              Open file location
             </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={CutRegular} disabled={!shortcut?.path} onClick={onCut}>剪切</MenuItem>
-            <MenuItem icon={CopyRegular} disabled={!shortcut?.path} onClick={onCopy}>复制</MenuItem>
+            <MenuItem icon={CutRegular} disabled={!shortcut?.path} onClick={onCut}>Cut</MenuItem>
+            <MenuItem icon={CopyRegular} disabled={!shortcut?.path} onClick={onCopy}>Copy</MenuItem>
             <MenuSeparator />
             <MenuItem
               icon={RenameRegular}
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onRename(shortcut)}
             >
-              重命名
+              Rename
             </MenuItem>
             <MenuItem icon={DeleteRegular} disabled={!shortcut?.path} onClick={onDelete}>
-              删除
+              Delete
             </MenuItem>
             <MenuSeparator />
             <MenuItem
@@ -191,21 +191,21 @@ export function DesktopContextMenu({
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onCopyPath(shortcut)}
             >
-              复制路径
+              Copy path
             </MenuItem>
             <MenuItem
               icon={InfoRegular}
               disabled={selectionCount !== 1 || !shortcut?.path}
               onClick={() => onProperties(shortcut)}
             >
-              属性
+              Properties
             </MenuItem>
           </>
         ) : (
           <>
-            <MenuItem icon={FolderAddRegular} onClick={onNewFolder}>新建文件夹</MenuItem>
+            <MenuItem icon={FolderAddRegular} onClick={onNewFolder}>New folder</MenuItem>
             <MenuItem icon={ClipboardPasteRegular} disabled={!canPaste} onClick={onPaste}>
-              粘贴
+              Paste
             </MenuItem>
             <MenuSeparator />
             <MenuItem
@@ -217,7 +217,7 @@ export function DesktopContextMenu({
               }}
               onClick={() => setActiveSubmenu("view")}
             >
-              查看
+              View
             </MenuItem>
             <MenuItem
               icon={ArrowSortRegular}
@@ -228,18 +228,18 @@ export function DesktopContextMenu({
               }}
               onClick={() => setActiveSubmenu("sort")}
             >
-              排序方式
+              Sort by
             </MenuItem>
-            <MenuItem icon={ArrowClockwiseRegular} onClick={onRefresh}>刷新</MenuItem>
+            <MenuItem icon={ArrowClockwiseRegular} onClick={onRefresh}>Refresh</MenuItem>
             <MenuSeparator />
             <MenuItem checked={autoArrange} checkType="checkbox" onClick={onToggleAutoArrange}>
-              自动排列图标
+              Auto arrange icons
             </MenuItem>
             <MenuItem checked={alignToGrid} checkType="checkbox" onClick={onToggleAlignToGrid}>
-              将图标与网格对齐
+              Align icons to grid
             </MenuItem>
             <MenuSeparator />
-            <MenuItem icon={SettingsRegular} onClick={onOpenSettings}>JARVIS 设置</MenuItem>
+            <MenuItem icon={SettingsRegular} onClick={onOpenSettings}>JARVIS settings</MenuItem>
 
             {activeSubmenu === "view" ? (
               <div
@@ -249,13 +249,13 @@ export function DesktopContextMenu({
                 data-submenu-panel="view"
               >
                 <MenuItem checked={iconSize === "large"} onClick={() => onSetIconSize("large")}>
-                  大图标
+                  Large icons
                 </MenuItem>
                 <MenuItem checked={iconSize === "medium"} onClick={() => onSetIconSize("medium")}>
-                  中等图标
+                  Medium icons
                 </MenuItem>
                 <MenuItem checked={iconSize === "small"} onClick={() => onSetIconSize("small")}>
-                  小图标
+                  Small icons
                 </MenuItem>
               </div>
             ) : null}
@@ -268,20 +268,20 @@ export function DesktopContextMenu({
                 data-submenu-panel="sort"
               >
                 <MenuItem checked={sortMode === "name"} onClick={() => onSetSortMode("name")}>
-                  名称
+                  Name
                 </MenuItem>
                 <MenuItem checked={sortMode === "type"} onClick={() => onSetSortMode("type")}>
-                  项目类型
+                  Item type
                 </MenuItem>
                 <MenuItem checked={sortMode === "source"} onClick={() => onSetSortMode("source")}>
-                  来源
+                  Source
                 </MenuItem>
                 {sortMode === "none" ? (
                   <>
                     <MenuSeparator />
                     <div className="desktop-menu-hint">
                       <GridRegular aria-hidden="true" />
-                      <span>当前保持系统返回顺序</span>
+                      <span>Using the Windows source order</span>
                     </div>
                   </>
                 ) : null}

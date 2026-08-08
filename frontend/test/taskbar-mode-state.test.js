@@ -149,10 +149,18 @@ test("taskbar transition feedback waits for the owned terminal outcome", () => {
     transitionStatus: "fallback",
     transitionGeneration: 3,
   });
+  const currentFallback = normalizeTaskbarModeState({
+    requestedMode: "full",
+    effectiveMode: "native",
+    transitionStatus: "fallback",
+    transitionGeneration: 4,
+  });
 
   assert.equal(getTaskbarTransitionToast(previous, applying), null);
   assert.equal(getTaskbarTransitionToast(previous, staleFallback), null);
-  assert.match(getTaskbarTransitionToast(previous, settled), /FULL/u);
+  assert.match(getTaskbarTransitionToast(previous, settled).title, /FULL/u);
+  assert.equal(getTaskbarTransitionToast(previous, settled).severity, "ok");
+  assert.equal(getTaskbarTransitionToast(previous, currentFallback).severity, "warning");
 });
 
 test("taskbar retry becomes eligible when local cooldown reaches zero", () => {

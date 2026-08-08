@@ -14,10 +14,11 @@
   #define OutputDir "."
 #endif
 
-#define AppName "JARVIS Night Shell"
+#define AppName "JARVIS"
 #define AppExeName "Jarvis.Host.exe"
 #define StartupKey "Software\Microsoft\Windows\CurrentVersion\Run"
-#define StartupValue "JARVIS Night Shell"
+#define StartupValue "JARVIS"
+#define LegacyStartupValue "JARVIS Night Shell"
 
 #ifnexist SourceDir + "\AgentRuntime\pi.exe"
   #error SourceDir is missing the verified Pi Agent executable.
@@ -132,6 +133,14 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usUninstall then
+  if CurUninstallStep = usUninstall then begin
     RegDeleteValue(HKCU, '{#StartupKey}', '{#StartupValue}');
+    RegDeleteValue(HKCU, '{#StartupKey}', '{#LegacyStartupValue}');
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegDeleteValue(HKCU, '{#StartupKey}', '{#LegacyStartupValue}');
 end;

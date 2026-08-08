@@ -1,4 +1,4 @@
-# Design QA — JARVIS Night Shell V1
+# Design QA — JARVIS V1
 
 ## Evidence
 

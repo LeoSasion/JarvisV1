@@ -2,7 +2,7 @@
 
 JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 11. It combines a native C#/WPF host with a React/WebView2 interface to provide a replacement taskbar, desktop command surface, system telemetry, native window styling, file tools, and an integrated ConPTY terminal.
 
-![JARVIS Night Shell](frontend/design-reference/jarvis-night-shell-v1-approved.png)
+![JARVIS desktop shell](frontend/design-reference/jarvis-night-shell-v1-approved.png)
 
 ## Current scope
 

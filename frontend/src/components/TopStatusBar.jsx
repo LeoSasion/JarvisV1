@@ -9,7 +9,7 @@ import {
   Wifi4Regular,
 } from "@fluentui/react-icons";
 import { usePlatformClock, useTrayStatus } from "../hooks/usePlatformData.js";
-import { AgentGlyph, JarvisMark } from "./VectorMarks.jsx";
+import { JarvisMark } from "./VectorMarks.jsx";
 
 function TopCluster({ className = "", children, as = "div", ...props }) {
   const Tag = as;
@@ -22,7 +22,6 @@ function TopCluster({ className = "", children, as = "div", ...props }) {
 
 export function TopStatusBar({
   onOpenCommand,
-  onOpenAgent,
   onAbortAgent,
   agentState,
   onPower,
@@ -39,15 +38,12 @@ export function TopStatusBar({
     : tray.power.acConnected ? "AC" : "POWER";
   const agentStatus = agentState?.status ?? "unavailable";
   const agentRunning = agentStatus === "running" || agentStatus === "starting";
-  const agentReady = Boolean(agentState?.available && agentStatus === "ready");
-  const agentStatusLabel = agentRunning
-    ? "PROCESSING"
-    : agentReady
-      ? "READY"
-      : "OFFLINE";
-  const commandBusLabel = agentState?.available
-    ? agentState?.connected ? "PROVIDER CONNECTED" : "LOCAL RUNTIME READY"
-    : "RUNTIME UNAVAILABLE";
+  const commandBusLabel = "LOCAL COMMANDS READY";
+  const agentProviderStatus = agentRunning
+    ? "AGENT ACTIVE"
+    : agentState?.available
+      ? "AGENT READY"
+      : "AGENT OFFLINE";
 
   return (
     <header className="topbar hud-chassis" aria-label="JARVIS global status">
@@ -63,35 +59,32 @@ export function TopStatusBar({
           className="mic-cluster"
           onClick={onOpenCommand}
           title="Open local quick search"
+          aria-label="Open local quick search (Control Space)"
+          aria-keyshortcuts="Control+Space"
         >
           <SearchRegular />
           <span>LOCAL SEARCH</span>
+          <kbd>CTRL SPACE</kbd>
         </TopCluster>
       </div>
 
       <div className={`topbar__zone topbar__command-bus is-${agentStatus}`}>
-        <TopCluster className={`secure-cluster is-${agentStatus}`} title={agentStatusLabel} role="status">
-          <span>COMMAND BUS</span>
+        <TopCluster className={`secure-cluster is-${agentStatus}`} title={`${commandBusLabel} · ${agentProviderStatus}`} role="status">
+          <span>COMMAND BUS · {agentProviderStatus}</span>
           <strong>{commandBusLabel}</strong>
         </TopCluster>
-        <TopCluster as="button" type="button" className="agent-cluster" onClick={onOpenAgent}>
-          <AgentGlyph className="agent-status-orb" state={agentRunning ? "working" : agentReady ? "ready" : "offline"} />
-          <span className="status-copy">
-            <strong>PI AGENT</strong>
-            <small>{agentStatusLabel}</small>
-          </span>
-        </TopCluster>
-        <TopCluster
-          as="button"
-          type="button"
-          className="stop-cluster"
-          disabled={!agentRunning}
-          onClick={() => { void onAbortAgent().catch(() => {}); }}
-          title={agentRunning ? "Stop active Agent response" : "No active Agent response"}
-        >
-          <span className="stop-token" aria-hidden="true"><StopRegular /></span>
-          <span>STOP</span>
-        </TopCluster>
+        {agentRunning ? (
+          <TopCluster
+            as="button"
+            type="button"
+            className="stop-cluster"
+            onClick={() => { void onAbortAgent().catch(() => {}); }}
+            title="Stop active Agent response"
+          >
+            <span className="stop-token" aria-hidden="true"><StopRegular /></span>
+            <span>STOP</span>
+          </TopCluster>
+        ) : null}
       </div>
 
       <div className="topbar__zone topbar__system">

@@ -357,7 +357,7 @@ test("transcript announcement fires once on assistant completion, not per delta"
   statuses = result.nextStatuses;
   assert.deepEqual(result.announcement, {
     id: "assistant-1",
-    text: "Pi Agent response complete.",
+    text: "Agent response complete.",
   });
 
   result = getAgentTranscriptAnnouncement(statuses, [

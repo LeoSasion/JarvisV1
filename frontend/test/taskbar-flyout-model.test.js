@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   filterTaskbarFlyoutEntries,
+  getNativeInternalWindowItems,
+  getNativeTaskbarOverflowPayload,
   getTaskbarFlyoutKeyboardTarget,
   getTaskbarOverflowSummary,
   normalizeTaskbarFlyoutQuery,
@@ -55,4 +57,46 @@ test("taskbar overflow summary separates visible, running, and pinned counts", (
     pinned: 2,
     label: "1/3 APPS · 2 RUNNING · 2 PINNED",
   });
+});
+
+test("native overflow separates host windows from renderer-owned applications", () => {
+  const payload = getNativeTaskbarOverflowPayload([
+    {
+      id: "external",
+      label: "External",
+      windows: [{ windowId: "native:1" }, { windowId: "native:1" }],
+    },
+    {
+      id: "pinned",
+      label: "Pinned\u0000 Tool",
+      isPinned: true,
+      windows: [],
+    },
+    {
+      id: "internal",
+      label: "Agent",
+      selectedWindow: { windowId: "internal:agent", internalWindowId: "agent", active: true },
+      windows: [{ windowId: "internal:agent", internalWindowId: "agent", active: true }],
+    },
+  ]);
+
+  assert.deepEqual(payload.windowIds, ["native:1"]);
+  assert.deepEqual(payload.items.map((item) => item.itemId), ["pinned", "internal"]);
+  assert.equal(payload.items[0].label, "Pinned Tool");
+  assert.equal(payload.items[0].meta, "PINNED APPLICATION");
+  assert.equal(payload.items[1].windowId, "internal:agent");
+});
+
+test("native internal groups preserve the selected renderer window identifier", () => {
+  const items = getNativeInternalWindowItems({
+    id: "agent",
+    label: "Agent",
+    windows: [
+      { windowId: "internal:1", title: "Session 1", internalWindowId: "agent", active: true },
+      { windowId: "internal:2", title: "Session 2", internalWindowId: "agent", minimized: true },
+    ],
+  });
+
+  assert.deepEqual(items.map((item) => item.windowId), ["internal:1", "internal:2"]);
+  assert.match(items[1].meta, /MINIMIZED/u);
 });

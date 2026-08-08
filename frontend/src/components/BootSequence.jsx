@@ -101,7 +101,7 @@ export function BootSequence({ onComplete }) {
       </div>
       <header>
         <JarvisMark />
-        <span><small>POST-LOGIN SYSTEM INITIALIZATION</small><strong>JARVIS NIGHT SHELL</strong></span>
+        <span><small>POST-LOGIN SYSTEM INITIALIZATION</small><strong>JARVIS LOCAL VISUAL FRAME</strong></span>
         <code>{String(completed).padStart(2, "0")} / {String(checkDefinitions.length).padStart(2, "0")}</code>
       </header>
 

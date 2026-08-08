@@ -12,6 +12,7 @@ import {
 } from "@fluentui/react-icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getLatestAgentRelationMessage } from "../agent-context-model.js";
+import { getAgentProviderLabel } from "../agent-provider-model.js";
 import { getAgentTranscriptAnnouncement } from "../agent-session-model.js";
 
 const STATUS_COPY = Object.freeze({
@@ -26,12 +27,12 @@ const ERROR_COPY = Object.freeze({
   AUTH_REQUIRED: {
     status: "SIGN-IN REQUIRED",
     heading: "Provider authentication is required",
-    guidance: "Complete Pi authentication outside the WebView, then send again. JARVIS never collects Provider secrets here.",
+    guidance: "Complete Provider authentication outside the WebView, then send again. JARVIS never collects Provider secrets here.",
   },
   MODEL_REQUIRED: {
     status: "MODEL REQUIRED",
-    heading: "A default Pi model is required",
-    guidance: "Configure an available default model in Pi, then retry this channel.",
+    heading: "A default model is required",
+    guidance: "Configure an available default model in the active Provider, then retry this channel.",
   },
   NETWORK_UNAVAILABLE: {
     status: "NETWORK DEGRADED",
@@ -65,7 +66,7 @@ function errorPresentation(error) {
     status: "CHANNEL DEGRADED",
     heading: error.retryable ? "The Agent channel can be retried" : "The Agent channel needs attention",
     guidance: error.retryable
-      ? "The next send will establish a fresh contained Pi process if recovery is required."
+      ? "The next send will establish a fresh contained Provider process if recovery is required."
       : "Review the status detail before continuing.",
   };
 }
@@ -76,9 +77,9 @@ function formatMessageTime(value) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function messageLabel(role) {
+function messageLabel(role, providerLabel) {
   if (role === "user") return "YOU";
-  if (role === "assistant") return "PI AGENT";
+  if (role === "assistant") return providerLabel === "NO PROVIDER" ? "AGENT" : `AGENT · ${providerLabel}`;
   return "SYSTEM";
 }
 
@@ -103,7 +104,7 @@ function LinkedContextEvent({
   if (items.length === 0) {
     if (!selectionItems?.length) return null;
     return (
-      <section className="agent-link-cue" aria-label="Explorer selection available for Pi Agent">
+      <section className="agent-link-cue" aria-label="Explorer selection available for Agent">
         <span className="agent-flow-node" aria-hidden="true"><LinkRegular /></span>
         <span>
           <small>EXPLORER SELECTION AVAILABLE</small>
@@ -167,6 +168,7 @@ export function AgentConversationWindow({
   const status = state?.status ?? "unavailable";
   const errorView = errorPresentation(state?.error);
   const visualStatus = errorView ? "error" : status;
+  const providerLabel = getAgentProviderLabel(state);
   const statusCopy = sessionTransitioning
     ? "SWITCHING SESSION"
     : errorView?.status
@@ -177,20 +179,20 @@ export function AgentConversationWindow({
   const canSend = channelReady
     && draft.trim().length > 0;
   const connectionCopy = useMemo(() => {
-    if (!state?.available) return "PI RUNTIME UNAVAILABLE";
+    if (!state?.available) return "NO PROVIDER CONFIGURED";
     if (errorView) return errorView.status;
     if (!state?.connected) return "RUNTIME VERIFIED · PROVIDER CHECKS ON FIRST SEND";
-    const provider = state.provider || "PI";
+    const provider = providerLabel;
     const model = state.model || "MODEL CHECK PENDING";
     return `${provider} · ${model}`.toUpperCase();
-  }, [errorView, state?.available, state?.connected, state?.model, state?.provider]);
+  }, [errorView, providerLabel, state?.available, state?.connected, state?.model]);
 
   const emptyCopy = useMemo(() => {
     if (!state?.available) {
       return {
         eyebrow: "RUNTIME BOUNDARY",
-        heading: "Pi runtime is unavailable",
-        detail: state?.error?.message ?? "Install or repair the verified bundled runtime before using Agent chat.",
+        heading: "Agent Provider is unavailable",
+        detail: state?.error?.message ?? "Install, connect, or repair a verified Provider before using Agent chat.",
       };
     }
     if (errorView) {
@@ -204,7 +206,7 @@ export function AgentConversationWindow({
       return {
         eyebrow: "SECURE RUNTIME VERIFIED",
         heading: "Provider checks on first send",
-        detail: "Pi starts only when needed. Model and Provider availability are verified without exposing credentials to this desktop surface.",
+        detail: "The selected Provider starts only when needed. Model and Provider availability are verified without exposing credentials to this desktop surface.",
       };
     }
     return {
@@ -256,7 +258,7 @@ export function AgentConversationWindow({
         className="agent-workbench"
         role="dialog"
         aria-modal="false"
-        aria-label="JARVIS Pi Agent"
+        aria-label="JARVIS Agent"
         aria-busy={isRunning || sessionTransitioning}
       >
         <header
@@ -266,8 +268,8 @@ export function AgentConversationWindow({
         >
           <span className={`agent-titlebar__mark is-${visualStatus}`}><PulseRegular /></span>
           <span className="agent-titlebar__identity">
-            <small>EMBEDDED OPERATIONS CHANNEL</small>
-            <strong>JARVIS · PI AGENT</strong>
+            <small>EMBEDDED OPERATIONS CHANNEL · {providerLabel}</small>
+            <strong>JARVIS · AGENT</strong>
           </span>
           <span className={`agent-runtime-state is-${visualStatus}`} role="status">
             <i />{statusCopy}
@@ -339,7 +341,7 @@ export function AgentConversationWindow({
                   />
                 ) : null}
                 <header>
-                  <span>{messageLabel(message.role)}</span>
+                  <span>{messageLabel(message.role, providerLabel)}</span>
                   <time>{formatMessageTime(message.createdAt ?? message.timestamp)}</time>
                   <code>{linkedRelation ? "FILE LINK" : message.status === "streaming" ? "LIVE" : message.status === "error" ? "ERROR" : "LOGGED"}</code>
                 </header>
@@ -406,10 +408,10 @@ export function AgentConversationWindow({
             placeholder={isRunning
               ? "Agent response in progress…"
               : channelReady
-                ? errorView?.guidance ?? "Ask Pi Agent…"
+                ? errorView?.guidance ?? "Ask the Agent…"
                 : state?.available
                   ? "Wait for the Agent channel to become ready"
-                  : "Repair the verified Pi runtime to enable Agent chat"}
+                  : "Connect a verified Provider to enable Agent chat"}
             onChange={(event) => onDraftChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
@@ -427,7 +429,7 @@ export function AgentConversationWindow({
               <DismissRegular /><span>STOP</span>
             </button>
           ) : (
-            <button type="submit" className="is-send" disabled={!canSend} aria-label="Send to Pi Agent">
+            <button type="submit" className="is-send" disabled={!canSend} aria-label="Send to Agent">
               <ArrowRightRegular /><span>SEND</span>
             </button>
           )}

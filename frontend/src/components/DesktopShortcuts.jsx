@@ -486,12 +486,12 @@ export function DesktopShortcuts({
   const refreshDesktop = useCallback(async () => {
     setContextMenu(null);
     await refreshDesktopEntries();
-    onNotify("桌面已刷新");
+    onNotify("Desktop refreshed");
   }, [onNotify]);
 
   const startDesktopTransfer = useCallback(async (paths, mode = "copy") => {
     if (!userDesktopPath) {
-      throw new Error("Windows 桌面目录当前不可用。");
+      throw new Error("The Windows Desktop directory is unavailable.");
     }
     const normalizedPaths = [...new Set(paths.filter(Boolean))]
       .filter((path) => path.toLocaleLowerCase() !== userDesktopPath.toLocaleLowerCase());
@@ -503,7 +503,7 @@ export function DesktopShortcuts({
       mode,
       "rename",
     );
-    onNotify(`${mode === "move" ? "移动" : "复制"}任务已启动 · ${normalizedPaths.length} 项`);
+    onNotify(`${mode === "move" ? "Move" : "Copy"} started · ${normalizedPaths.length} item${normalizedPaths.length === 1 ? "" : "s"}`);
     return job;
   }, [onNotify, userDesktopPath]);
 
@@ -513,9 +513,9 @@ export function DesktopShortcuts({
       await platform.clipboard.write(selectedPaths, mode);
       await refreshClipboardState();
       setContextMenu(null);
-      onNotify(`${mode === "move" ? "已剪切" : "已复制"} ${selectedPaths.length} 项`);
+      onNotify(`${mode === "move" ? "Cut" : "Copied"} ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"}`);
     } catch (error) {
-      onNotify(error?.message ?? "Windows 剪贴板暂时不可用");
+      onNotify(error?.message ?? "The Windows clipboard is temporarily unavailable");
     }
   }, [onNotify, refreshClipboardState, selectedPaths]);
 
@@ -524,7 +524,7 @@ export function DesktopShortcuts({
     const state = await platform.clipboard.read();
     const paths = Array.isArray(state?.paths) ? state.paths : [];
     if (paths.length === 0) {
-      onNotify("剪贴板中没有可粘贴的文件");
+      onNotify("The clipboard has no files to paste");
       return;
     }
     await startDesktopTransfer(paths, state?.mode === "move" ? "move" : "copy");
@@ -538,9 +538,9 @@ export function DesktopShortcuts({
     setContextMenu(null);
     setOperationDialog({
       type: "new-folder",
-      title: "新建文件夹",
-      inputLabel: "名称",
-      initialValue: "新建文件夹",
+      title: "NEW FOLDER",
+      inputLabel: "Name",
+      initialValue: "New folder",
     });
   }, []);
 
@@ -549,8 +549,8 @@ export function DesktopShortcuts({
     setContextMenu(null);
     setOperationDialog({
       type: "rename",
-      title: "重命名",
-      inputLabel: "新名称",
+      title: "RENAME",
+      inputLabel: "New name",
       initialValue: shortcut.name ?? shortcut.label,
       shortcut,
     });
@@ -561,9 +561,9 @@ export function DesktopShortcuts({
     setContextMenu(null);
     setOperationDialog({
       type: "delete",
-      title: "移到回收站",
-      description: `将 ${selectedPaths.length} 个项目移到 Windows 回收站？`,
-      confirmLabel: "移到回收站",
+      title: "MOVE TO RECYCLE BIN",
+      description: `Move ${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} to the Windows Recycle Bin?`,
+      confirmLabel: "MOVE",
       danger: true,
     });
   }, [selectedPaths.length]);
@@ -571,16 +571,16 @@ export function DesktopShortcuts({
   const confirmOperation = useCallback(async (value) => {
     if (!operationDialog) return;
     if (operationDialog.type === "new-folder") {
-      if (!userDesktopPath) throw new Error("Windows 桌面目录当前不可用。");
+      if (!userDesktopPath) throw new Error("The Windows Desktop directory is unavailable.");
       await platform.explorer.createFolder(userDesktopPath, value);
-      onNotify(`文件夹已创建 · ${value}`);
+      onNotify(`Folder created · ${value}`);
     } else if (operationDialog.type === "rename") {
       await platform.explorer.rename(operationDialog.shortcut.path, value);
-      onNotify(`已重命名为 ${value}`);
+      onNotify(`Renamed to ${value}`);
     } else if (operationDialog.type === "delete") {
       await platform.explorer.recycle(selectedPaths);
       setSelectedIds([]);
-      onNotify(`${selectedPaths.length} 项已移到回收站`);
+      onNotify(`${selectedPaths.length} item${selectedPaths.length === 1 ? "" : "s"} moved to the Recycle Bin`);
     }
     setOperationDialog(null);
     await refreshDesktopEntries();
@@ -603,7 +603,7 @@ export function DesktopShortcuts({
       if (!payload) return;
       event.preventDefault();
       void startDesktopTransfer(payload.paths, getFileDropMode(event)).catch((error) => {
-        onNotify(error?.message ?? "拖放操作失败");
+        onNotify(error?.message ?? "The drag-and-drop operation failed");
       });
     };
     const stopExternalDrop = platform.events.subscribe("desktop.externalDrop", (payload) => {
@@ -613,7 +613,7 @@ export function DesktopShortcuts({
         : null;
       if (dropTarget?.closest(".jarvis-explorer")) return;
       void startDesktopTransfer(paths, "copy").catch((error) => {
-        onNotify(error?.message ?? "Windows 拖放操作失败");
+        onNotify(error?.message ?? "The Windows drag-and-drop operation failed");
       });
     });
     window.addEventListener("dragover", handleDragOver);
@@ -644,7 +644,7 @@ export function DesktopShortcuts({
         void writeClipboard("move");
       } else if ((event.ctrlKey || event.metaKey) && key === "v") {
         event.preventDefault();
-        void pasteDesktop().catch((error) => onNotify(error?.message ?? "粘贴失败"));
+        void pasteDesktop().catch((error) => onNotify(error?.message ?? "Paste failed"));
       } else if (event.key === "Delete") {
         event.preventDefault();
         showDeleteDialog();
@@ -920,13 +920,13 @@ export function DesktopShortcuts({
             onOpenSettings();
           }}
           onPaste={() => void pasteDesktop().catch((error) => {
-            onNotify(error?.message ?? "粘贴失败");
+            onNotify(error?.message ?? "Paste failed");
           })}
           onProperties={(shortcut) => {
             setContextMenu(null);
             if (shortcut?.path) {
               void platform.explorer.showProperties(shortcut.path).catch((error) => {
-                onNotify(error?.message ?? "无法打开属性");
+                onNotify(error?.message ?? "Unable to open properties");
               });
             }
           }}

@@ -8,18 +8,18 @@ const COMPATIBILITY_DECISIONS = new Set([
 ]);
 
 const compatibilityReasonLabels = {
-  "automatic": "自动兼容",
-  "user-allow": "用户允许",
-  "user-deny": "用户禁用",
-  "system-protected": "Windows 保护进程",
-  "jarvis-host": "JARVIS 主程序",
-  "integrity-or-access": "权限级别不可安全接管",
-  "non-application-window": "非标准应用窗口",
-  "no-standard-caption": "无标准标题栏",
-  "system-window-class": "Windows 系统窗口",
-  "window-cloaked": "窗口当前被系统隐藏",
-  "fullscreen": "全屏窗口自动跳过",
-  "no-compatible-window": "当前没有合格窗口",
+  "automatic": "Automatic compatibility",
+  "user-allow": "Allowed by user",
+  "user-deny": "Disabled by user",
+  "system-protected": "Windows protected process",
+  "jarvis-host": "JARVIS host",
+  "integrity-or-access": "Integrity or access boundary",
+  "non-application-window": "Non-standard application window",
+  "no-standard-caption": "No standard caption",
+  "system-window-class": "Windows system window",
+  "window-cloaked": "Window is currently cloaked",
+  "fullscreen": "Fullscreen window skipped",
+  "no-compatible-window": "No compatible window available",
 };
 
 export function normalizeWindowAppearanceProcessName(value) {
@@ -80,5 +80,5 @@ export function normalizeWindowCompatibilityMatrix(rawMatrix) {
 }
 
 export function getWindowCompatibilityReasonLabel(reasonCode) {
-  return compatibilityReasonLabels[reasonCode] ?? "当前窗口不满足接管条件";
+  return compatibilityReasonLabels[reasonCode] ?? "This window is not eligible for takeover";
 }

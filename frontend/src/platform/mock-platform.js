@@ -19,6 +19,36 @@ const WINDOW_APPEARANCE_PROTECTED_PROCESSES = new Set([
 ]);
 const TASKBAR_MODE_STORAGE_KEY = "jarvis.taskbar.mode.v1";
 const TASKBAR_MODES = new Set(["native", "hybrid", "full"]);
+const RENDERER_FAULT_SOURCES = new Set([
+  "agent",
+  "desktop",
+  "explorer",
+  "notifications",
+  "runtime",
+  "settings",
+  "shell",
+  "system",
+  "taskbar",
+  "terminal",
+  "window-appearance",
+]);
+const RENDERER_FAULT_SEVERITIES = new Set(["warning", "error"]);
+const RENDERER_FAULT_ACTION_IDS = new Set([
+  "open-network-settings",
+  "open-sound-settings",
+  "open-power-settings",
+  "open-runtime-settings",
+]);
+const RENDERER_FAULT_PARAMETER_NAMES = new Set([
+  "source",
+  "severity",
+  "title",
+  "detail",
+  "actionId",
+]);
+const RENDERER_FAULT_TITLE_MAX_LENGTH = 160;
+const RENDERER_FAULT_DETAIL_MAX_LENGTH = 320;
+const RENDERER_FAULT_DUPLICATE_WINDOW_MS = 30_000;
 const MOCK_STYLED_WINDOW_COUNTS = {
   off: 0,
   conservative: 4,
@@ -438,6 +468,73 @@ function normalizeOpenParams(value) {
   return typeof value === "string" ? { target: value } : value;
 }
 
+function normalizeRendererFaultText(value, name, maximumLength, required) {
+  if (value == null && !required) return "";
+  if (typeof value !== "string") {
+    throw new Error(`feed.reportFault params.${name} must be a string${required ? "" : " or null"}.`);
+  }
+
+  const normalized = value.trim();
+  if (required && normalized.length === 0) {
+    throw new Error(`feed.reportFault requires a non-empty params.${name} string.`);
+  }
+  if (normalized.length > maximumLength) {
+    throw new Error(`feed.reportFault params.${name} must not exceed ${maximumLength} characters.`);
+  }
+  if (/\p{Cc}/u.test(normalized)) {
+    throw new Error(`feed.reportFault params.${name} must not contain control characters.`);
+  }
+
+  return normalized;
+}
+
+function normalizeRendererFaultReport(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("feed.reportFault requires a params object.");
+  }
+
+  Object.keys(value).forEach((name) => {
+    if (!RENDERER_FAULT_PARAMETER_NAMES.has(name)) {
+      throw new Error(`feed.reportFault does not accept params.${name}.`);
+    }
+  });
+
+  const source = normalizeRendererFaultText(value.source, "source", 32, true).toLowerCase();
+  if (!RENDERER_FAULT_SOURCES.has(source)) {
+    throw new Error(`Renderer fault source '${source}' is not supported.`);
+  }
+
+  const severity = normalizeRendererFaultText(value.severity, "severity", 16, true).toLowerCase();
+  if (!RENDERER_FAULT_SEVERITIES.has(severity)) {
+    throw new Error("Renderer faults must use warning or error severity.");
+  }
+
+  const title = normalizeRendererFaultText(
+    value.title,
+    "title",
+    RENDERER_FAULT_TITLE_MAX_LENGTH,
+    true,
+  );
+  const detail = normalizeRendererFaultText(
+    value.detail,
+    "detail",
+    RENDERER_FAULT_DETAIL_MAX_LENGTH,
+    false,
+  );
+  const requestedActionId = normalizeRendererFaultText(value.actionId, "actionId", 32, false).toLowerCase();
+  if (requestedActionId && !RENDERER_FAULT_ACTION_IDS.has(requestedActionId)) {
+    throw new Error(`Renderer fault action '${requestedActionId}' is not supported.`);
+  }
+
+  return {
+    source,
+    severity,
+    title,
+    detail,
+    actionId: requestedActionId || null,
+  };
+}
+
 export function createMockPlatform() {
   const eventListeners = new Map();
   const terminalSessions = new Map();
@@ -490,6 +587,8 @@ export function createMockPlatform() {
     unreadCount: 1,
     capacity: 50,
   };
+  let rendererFaultSequence = 0;
+  const rendererFaultLastByKey = new Map();
   const mockSessionActions = [
     {
       id: "lock",
@@ -523,7 +622,7 @@ export function createMockPlatform() {
   let mockSessionChallenge = null;
   let mockSessionTokenSequence = 0;
   let runtimeInfo = {
-    productName: "JARVIS Night Shell",
+    productName: "JARVIS",
     version: "0.1.0-mock",
     buildConfiguration: "DEVELOPMENT",
     executablePath: "C:\\Program Files\\JARVIS\\Jarvis.Host.exe",
@@ -663,6 +762,63 @@ export function createMockPlatform() {
 
   const emit = (eventName, data) => {
     eventListeners.get(eventName)?.forEach((listener) => listener(data));
+  };
+
+  const cloneSystemFeedSnapshot = () => ({
+    ...systemFeedSnapshot,
+    items: systemFeedSnapshot.items.map((item) => ({ ...item })),
+  });
+
+  const reportRendererFault = (value) => {
+    const report = normalizeRendererFaultReport(value);
+    const now = Date.now();
+    const cutoff = now - RENDERER_FAULT_DUPLICATE_WINDOW_MS;
+    rendererFaultLastByKey.forEach((timestamp, key) => {
+      if (timestamp <= cutoff) rendererFaultLastByKey.delete(key);
+    });
+
+    const key = [
+      report.source,
+      report.severity,
+      report.title.length,
+      report.title,
+      report.detail.length,
+      report.detail,
+      report.actionId ?? "",
+    ].join(":");
+    const previousTimestamp = rendererFaultLastByKey.get(key);
+    if (previousTimestamp != null && now - previousTimestamp < RENDERER_FAULT_DUPLICATE_WINDOW_MS) {
+      return cloneSystemFeedSnapshot();
+    }
+
+    rendererFaultLastByKey.set(key, now);
+    if (rendererFaultLastByKey.size > systemFeedSnapshot.capacity) {
+      [...rendererFaultLastByKey.entries()]
+        .sort((left, right) => left[1] - right[1])
+        .slice(0, rendererFaultLastByKey.size - systemFeedSnapshot.capacity)
+        .forEach(([entryKey]) => rendererFaultLastByKey.delete(entryKey));
+    }
+
+    rendererFaultSequence += 1;
+    const item = {
+      id: `mock-renderer-fault-${now}-${rendererFaultSequence}`,
+      type: `renderer.${report.source}.fault`,
+      severity: report.severity,
+      title: report.title,
+      detail: report.detail,
+      timestamp: new Date(now).toISOString(),
+      unread: true,
+      actionId: report.actionId,
+    };
+    const items = [item, ...systemFeedSnapshot.items].slice(0, systemFeedSnapshot.capacity);
+    systemFeedSnapshot = {
+      ...systemFeedSnapshot,
+      items,
+      unreadCount: items.filter((entry) => entry.unread).length,
+    };
+    const snapshot = cloneSystemFeedSnapshot();
+    emit("feed.snapshot", snapshot);
+    return snapshot;
   };
 
   const cloneAgentState = () => ({ ...agentState });
@@ -1490,10 +1646,7 @@ export function createMockPlatform() {
     },
     feed: {
       async getSnapshot() {
-        return {
-          ...systemFeedSnapshot,
-          items: systemFeedSnapshot.items.map((item) => ({ ...item })),
-        };
+        return cloneSystemFeedSnapshot();
       },
       async markAllRead() {
         systemFeedSnapshot = {
@@ -1501,8 +1654,9 @@ export function createMockPlatform() {
           unreadCount: 0,
           items: systemFeedSnapshot.items.map((item) => ({ ...item, unread: false })),
         };
-        emit("feed.snapshot", systemFeedSnapshot);
-        return systemFeedSnapshot;
+        const snapshot = cloneSystemFeedSnapshot();
+        emit("feed.snapshot", snapshot);
+        return snapshot;
       },
       async clear() {
         systemFeedSnapshot = {
@@ -1510,8 +1664,13 @@ export function createMockPlatform() {
           items: [],
           unreadCount: 0,
         };
-        emit("feed.snapshot", systemFeedSnapshot);
-        return systemFeedSnapshot;
+        rendererFaultLastByKey.clear();
+        const snapshot = cloneSystemFeedSnapshot();
+        emit("feed.snapshot", snapshot);
+        return snapshot;
+      },
+      async reportFault(fault) {
+        return reportRendererFault(fault);
       },
     },
     session: {

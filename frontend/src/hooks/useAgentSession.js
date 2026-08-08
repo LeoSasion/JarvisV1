@@ -54,7 +54,7 @@ export async function runAgentSessionTransition(agent, gate) {
   try {
     const result = await agent.newSession();
     if (readResult(result, "success", "Success") === false) {
-      throw commandResultError(result, "Pi Agent could not start a new session.");
+      throw commandResultError(result, "The Agent Provider could not start a new session.");
     }
     const state = resultState(result) ?? await agent.getState();
     return {
@@ -153,7 +153,7 @@ export function useAgentSession() {
     try {
       const result = await platform.agent.prompt(prompt, clientMessageId);
       if (readResult(result, "accepted", "Accepted") === false) {
-        throw commandResultError(result, "Pi Agent rejected the prompt.");
+        throw commandResultError(result, "The Agent Provider rejected the prompt.");
       }
       if (attachContext) {
         dispatchContext({
@@ -194,7 +194,7 @@ export function useAgentSession() {
     try {
       const result = await platform.agent.abort();
       if (readResult(result, "success", "Success") === false) {
-        throw commandResultError(result, "Pi Agent could not stop the active response.");
+        throw commandResultError(result, "The Agent Provider could not stop the active response.");
       }
       dispatchContext({ type: "aborted" });
       return result;

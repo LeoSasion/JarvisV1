@@ -8,6 +8,7 @@ import {
   normalizeTraySnapshot,
 } from "../src/hooks/usePlatformData.js";
 import { createMockPlatform } from "../src/platform/mock-platform.js";
+import { createWindowsPlatform } from "../src/platform/windows-platform.js";
 import {
   partitionWindowsByPinnedApplications,
   reconcileRunningTaskbarOrder,
@@ -37,6 +38,119 @@ test("system feed is bounded and derives a safe unread count", () => {
   const snapshot = normalizeSystemFeed({ items, unreadCount: 900, capacity: 50 });
   assert.equal(snapshot.items.length, 50);
   assert.equal(snapshot.unreadCount, 50);
+});
+
+test("mock renderer faults are platform-owned, emitted, and deduplicated", async () => {
+  const mock = createMockPlatform();
+  const before = await mock.feed.getSnapshot();
+  const emitted = [];
+  const unsubscribe = mock.events.subscribe("feed.snapshot", (snapshot) => emitted.push(snapshot));
+  const startedAt = Date.now();
+  const fault = {
+    source: " SHELL ",
+    severity: " WARNING ",
+    title: " Renderer could not refresh ",
+    detail: " Native shell data is temporarily unavailable. ",
+    actionId: " OPEN-RUNTIME-SETTINGS ",
+  };
+
+  const first = await mock.feed.reportFault(fault);
+  const finishedAt = Date.now();
+  const item = first.items[0];
+  assert.equal(first.items.length, before.items.length + 1);
+  assert.equal(first.unreadCount, before.unreadCount + 1);
+  assert.match(item.id, /^mock-renderer-fault-\d+-\d+$/u);
+  assert.equal(item.type, "renderer.shell.fault");
+  assert.equal(item.severity, "warning");
+  assert.equal(item.title, "Renderer could not refresh");
+  assert.equal(item.detail, "Native shell data is temporarily unavailable.");
+  assert.equal(item.actionId, "open-runtime-settings");
+  assert.equal(item.unread, true);
+  assert.ok(Date.parse(item.timestamp) >= startedAt);
+  assert.ok(Date.parse(item.timestamp) <= finishedAt);
+
+  const duplicate = await mock.feed.reportFault(fault);
+  unsubscribe();
+  assert.equal(duplicate.items.length, first.items.length);
+  assert.equal(duplicate.items[0].id, item.id);
+  assert.equal(emitted.length, 1);
+});
+
+test("mock renderer faults reject unsafe fields and unbounded values", async () => {
+  const mock = createMockPlatform();
+  const baseFault = {
+    source: "shell",
+    severity: "error",
+    title: "Renderer fault",
+  };
+  const invalidFaults = [
+    [{ ...baseFault, severity: "info" }, /warning or error/u],
+    [{ ...baseFault, source: "untrusted" }, /source 'untrusted' is not supported/u],
+    [{ ...baseFault, actionId: "retry" }, /action 'retry' is not supported/u],
+    [{ ...baseFault, title: "x".repeat(161) }, /must not exceed 160/u],
+    [{ ...baseFault, detail: "x".repeat(321) }, /must not exceed 320/u],
+    [{ ...baseFault, detail: "line\nbreak" }, /control characters/u],
+    [{ ...baseFault, command: "powershell.exe" }, /does not accept params.command/u],
+    [{ ...baseFault, path: "C:\\Windows" }, /does not accept params.path/u],
+    [{ ...baseFault, id: "caller-owned" }, /does not accept params.id/u],
+    [{ ...baseFault, unread: false }, /does not accept params.unread/u],
+    [{ ...baseFault, timestamp: "2000-01-01T00:00:00Z" }, /does not accept params.timestamp/u],
+  ];
+
+  for (const [fault, pattern] of invalidFaults) {
+    await assert.rejects(() => mock.feed.reportFault(fault), pattern);
+  }
+});
+
+test("Windows renderer fault requests forward only the typed data contract", async () => {
+  const originalWindow = globalThis.window;
+  const requests = [];
+  let messageListener = null;
+  const webview = {
+    addEventListener(eventName, listener) {
+      if (eventName === "message") messageListener = listener;
+    },
+    postMessage(request) {
+      requests.push(request);
+      globalThis.queueMicrotask(() => messageListener({
+        data: {
+          id: request.id,
+          ok: true,
+          result: { items: [], unreadCount: 0, capacity: 50 },
+        },
+      }));
+    },
+  };
+  globalThis.window = {
+    setTimeout: globalThis.setTimeout.bind(globalThis),
+    clearTimeout: globalThis.clearTimeout.bind(globalThis),
+  };
+
+  try {
+    const platform = createWindowsPlatform(webview);
+    await platform.feed.reportFault({
+      source: "shell",
+      severity: "error",
+      title: "Renderer fault",
+      command: "powershell.exe",
+      path: "C:\\Windows",
+      id: "caller-owned",
+      unread: false,
+    });
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, "feed.reportFault");
+    assert.deepEqual(requests[0].params, {
+      source: "shell",
+      severity: "error",
+      title: "Renderer fault",
+      detail: null,
+      actionId: null,
+    });
+  } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 });
 
 test("mock tray rejects out-of-range volume and emits real snapshots", async () => {

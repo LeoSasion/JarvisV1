@@ -1,13 +1,14 @@
 import {
   AlertRegular,
   CheckmarkCircleRegular,
+  ChevronRightRegular,
   InfoRegular,
 } from "@fluentui/react-icons";
+import { useMemo, useState } from "react";
+import { mergeSystemFeedEvents } from "../feedback-model.js";
 import { useSystemFeed, useSystemSnapshot } from "../hooks/usePlatformData.js";
 import { HudPanel } from "./HudPanel.jsx";
 import { SparklineCanvas } from "./SparklineCanvas.jsx";
-import { WaveformCanvas } from "./WaveformCanvas.jsx";
-import { CoreNodeGlyph } from "./VectorMarks.jsx";
 
 function SegmentBar({ active = 10 }) {
   return (
@@ -21,7 +22,12 @@ function SegmentBar({ active = 10 }) {
 
 function ResourceRow({ resource, onInspect }) {
   return (
-    <button type="button" className="resource-row" onClick={() => onInspect(resource.label)}>
+    <button
+      type="button"
+      className="resource-row"
+      onClick={() => onInspect(resource.label)}
+      aria-label={`Inspect ${resource.label}: ${resource.value}`}
+    >
       <span className="resource-copy">
         <span className="resource-heading">
           <strong>{resource.label}</strong>
@@ -33,6 +39,7 @@ function ResourceRow({ resource, onInspect }) {
         {resource.segments ? <SegmentBar active={resource.segments} /> : <SparklineCanvas points={resource.points} />}
         {resource.secondary ? <small className="resource-secondary">{resource.secondary}</small> : null}
       </span>
+      <ChevronRightRegular className="telemetry-row-affordance" aria-hidden="true" />
     </button>
   );
 }
@@ -43,52 +50,101 @@ function formatFeedTime(timestamp) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function getAgentStatusCopy(state) {
-  if (!state?.available) return { label: "AGENT OFFLINE", active: false };
-  if (state.status === "running" || state.status === "starting") {
-    return { label: "AGENT ACTIVE", active: true };
-  }
-  if (state.status === "error") return { label: "AGENT DEGRADED", active: false };
-  return { label: state.connected ? "AGENT CONNECTED" : "AGENT READY", active: false };
-}
-
-export function TelemetryRail({ agentState, onInspect, onNotification }) {
+export function TelemetryRail({ localEvents = [], onInspect, onNotification }) {
   const { processes, resources } = useSystemSnapshot();
   const feed = useSystemFeed();
-  const visibleEvents = feed.items.slice(0, 3);
-  const hasWarning = feed.items.some((item) => item.severity === "warning" || item.severity === "error");
-  const agentStatus = getAgentStatusCopy(agentState);
+  const events = useMemo(
+    () => mergeSystemFeedEvents(localEvents, feed.items),
+    [feed.items, localEvents],
+  );
+  const feedFailed = Boolean(feed.error);
+  const feedConnecting = feed.loading && events.length === 0;
+  const hasWarning = feedFailed || events.some((item) => item.severity === "warning" || item.severity === "error");
+  const priorityEvent = events.find((item) => item.severity === "error" || item.severity === "warning")
+    ?? events[0]
+    ?? null;
+  const [resourcesExpanded, setResourcesExpanded] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const visibleResources = resourcesExpanded ? resources : resources.slice(0, 2);
+  const visibleEvents = events.slice(0, 5);
+  const unreadCount = Math.min(99, events.filter((item) => item.unread).length);
+  const priorityState = feedFailed
+    ? {
+      className: "has-warning",
+      icon: AlertRegular,
+      title: "TELEMETRY DEGRADED",
+      detail: "System feed unavailable",
+      meta: feed.error?.message ?? String(feed.error),
+    }
+    : feedConnecting
+      ? {
+        className: "is-connecting",
+        icon: InfoRegular,
+        title: "STATUS SYNCHRONIZING",
+        detail: "System feed connecting",
+        meta: "Waiting for the first host snapshot",
+      }
+      : {
+        className: hasWarning ? "has-warning" : "is-nominal",
+        icon: hasWarning ? AlertRegular : CheckmarkCircleRegular,
+        title: hasWarning ? "ATTENTION REQUIRED" : "SYSTEM NOMINAL",
+        detail: priorityEvent?.title ?? "No critical session events",
+        meta: priorityEvent?.detail || `${events.length} session events available`,
+      };
+  const PriorityIcon = priorityState.icon;
 
   return (
     <aside className="telemetry-rail" aria-label="System telemetry">
-      <HudPanel title="JARVIS CORE" className="core-status-panel">
-        <div className="core-status">
-          <CoreNodeGlyph active={agentStatus.active} />
-          <div className="core-status__copy">
-            <span>CORE STATUS</span>
-            <strong>LOCAL</strong>
-            <small>{agentStatus.label}</small>
-            <div className="core-wave"><WaveformCanvas active={agentStatus.active} compact /></div>
-          </div>
-        </div>
+      <HudPanel title="SYSTEM PRIORITY" className={`priority-panel ${priorityState.className}`}>
+        <button type="button" className="telemetry-priority" onClick={() => onInspect("System Health")}>
+          <PriorityIcon />
+          <span>
+            <strong>{priorityState.title}</strong>
+            <small>{priorityState.detail}</small>
+            <em>{priorityState.meta}</em>
+          </span>
+          <ChevronRightRegular className="telemetry-row-affordance" aria-hidden="true" />
+        </button>
       </HudPanel>
 
-      <HudPanel title="SYSTEM RESOURCES" className="resources-panel">
+      <HudPanel
+        title="SYSTEM RESOURCES"
+        className="resources-panel"
+        action={resources.length > 2 ? (
+          <button type="button" className="telemetry-inline-action" onClick={() => setResourcesExpanded((current) => !current)}>
+            {resourcesExpanded ? "SHOW LESS" : `${resources.length - 2} MORE`}
+          </button>
+        ) : null}
+      >
         <div className="resource-list">
-          {resources.map((resource) => (
+          {visibleResources.map((resource) => (
             <ResourceRow key={resource.id} resource={resource} onInspect={onInspect} />
           ))}
         </div>
       </HudPanel>
 
-      <HudPanel title="SYSTEM ACTIVITY" className="activity-panel">
+      <HudPanel
+        title="SYSTEM ACTIVITY"
+        className="activity-panel"
+        collapsible
+        open={activityOpen}
+        onToggle={() => setActivityOpen((current) => !current)}
+        action={<span className="telemetry-count">{processes.length}</span>}
+      >
         <div className="process-title">ACTIVE PROCESSES</div>
         <div className="process-grid process-grid--header" aria-hidden="true">
           <span>NAME</span><span>CPU</span><span>MEM</span><span>NET</span>
         </div>
         <div className="process-list">
           {processes.map((process) => (
-            <button key={process.id} type="button" className="process-grid" onClick={() => onInspect(process.name)}>
+            <button
+              key={process.id}
+              type="button"
+              className="process-grid"
+              onClick={() => onInspect(process.name)}
+              aria-label={`Inspect ${process.name}: CPU ${process.cpu}, memory ${process.memory}, network ${process.network}`}
+            >
               <span className="process-name"><i aria-hidden="true" />{process.name}</span>
               <span>{process.cpu}</span><span>{process.memory}</span><span>{process.network}</span>
             </button>
@@ -96,7 +152,14 @@ export function TelemetryRail({ agentState, onInspect, onNotification }) {
         </div>
       </HudPanel>
 
-      <HudPanel title="JARVIS SYSTEM FEED" action={<span className="notification-count">{feed.unreadCount}</span>} className="notifications-panel">
+      <HudPanel
+        title="SYSTEM FEED"
+        action={<span className="notification-count">{unreadCount}</span>}
+        className="notifications-panel"
+        collapsible
+        open={feedOpen}
+        onToggle={() => setFeedOpen((current) => !current)}
+      >
         <div className="notification-list">
           {visibleEvents.length === 0 ? <p className="system-feed-empty">No session events</p> : null}
           {visibleEvents.map((notification) => {
@@ -113,21 +176,13 @@ export function TelemetryRail({ agentState, onInspect, onNotification }) {
                   <small>{notification.detail}</small>
                 </span>
                 <time dateTime={notification.timestamp ?? undefined}>{formatFeedTime(notification.timestamp)}</time>
+                <ChevronRightRegular className="telemetry-row-affordance" aria-hidden="true" />
               </button>
             );
           })}
         </div>
       </HudPanel>
-
-      <HudPanel title="SYSTEM HEALTH" className="health-panel" onClick={() => onInspect("System Health") }>
-        <div className="health-status">
-          {hasWarning ? <AlertRegular /> : <CheckmarkCircleRegular />}
-          <span>
-            <strong>{hasWarning ? "ATTENTION RECORDED" : "NO CRITICAL EVENTS"}</strong>
-            <small>{feed.loading ? "Connecting to event feed" : `${feed.items.length} session events`}</small>
-          </span>
-        </div>
-      </HudPanel>
+      {feed.loading ? <p className="telemetry-loading" role="status">CONNECTING TO EVENT FEED</p> : null}
     </aside>
   );
 }

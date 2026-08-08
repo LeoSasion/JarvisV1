@@ -1,20 +1,39 @@
-export function HudPanel({ title, action, className = "", children, onClick }) {
-  const Tag = onClick ? "button" : "section";
+import { ChevronDownRegular } from "@fluentui/react-icons";
 
+export function HudPanel({
+  title,
+  action,
+  className = "",
+  children,
+  collapsible = false,
+  open = true,
+  onToggle,
+}) {
   return (
-    <Tag
-      className={`hud-panel ${className}`}
-      onClick={onClick}
-      type={onClick ? "button" : undefined}
-    >
+    <section className={`hud-panel ${className} ${open ? "is-open" : "is-collapsed"}`}>
       {title ? (
         <header className="hud-panel__header">
-          <span className="hud-panel__tick" aria-hidden="true" />
-          <span>{title}</span>
+          {collapsible ? (
+            <button
+              type="button"
+              className="hud-panel__toggle"
+              aria-expanded={open}
+              onClick={onToggle}
+            >
+              <span className="hud-panel__tick" aria-hidden="true" />
+              <span>{title}</span>
+              <ChevronDownRegular aria-hidden="true" />
+            </button>
+          ) : (
+            <>
+              <span className="hud-panel__tick" aria-hidden="true" />
+              <span>{title}</span>
+            </>
+          )}
           {action ? <span className="hud-panel__action">{action}</span> : null}
         </header>
       ) : null}
-      <div className="hud-panel__body">{children}</div>
-    </Tag>
+      {open ? <div className="hud-panel__body">{children}</div> : null}
+    </section>
   );
 }

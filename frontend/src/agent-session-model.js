@@ -426,7 +426,7 @@ export function getAgentTranscriptAnnouncement(previousStatuses, messages) {
     ) {
       announcement = {
         id,
-        text: "Pi Agent response complete.",
+        text: "Agent response complete.",
       };
     }
   }

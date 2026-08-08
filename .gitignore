@@ -22,6 +22,8 @@ artifacts/
 tmp/
 *.log
 .design-qa/
+.impeccable/critique/
+.impeccable/live/
 
 # Local WebView2 state
 **/EBWebView/

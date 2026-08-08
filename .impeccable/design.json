@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-07T18:31:00.592Z",
+  "title": "Design System: JARVIS Operator Blackbox",
+  "extensions": {
+    "colorMeta": {
+      "blackbox-black": {
+        "role": "neutral",
+        "displayName": "Blackbox Black",
+        "canonical": "#000000",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "canvas-black": {
+        "role": "neutral",
+        "displayName": "Canvas Black",
+        "canonical": "#010101",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "surface-quiet": {
+        "role": "neutral",
+        "displayName": "Quiet Black",
+        "canonical": "#020202",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Raised Black",
+        "canonical": "#050505",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "surface-high": {
+        "role": "neutral",
+        "displayName": "High Black",
+        "canonical": "#080808",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(26% 0 0)", "oklch(38% 0 0)", "oklch(50% 0 0)", "oklch(62% 0 0)", "oklch(74% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "instrument-white": {
+        "role": "neutral",
+        "displayName": "Instrument White",
+        "canonical": "#f5f1e9",
+        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Instrument Ink",
+        "canonical": "#c0bbb3",
+        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Instrument Ink",
+        "canonical": "#837d75",
+        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+      },
+      "frame-weak": {
+        "role": "neutral",
+        "displayName": "Weak Frame Gray",
+        "canonical": "rgba(245, 241, 233, 0.15)",
+        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+      },
+      "frame": {
+        "role": "neutral",
+        "displayName": "Frame Gray",
+        "canonical": "rgba(245, 241, 233, 0.28)",
+        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+      },
+      "frame-strong": {
+        "role": "neutral",
+        "displayName": "Strong Frame Gray",
+        "canonical": "rgba(245, 241, 233, 0.54)",
+        "tonalRamp": ["oklch(15% 0.01 85)", "oklch(26% 0.01 85)", "oklch(38% 0.01 85)", "oklch(50% 0.01 85)", "oklch(62% 0.01 85)", "oklch(74% 0.01 85)", "oklch(86% 0.01 85)", "oklch(95% 0.01 85)"]
+      },
+      "signal-core": {
+        "role": "primary",
+        "displayName": "Signal Core",
+        "canonical": "#ff5a00",
+        "tonalRamp": ["oklch(15% 0.12 45)", "oklch(26% 0.16 45)", "oklch(38% 0.19 45)", "oklch(52% 0.22 45)", "oklch(64% 0.2 45)", "oklch(76% 0.16 45)", "oklch(87% 0.1 45)", "oklch(95% 0.04 45)"]
+      },
+      "command-orange": {
+        "role": "primary",
+        "displayName": "Command Orange",
+        "canonical": "#ff6a00",
+        "tonalRamp": ["oklch(15% 0.12 48)", "oklch(26% 0.16 48)", "oklch(38% 0.19 48)", "oklch(52% 0.22 48)", "oklch(64% 0.2 48)", "oklch(76% 0.16 48)", "oklch(87% 0.1 48)", "oklch(95% 0.04 48)"]
+      },
+      "command-orange-pale": {
+        "role": "primary",
+        "displayName": "Command Orange Pale",
+        "canonical": "#ffb13f",
+        "tonalRamp": ["oklch(15% 0.1 68)", "oklch(26% 0.13 68)", "oklch(38% 0.16 68)", "oklch(52% 0.18 68)", "oklch(64% 0.17 68)", "oklch(76% 0.14 68)", "oklch(87% 0.09 68)", "oklch(95% 0.04 68)"]
+      },
+      "command-fill": {
+        "role": "primary",
+        "displayName": "Command Fill",
+        "canonical": "rgb(255 106 0 / 4%)",
+        "tonalRamp": ["oklch(15% 0.12 48)", "oklch(26% 0.16 48)", "oklch(38% 0.19 48)", "oklch(52% 0.22 48)", "oklch(64% 0.2 48)", "oklch(76% 0.16 48)", "oklch(87% 0.1 48)", "oklch(95% 0.04 48)"]
+      },
+      "command-fill-strong": {
+        "role": "primary",
+        "displayName": "Strong Command Fill",
+        "canonical": "rgb(255 106 0 / 7%)",
+        "tonalRamp": ["oklch(15% 0.12 48)", "oklch(26% 0.16 48)", "oklch(38% 0.19 48)", "oklch(52% 0.22 48)", "oklch(64% 0.2 48)", "oklch(76% 0.16 48)", "oklch(87% 0.1 48)", "oklch(95% 0.04 48)"]
+      },
+      "status-warning": {
+        "role": "tertiary",
+        "displayName": "Tactical Warning",
+        "canonical": "#ff9b50",
+        "tonalRamp": ["oklch(15% 0.09 58)", "oklch(26% 0.13 58)", "oklch(38% 0.16 58)", "oklch(52% 0.19 58)", "oklch(64% 0.18 58)", "oklch(76% 0.14 58)", "oklch(87% 0.09 58)", "oklch(95% 0.04 58)"]
+      },
+      "status-danger": {
+        "role": "tertiary",
+        "displayName": "Tactical Danger",
+        "canonical": "#ff5a3c",
+        "tonalRamp": ["oklch(15% 0.11 30)", "oklch(26% 0.15 30)", "oklch(38% 0.18 30)", "oklch(52% 0.21 30)", "oklch(64% 0.19 30)", "oklch(76% 0.15 30)", "oklch(87% 0.09 30)", "oklch(95% 0.04 30)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Command Display", "purpose": "Rare workspace identities and dominant mode declarations." },
+      "headline": { "displayName": "Workspace Headline", "purpose": "Major workspace headings and selected object identities." },
+      "title": { "displayName": "Instrument Title", "purpose": "Window titles and compact command-group headings." },
+      "body": { "displayName": "Readable Body", "purpose": "Agent responses, guidance, and longer status copy." },
+      "label": { "displayName": "Command Label", "purpose": "Uppercase actions, tabs, and navigation." },
+      "meta": { "displayName": "Telemetry Meta", "purpose": "Paths, counters, timestamps, capabilities, and secondary state." }
+    },
+    "shadows": [
+      { "name": "status-emission", "value": "0 0 4px rgb(255 106 0 / 38%)", "purpose": "Local live marker, selected node, or active route terminal." },
+      { "name": "active-emission", "value": "0 0 6px rgb(255 106 0 / 28%)", "purpose": "Restrained working-state halo attached to its owner." },
+      { "name": "focus-inset", "value": "0 0 0 1px rgb(255 106 0 / 28%) inset", "purpose": "Focus reinforcement without floating elevation." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "120ms cubic-bezier(0.2, 0.75, 0.2, 1)", "purpose": "Immediate control and taskbar state response." },
+      { "name": "state-base", "value": "160ms cubic-bezier(0.2, 0.75, 0.2, 1)", "purpose": "Standard panel and flyout entry." },
+      { "name": "linked-layout", "value": "240ms cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "Explorer and Agent causal-workspace layout transition." },
+      { "name": "route-reveal", "value": "360ms cubic-bezier(0.2, 0.8, 0.2, 1)", "purpose": "Reveal the one currently active relation route." },
+      { "name": "vector-flow", "value": "7.2s linear", "purpose": "Low-frequency motion on a genuinely live knowledge route." }
+    ],
+    "breakpoints": [
+      { "name": "wide-desktop", "value": "1500px" },
+      { "name": "standard-desktop", "value": "1260px" },
+      { "name": "linked-workspace-collapse", "value": "1180px" },
+      { "name": "compact-desktop", "value": "1040px" },
+      { "name": "narrow-fallback", "value": "720px" },
+      { "name": "short-desktop", "value": "820px height" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Command Button",
+      "kind": "button",
+      "refersTo": "command-button",
+      "description": "A square tactical action with a sparse orange focus response.",
+      "html": "<button class=\"ds-command-button\">EXECUTE</button>",
+      "css": ".ds-command-button { min-height: 34px; padding: 0 12px; border: 1px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-2, #c0bbb3); font: 600 11px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; text-transform: uppercase; transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease; } .ds-command-button:hover { color: var(--ink-1, #f5f1e9); border-color: var(--signal-hot, #ff6a00); background: var(--signal-fill, rgb(255 106 0 / 4%)); } .ds-command-button:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: 2px; } .ds-command-button:active { box-shadow: 0 -1px 0 var(--signal-hot, #ff6a00) inset; }"
+    },
+    {
+      "name": "Command Input",
+      "kind": "input",
+      "refersTo": "command-input",
+      "description": "A black high-contrast field for search, commands, and directives.",
+      "html": "<label class=\"ds-command-field\"><span>DIRECTIVE</span><input type=\"text\" value=\"Inspect active workspace\" aria-label=\"Directive\"></label>",
+      "css": ".ds-command-field { display: grid; gap: 6px; color: var(--ink-3, #837d75); font: 600 10px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; } .ds-command-field input { min-height: 38px; padding: 0 12px; border: 1px solid var(--structure-strong, rgba(245,241,233,.54)); border-radius: 0; background: var(--void, #000); color: var(--ink-1, #f5f1e9); font: 13px/1.45 var(--font-body, 'Segoe UI', sans-serif); } .ds-command-field input:hover { border-color: var(--ink-2, #c0bbb3); } .ds-command-field input:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: 2px; border-color: var(--signal-hot, #ff6a00); box-shadow: 0 0 0 1px rgb(255 106 0 / 28%) inset; }"
+    },
+    {
+      "name": "HUD Panel",
+      "kind": "card",
+      "refersTo": "hud-panel",
+      "description": "An open instrument region defined by a ledger line and one command tick.",
+      "html": "<section class=\"ds-hud-panel\"><header><i></i><strong>SYSTEM RESOURCES</strong></header><div><span>CPU</span><b>18%</b></div><div><span>MEMORY</span><b>42%</b></div></section>",
+      "css": ".ds-hud-panel { width: 280px; border: 0; border-top: .5px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-2, #c0bbb3); font: 10px/1.2 var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-hud-panel header { min-height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: .5px solid var(--structure, rgba(245,241,233,.28)); letter-spacing: .12em; } .ds-hud-panel header i { width: 4px; height: 4px; background: var(--signal-hot, #ff6a00); } .ds-hud-panel header strong { color: var(--ink-1, #f5f1e9); } .ds-hud-panel div { display: flex; justify-content: space-between; padding: 9px 8px; border-bottom: 1px solid var(--structure-weak, rgba(245,241,233,.15)); } .ds-hud-panel b { color: var(--ink-1, #f5f1e9); font-weight: 600; }"
+    },
+    {
+      "name": "Agent Taskbar Slot",
+      "kind": "nav",
+      "refersTo": "taskbar-agent",
+      "description": "The only persistent Agent launcher, placed directly after Start.",
+      "html": "<button class=\"ds-agent-slot\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\"></rect><path d=\"M12 2v4M12 18v4M2 12h4M18 12h4\"></path><rect class=\"ds-agent-core\" x=\"10\" y=\"10\" width=\"4\" height=\"4\"></rect></svg><span><strong>PI AGENT</strong><small>OPEN</small></span></button>",
+      "css": ".ds-agent-slot { height: 56px; min-width: 176px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 10px; padding: 0 14px; border: 0; border-right: .5px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-1, #f5f1e9); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); text-align: left; } .ds-agent-slot svg { width: 24px; fill: none; stroke: var(--signal-hot, #ff6a00); stroke-width: 1; } .ds-agent-slot .ds-agent-core { fill: var(--signal-hot, #ff6a00); } .ds-agent-slot span { display: grid; gap: 3px; } .ds-agent-slot strong { font-size: 11px; letter-spacing: .08em; } .ds-agent-slot small { color: var(--signal-hot, #ff6a00); font-size: 9px; letter-spacing: .1em; } .ds-agent-slot:hover { background: var(--signal-fill, rgb(255 106 0 / 4%)); } .ds-agent-slot:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: -2px; }"
+    },
+    {
+      "name": "Explorer Ledger Row",
+      "kind": "custom",
+      "description": "A stable file row whose selection never shifts its geometry.",
+      "html": "<button class=\"ds-explorer-row\"><span class=\"ds-file-mark\"></span><strong>PROJECT_BRIEF.MD</strong><span>MARKDOWN</span><span>12 KB</span></button>",
+      "css": ".ds-explorer-row { width: 100%; height: 46px; display: grid; grid-template-columns: 22px minmax(180px,1fr) 120px 80px; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--structure-weak, rgba(245,241,233,.15)); border-radius: 0; background: transparent; color: var(--ink-2, #c0bbb3); font: 10px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); text-align: left; } .ds-explorer-row strong { overflow: hidden; color: var(--ink-1, #f5f1e9); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; } .ds-file-mark { width: 8px; height: 8px; border: 1px solid var(--ink-2, #c0bbb3); } .ds-explorer-row:hover { background: var(--signal-fill, rgb(255 106 0 / 4%)); color: var(--ink-1, #f5f1e9); } .ds-explorer-row:focus-visible { outline: 1px solid var(--signal-hot, #ff6a00); outline-offset: -1px; } .ds-explorer-row:focus-visible .ds-file-mark { border-color: var(--signal-hot, #ff6a00); background: var(--signal-hot, #ff6a00); }"
+    },
+    {
+      "name": "Context Menu Command",
+      "kind": "nav",
+      "description": "A flat menu command with a compact icon, label, and keyboard hint.",
+      "html": "<div class=\"ds-context-menu\" role=\"menu\"><header><strong>ITEM COMMANDS</strong><small>1 SELECTED</small></header><button role=\"menuitem\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M5 12h14M13 6l6 6-6 6\"></path></svg><span>OPEN</span><kbd>ENTER</kbd></button></div>",
+      "css": ".ds-context-menu { width: 240px; border: 1px solid var(--structure, rgba(245,241,233,.28)); border-radius: 0; background: var(--void, #000); color: var(--ink-2, #c0bbb3); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-context-menu header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid var(--structure, rgba(245,241,233,.28)); } .ds-context-menu header strong { color: var(--ink-1, #f5f1e9); font-size: 10px; letter-spacing: .1em; } .ds-context-menu header small { color: var(--ink-3, #837d75); font-size: 8px; } .ds-context-menu button { width: 100%; min-height: 34px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; padding: 0 10px; border: 0; border-radius: 0; background: transparent; color: var(--ink-2, #c0bbb3); font: 10px/1 inherit; text-align: left; } .ds-context-menu svg { width: 16px; fill: none; stroke: currentColor; } .ds-context-menu kbd { color: var(--ink-3, #837d75); font: 8px/1 inherit; } .ds-context-menu button:hover, .ds-context-menu button:focus-visible { outline: 0; color: var(--ink-1, #f5f1e9); background: var(--signal-fill, rgb(255 106 0 / 4%)); box-shadow: 2px 0 0 var(--signal-hot, #ff6a00) inset; }"
+    },
+    {
+      "name": "Linked Agent Payload",
+      "kind": "custom",
+      "description": "A bounded one-shot context payload that truthfully identifies its source.",
+      "html": "<section class=\"ds-linked-payload\"><span class=\"ds-payload-node\"></span><span><small>LINKED REFERENCE</small><strong>PROJECT_BRIEF.MD</strong></span><code>METADATA ONLY</code><button>CLEAR</button></section>",
+      "css": ".ds-linked-payload { display: grid; grid-template-columns: 24px minmax(0,1fr) auto auto; align-items: center; gap: 12px; padding: 13px 14px 13px 10px; border: 1px solid rgb(255 106 0 / 28%); border-radius: 0; background: rgb(255 106 0 / 2%); color: var(--ink-2, #c0bbb3); font-family: var(--font-data, 'Cascadia Mono', Consolas, monospace); } .ds-payload-node { width: 8px; height: 8px; justify-self: center; border: 1px solid var(--signal-hot, #ff6a00); background: var(--signal-hot, #ff6a00); box-shadow: 0 0 4px rgb(255 106 0 / 38%); } .ds-linked-payload > span:nth-child(2) { min-width: 0; display: grid; gap: 5px; } .ds-linked-payload small, .ds-linked-payload code { color: var(--ink-3, #837d75); font: 8px/1.2 inherit; letter-spacing: .08em; } .ds-linked-payload strong { overflow: hidden; color: var(--ink-1, #f5f1e9); font: 600 10px/1.2 inherit; text-overflow: ellipsis; white-space: nowrap; } .ds-linked-payload button { align-self: stretch; padding: 0 12px; border: 0; border-left: 1px solid rgba(245,241,233,.14); border-radius: 0; background: transparent; color: var(--ink-2, #c0bbb3); font: 9px/1 inherit; } .ds-linked-payload button:hover, .ds-linked-payload button:focus-visible { outline: 0; color: var(--signal-hot, #ff6a00); background: var(--signal-fill, rgb(255 106 0 / 4%)); box-shadow: 0 -2px 0 var(--signal-hot, #ff6a00) inset; }"
+    },
+    {
+      "name": "Knowledge Graph Signal",
+      "kind": "custom",
+      "description": "A passive point-line relation with one live command path.",
+      "html": "<svg class=\"ds-knowledge-signal\" viewBox=\"0 0 320 120\" role=\"img\" aria-label=\"Knowledge relation\"><path class=\"ds-edge\" d=\"M20 88 L102 26 L190 70 L300 20\"></path><path class=\"ds-route\" d=\"M20 88 L102 26 L190 70\"></path><rect x=\"16\" y=\"84\" width=\"8\" height=\"8\"></rect><rect x=\"98\" y=\"22\" width=\"8\" height=\"8\"></rect><rect class=\"ds-hot\" x=\"186\" y=\"66\" width=\"8\" height=\"8\"></rect><rect x=\"296\" y=\"16\" width=\"8\" height=\"8\"></rect><text x=\"202\" y=\"73\">ACTIVE RELATION</text></svg>",
+      "css": ".ds-knowledge-signal { width: 320px; height: 120px; background: var(--void, #000); color: var(--signal-hot, #ff6a00); shape-rendering: geometricPrecision; } .ds-knowledge-signal path, .ds-knowledge-signal rect { vector-effect: non-scaling-stroke; } .ds-knowledge-signal .ds-edge { fill: none; stroke: var(--structure, rgba(245,241,233,.28)); stroke-width: 1; opacity: .45; } .ds-knowledge-signal .ds-route { fill: none; stroke: var(--signal-hot, #ff6a00); stroke-width: 1.25; stroke-dasharray: 10 8; } .ds-knowledge-signal rect { fill: var(--ink-2, #c0bbb3); } .ds-knowledge-signal rect.ds-hot { fill: var(--signal-hot, #ff6a00); filter: drop-shadow(0 0 4px rgb(255 106 0 / 38%)); } .ds-knowledge-signal text { fill: var(--ink-1, #f5f1e9); font: 600 9px/1 var(--font-data, 'Cascadia Mono', Consolas, monospace); letter-spacing: .1em; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Operator Blackbox",
+    "overview": "JARVIS is a tactical command environment, not a decorative science-fiction dashboard. The interface should feel like a black-box console owned by a highly technical operator: dense enough to support sustained code work, forceful enough to make active commands unmistakable, and disciplined enough that every mark can be traced to real state.\n\nBlack is operational space rather than a backdrop. Instrument White carries trusted information, Frame Gray exposes structure, and Command Orange arms the currently selected, connected, or executable path. The tone is militarized and decisive without becoming theatrical; hierarchy comes from contrast, alignment, and sparse signals before ornament.\n\nThe default material is flat and exact. Glass, gradients, rings, glow, scanning, and other dimensional effects are available design tools rather than forbidden motifs, but they earn their place only by clarifying hierarchy, mode, causality, or live system state.",
+    "keyCharacteristics": [
+      "True-black, edge-to-edge operational space.",
+      "Compact, high-density geometry for code-centered work.",
+      "Warm-white facts, neutral structure, and sparse orange commands.",
+      "Square vector marks, hairline dividers, and tabular data alignment.",
+      "Motion reserved for transitions, active routes, and truthful live state.",
+      "Tactical, direct controls with visible keyboard and recovery affordances."
+    ],
+    "rules": [
+      { "name": "The Armed Signal Rule", "body": "Orange means selected, connected, executable, or live; an idle ornament does not receive the same authority.", "section": "colors" },
+      { "name": "The Instrument White Rule", "body": "Warm white carries facts and primary content. Orange may lead the eye, but it must not replace readable information.", "section": "colors" },
+      { "name": "The Effects Need Clearance Rule", "body": "Glass, gradients, cool accents, rings, glow, and scan motion are allowed when they reveal a real mode or state and remain subordinate to the black-white-orange command hierarchy.", "section": "colors" },
+      { "name": "The Console Grammar Rule", "body": "Commands are short, uppercase, and monospaced; explanations remain sentence case and readable.", "section": "typography" },
+      { "name": "The One Readout Rule", "body": "A region may have one dominant value or title. Supporting data steps down through size, weight, and ink before another accent is introduced.", "section": "typography" },
+      { "name": "The Flat-at-Rest Rule", "body": "Geometry is planar until interaction or truthful system state creates a reason for depth.", "section": "elevation" },
+      { "name": "The Local Emission Rule", "body": "Glow stays attached to the node, line, edge, or control that owns the state; it does not wash across unrelated content.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do make the current command, selection, and causal relationship immediately identifiable through sparse Command Orange.",
+      "Do let Instrument White carry facts, filenames, commands, and results.",
+      "Do preserve the fixed shell geometry: compact rails, stable desktop slots, and a taskbar that leaves maximum width to real applications.",
+      "Do use point-line vector geometry for product-owned identity and system relationships.",
+      "Do attach animation and emission to real transitions or live state, and provide reduced-motion and forced-color behavior.",
+      "Do allow glass, gradients, rings, glow, scanning, or cool accents when a scoped mode genuinely benefits from them and the command hierarchy remains intact."
+    ],
+    "donts": [
+      "Don't use orange everywhere; it loses command authority when every label or border competes for it.",
+      "Don't create false telemetry, false Agent capability, false file access, or decorative activity that reads as real system state.",
+      "Don't turn every region into an equally weighted framed card or reintroduce floating-window gutters around maximized work.",
+      "Don't duplicate the persistent Agent launcher in the top rail or desktop center.",
+      "Don't let labels, hover transforms, or badges move fixed icon coordinates or cause taskbar applications to jump.",
+      "Don't keep an idle scan or route animation running when it no longer communicates work, especially under reduced-motion preferences."
+    ]
+  }
+}

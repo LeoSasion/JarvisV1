@@ -606,7 +606,10 @@ export function FileExplorerWindow({
           ? "warning"
           : "error";
       setOperationNotice({ tone, message });
-      onToast(message);
+      onToast({
+        severity: tone === "success" ? "ok" : tone,
+        title: message,
+      });
 
       if (nextTransfer.mode === "move") {
         const completedSources = new Set(nextTransfer.result.items.map((item) => item.source));
@@ -936,7 +939,7 @@ export function FileExplorerWindow({
     } catch (clipboardError) {
       const message = `Windows clipboard unavailable: ${clipboardError.message}`;
       setOperationNotice({ tone: "error", message });
-      onToast(message);
+      onToast({ severity: "error", title: message });
     }
   }, [onToast, selectedPaths, transfer]);
 
@@ -954,17 +957,17 @@ export function FileExplorerWindow({
         const completed = result.items.length;
         const message = `${completed} completed · ${result.failures.length} failed · ${result.failures[0].message}`;
         setOperationNotice({ tone: "warning", message });
-        onToast(message);
+        onToast({ severity: "warning", title: message });
       } else {
         const message = options.successMessage ?? `${result.items.length} item${result.items.length === 1 ? "" : "s"} updated`;
         setOperationNotice({ tone: "success", message });
-        onToast(message);
+        onToast({ severity: "ok", title: message });
       }
       return result;
     } catch (operationError) {
       const message = `${label} failed: ${operationError.message}`;
       setOperationNotice({ tone: "error", message });
-      onToast(message);
+      onToast({ severity: "error", title: message });
       return null;
     } finally {
       setOperationBusy(null);
@@ -992,7 +995,7 @@ export function FileExplorerWindow({
     } catch (transferError) {
       const message = `Transfer failed to start: ${transferError.message}`;
       setOperationNotice({ tone: "error", message });
-      onToast(message);
+      onToast({ severity: "error", title: message });
     } finally {
       setOperationBusy(null);
     }
@@ -1022,7 +1025,7 @@ export function FileExplorerWindow({
     } catch (preflightError) {
       const message = `Transfer preflight failed: ${preflightError.message}`;
       setOperationNotice({ tone: "error", message });
-      onToast(message);
+      onToast({ severity: "error", title: message });
     } finally {
       setOperationBusy(null);
     }
@@ -1038,7 +1041,7 @@ export function FileExplorerWindow({
     } catch (clipboardError) {
       const message = `Unable to read Windows clipboard: ${clipboardError.message}`;
       setOperationNotice({ tone: "error", message });
-      onToast(message);
+      onToast({ severity: "error", title: message });
     }
   }, [onToast, queueTransfer, snapshot.currentPath]);
 
@@ -1077,7 +1080,7 @@ export function FileExplorerWindow({
     } catch (cancelError) {
       const message = `Unable to cancel transfer: ${cancelError.message}`;
       setOperationNotice({ tone: "error", message });
-      onToast(message);
+      onToast({ severity: "error", title: message });
     }
   }, [onToast, transfer]);
 
@@ -1844,7 +1847,7 @@ export function FileExplorerWindow({
                   <div><dt>LOCATION</dt><dd title={snapshot.currentPath}>{snapshot.currentPath}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
-                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK PI ABOUT SELECTION</button>
+                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK AGENT ABOUT SELECTION</button>
                   <button type="button" onClick={() => copySelection("copy")}><CopyRegular />COPY SELECTION</button>
                   <button type="button" onClick={() => copySelection("move")}><CutRegular />CUT SELECTION</button>
                   <button type="button" className="is-danger" onClick={openRecycleDialog}><DeleteRegular />MOVE TO RECYCLE BIN</button>
@@ -1862,7 +1865,7 @@ export function FileExplorerWindow({
                   <div><dt>LINKED</dt><dd>{selectedEntry.isLinked ? "YES" : "NO"}</dd></div>
                 </dl>
                 <div className="explorer-inspector-actions">
-                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK PI ABOUT THIS</button>
+                  <button type="button" onClick={() => onAddToAgentContext?.(agentContextSelection)}><LinkRegular />ASK AGENT ABOUT THIS</button>
                   <button type="button" onClick={() => openEntry(selectedEntry)}><OpenRegular />{selectedEntry.isDirectory ? "OPEN FOLDER" : "OPEN FILE"}</button>
                   <button type="button" onClick={openRenameDialog}><RenameRegular />RENAME</button>
                   <button type="button" onClick={() => openInWindows(selectedEntry.path)}><FolderRegular />OPEN IN WINDOWS</button>
@@ -1911,7 +1914,7 @@ export function FileExplorerWindow({
               />
             ) : null}
             <LinkRegular />
-            <span>{linkedContext?.items?.length ? "RELINK PI" : "ASK PI"}</span>
+            <span>{linkedContext?.items?.length ? "RELINK AGENT" : "ASK AGENT"}</span>
             <small>{linkedOriginLabel
               ? `LINKED · ${linkedOriginLabel}`
               : agentContextSelection.length

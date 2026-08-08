@@ -14,7 +14,7 @@ function windowState(id, open = false, minimized = false) {
   return { id, open, minimized };
 }
 
-test("workspace modes promote Explorer and Pi into deliberate product states", () => {
+test("workspace modes promote Explorer and Agent into deliberate product states", () => {
   const windows = {
     explorer: windowState("explorer"),
     agent: windowState("agent"),
@@ -71,7 +71,7 @@ test("linked layouts reserve the correct panes across desktop widths", () => {
   );
 });
 
-test("only the approved Explorer and Pi product states disable freeform gestures", () => {
+test("only the approved Explorer and Agent product states disable freeform gestures", () => {
   assert.equal(isDockedWindow("explorer", WORKSPACE_LAYOUT_MODES.EXPLORER_FOCUS), true);
   assert.equal(isDockedWindow("agent", WORKSPACE_LAYOUT_MODES.EXPLORER_FOCUS), false);
   assert.equal(isDockedWindow("agent", WORKSPACE_LAYOUT_MODES.EXPLORER_AGENT_LINKED), true);

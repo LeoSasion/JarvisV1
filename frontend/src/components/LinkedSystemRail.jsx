@@ -5,6 +5,7 @@ import {
   useSystemFeed,
   useSystemSnapshot,
 } from "../hooks/usePlatformData.js";
+import { getAgentProviderLabel } from "../agent-provider-model.js";
 
 function statusCopy(agentState) {
   if (!agentState?.available) return "OFFLINE";
@@ -28,6 +29,7 @@ export function LinkedSystemRail({ agentState, onInspect, onNotification }) {
   const { processes, resources } = useSystemSnapshot();
   const feed = useSystemFeed();
   const agentLabel = statusCopy(agentState);
+  const providerLabel = getAgentProviderLabel(agentState);
   const attentionCount = useMemo(() => feed.items.filter((item) => (
     item.severity === "warning" || item.severity === "error"
   )).length, [feed.items]);
@@ -59,7 +61,7 @@ export function LinkedSystemRail({ agentState, onInspect, onNotification }) {
       <section>
         <h2>CONNECTIONS</h2>
         <dl>
-          <div><dt>PI AGENT</dt><dd className={agentLabel === "OFFLINE" ? "is-muted" : "is-signal"}>{agentLabel}</dd></div>
+          <div><dt>AGENT · {providerLabel}</dt><dd className={agentLabel === "OFFLINE" ? "is-muted" : "is-signal"}>{agentLabel}</dd></div>
           <div><dt>COMMAND BUS</dt><dd>{agentState?.available ? "READY" : "STANDBY"}</dd></div>
           <div><dt>DATA ACCESS</dt><dd>CHAT ONLY</dd></div>
         </dl>

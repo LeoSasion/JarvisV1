@@ -220,7 +220,7 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'THIRD_PARTY_NOTICES.md') -Des
 
 Write-Host "[4/8] Writing version and recovery notes..."
 $versionPayload = [ordered]@{
-    product = 'JARVIS Night Shell'
+    product = 'JARVIS'
     version = $Version
     runtime = $Runtime
     configuration = 'Release'
@@ -250,7 +250,7 @@ $versionPayload = [ordered]@{
 $versionPayload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $publishDirectory 'version.json') -Encoding utf8
 
 @"
-JARVIS Night Shell
+JARVIS
 
 Run Jarvis.Host.exe to start JARVIS.
 Use Ctrl+Shift+Q from any normal Windows app to restore the Windows desktop and exit safely.
@@ -338,7 +338,7 @@ else {
 $portableItem = Get-Item -LiteralPath $zipPath
 $updateManifest = [ordered]@{
     schemaVersion = 1
-    product = 'JARVIS Night Shell'
+    product = 'JARVIS'
     version = $Version
     runtime = $Runtime
     releaseChannel = 'manual'
@@ -384,7 +384,7 @@ if (Test-Path -LiteralPath $piRuntimeBuildRoot) {
 }
 
 [pscustomobject]@{
-    Product = 'JARVIS Night Shell'
+    Product = 'JARVIS'
     Version = $Version
     Runtime = $Runtime
     PublishDirectory = $publishDirectory

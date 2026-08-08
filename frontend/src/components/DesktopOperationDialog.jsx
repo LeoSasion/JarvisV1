@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 export function DesktopOperationDialog({
-  confirmLabel = "确认",
+  confirmLabel = "CONFIRM",
   danger = false,
   description,
   initialValue = "",
@@ -24,7 +24,7 @@ export function DesktopOperationDialog({
     event.preventDefault();
     const normalized = inputLabel ? value.trim() : value;
     if (inputLabel && !normalized) {
-      setError("名称不能为空。");
+      setError("A name is required.");
       return;
     }
     setBusy(true);
@@ -32,7 +32,7 @@ export function DesktopOperationDialog({
     try {
       await onConfirm(normalized);
     } catch (nextError) {
-      setError(nextError?.message ?? "操作失败。");
+      setError(nextError?.message ?? "The operation failed.");
       setBusy(false);
     }
   };
@@ -66,9 +66,9 @@ export function DesktopOperationDialog({
         ) : null}
         {error ? <div className="desktop-operation-error" role="alert">{error}</div> : null}
         <footer>
-          <button type="button" onClick={onCancel} disabled={busy}>取消</button>
+          <button type="button" onClick={onCancel} disabled={busy}>CANCEL</button>
           <button className={danger ? "is-danger" : "is-primary"} type="submit" disabled={busy}>
-            {busy ? "处理中…" : confirmLabel}
+            {busy ? "WORKING…" : confirmLabel}
           </button>
         </footer>
       </form>

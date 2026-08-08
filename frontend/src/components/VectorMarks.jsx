@@ -57,7 +57,7 @@ export function CoreNodeGlyph({ className = "", active = false }) {
   );
 }
 
-const fieldNodes = [
+const knowledgeNodes = [
   [112, 126], [188, 86], [246, 168], [338, 112], [408, 204], [502, 116],
   [582, 178], [674, 92], [748, 156], [862, 112], [914, 232], [808, 288],
   [704, 244], [622, 326], [520, 260], [438, 348], [350, 274], [264, 352],
@@ -65,7 +65,7 @@ const fieldNodes = [
   [516, 532], [610, 438], [708, 512], [786, 414], [890, 486], [934, 380],
 ];
 
-const fieldEdges = [
+const knowledgeEdges = [
   [0, 1], [0, 2], [1, 3], [2, 3], [2, 4], [3, 5], [4, 5], [4, 6],
   [5, 6], [5, 7], [6, 8], [7, 8], [7, 9], [8, 10], [8, 11], [10, 11],
   [11, 12], [12, 13], [12, 14], [13, 15], [14, 15], [14, 16], [15, 16],
@@ -75,57 +75,69 @@ const fieldEdges = [
   [27, 29], [28, 29], [9, 10], [9, 8], [6, 14], [4, 16], [13, 25],
 ];
 
-export const NeuralVectorField = memo(function NeuralVectorField({ active = false }) {
+const knowledgeNodeKinds = ["document", "entity", "event", "task", "system"];
+
+export const KnowledgeGraphField = memo(function KnowledgeGraphField({ connected = false }) {
   return (
     <svg
-      className={`neural-vector-field ${active ? "is-active" : ""}`}
+      className={`knowledge-graph-field ${connected ? "is-connected" : "is-disconnected"}`}
       viewBox="0 0 1000 620"
       preserveAspectRatio="xMidYMid slice"
       aria-hidden="true"
       focusable="false"
     >
-      <g className="neural-vector-field__grid">
+      <g className="knowledge-graph-field__grid">
         <path d="M80 110h840M80 310h840M80 510h840M180 68v484M500 52v516M820 68v484" />
       </g>
-      <g className="neural-vector-field__datum">
+      <g className="knowledge-graph-field__datum">
         <path d="M50 76h132M818 76h132M50 544h132M818 544h132" />
         <path d="M50 76v52M950 76v52M50 492v52M950 492v52" />
         <path d="M178 310 292 156 500 108 708 156 822 310 708 464 500 512 292 464 178 310Z" />
       </g>
-      <g className="neural-vector-field__edges">
-        {fieldEdges.map(([from, to]) => (
+      <g className="knowledge-graph-field__clusters">
+        <path d="M72 104 330 66 444 174 352 302 98 276Z" />
+        <path d="M394 116 680 66 832 184 704 324 446 268Z" />
+        <path d="M94 332 360 264 520 420 336 552 84 482Z" />
+        <path d="M508 324 820 246 946 396 824 548 560 526Z" />
+      </g>
+      <g className="knowledge-graph-field__edges">
+        {knowledgeEdges.map(([from, to]) => (
           <line
             key={`${from}-${to}`}
-            x1={fieldNodes[from][0]}
-            y1={fieldNodes[from][1]}
-            x2={fieldNodes[to][0]}
-            y2={fieldNodes[to][1]}
+            x1={knowledgeNodes[from][0]}
+            y1={knowledgeNodes[from][1]}
+            x2={knowledgeNodes[to][0]}
+            y2={knowledgeNodes[to][1]}
           />
         ))}
       </g>
-      <g className="neural-vector-field__routes">
+      <g className="knowledge-graph-field__routes">
         <path d="M86 356 170 276 264 352 350 274 438 348 520 260 622 326 704 244 808 288 914 232" />
         <path d="M144 448 252 430 330 506 430 452 516 532 610 438 708 512 786 414 890 486" />
       </g>
-      <g className="neural-vector-field__signal-halo">
-        <path d="M112 126 246 168 408 204 520 260 622 326 786 414 934 380" />
-        <path d="M188 86 338 112 502 116 674 92 862 112 914 232" />
-      </g>
-      <g className="neural-vector-field__signal">
-        <path d="M112 126 246 168 408 204 520 260 622 326 786 414 934 380" />
-        <path d="M188 86 338 112 502 116 674 92 862 112 914 232" />
-      </g>
-      <g className="neural-vector-field__core">
-        <path d="M390 310h70l40-40 40 40h70M500 200v70m0 80v70" />
-        <path d="m500 252 58 58-58 58-58-58 58-58Zm0 20 38 38-38 38-38-38 38-38Z" />
-        <path className="neural-vector-field__core-axis" d="M464 310h72M500 274v72" />
+      {connected ? (
+        <>
+          <g className="knowledge-graph-field__signal-halo">
+            <path d="M112 126 246 168 408 204 520 260 622 326 786 414 934 380" />
+            <path d="M188 86 338 112 502 116 674 92 862 112 914 232" />
+          </g>
+          <g className="knowledge-graph-field__signal">
+            <path d="M112 126 246 168 408 204 520 260 622 326 786 414 934 380" />
+            <path d="M188 86 338 112 502 116 674 92 862 112 914 232" />
+          </g>
+        </>
+      ) : null}
+      <g className="knowledge-graph-field__focus">
+        <path d="M458 310h30m24 0h58M500 268v30m0 24v30" />
         <rect x="494" y="304" width="12" height="12" />
+        <text x="520" y="305">{connected ? "LOCAL INDEX" : "SOURCE DISCONNECTED"}</text>
+        <text className="is-muted" x="520" y="322">{connected ? "VERIFIED RELATIONS" : "STRUCTURE PREVIEW"}</text>
       </g>
-      <g className="neural-vector-field__nodes">
-        {fieldNodes.map(([x, y], index) => (
+      <g className="knowledge-graph-field__nodes">
+        {knowledgeNodes.map(([x, y], index) => (
           <rect
             key={`${x}-${y}`}
-            className={index % 7 === 0 ? "is-hot" : ""}
+            className={`${connected && index % 7 === 0 ? "is-hot " : ""}is-${knowledgeNodeKinds[index % knowledgeNodeKinds.length]}`}
             x={x - (index % 7 === 0 ? 2.5 : 1.5)}
             y={y - (index % 7 === 0 ? 2.5 : 1.5)}
             width={index % 7 === 0 ? 5 : 3}
@@ -133,12 +145,12 @@ export const NeuralVectorField = memo(function NeuralVectorField({ active = fals
           />
         ))}
       </g>
-      <g className="neural-vector-field__labels">
-        <text x="62" y="66">JARVIS // LOCAL VECTOR MATRIX</text>
-        <text x="752" y="538">30 NODES // 53 LINKS</text>
-        <text x="518" y="232">PI CORE</text>
-        <text x="62" y="304">WEST ROUTE</text>
-        <text x="846" y="304">EAST ROUTE</text>
+      <g className="knowledge-graph-field__labels">
+        <text x="62" y="66">JARVIS // LOCAL KNOWLEDGE GRAPH</text>
+        <text x="112" y="96">DOCUMENTS</text>
+        <text x="690" y="96">ENTITIES</text>
+        <text x="108" y="520">EVENTS / TASKS</text>
+        <text x="790" y="520">SYSTEM / ARCHIVE</text>
       </g>
     </svg>
   );

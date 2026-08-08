@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Taskbar } from "./components/Taskbar.jsx";
+import { useAgentSession } from "./hooks/useAgentSession.js";
 import { platform } from "./platform/index.js";
 import { recordRecentApplication } from "./recent-applications.js";
+import { publishShellFeedback } from "./shell-feedback-channel.js";
 import {
   getVisibleInternalWindowIds,
   planInternalShowDesktopToggle,
@@ -15,10 +17,21 @@ import {
 export function TaskbarSurface() {
   const [activeApp, setActiveApp] = useState("builtin:explorer");
   const [internalWindows, setInternalWindows] = useState(readWorkspaceRuntime);
+  const agentSession = useAgentSession();
   const showDesktopRestoreIdsRef = useRef([]);
   const taskbarMode = new URLSearchParams(window.location.search).get("taskbarMode") ?? "full";
 
   useEffect(() => subscribeWorkspaceRuntime(setInternalWindows), []);
+
+  const reportTaskbarFault = useCallback((title, error, severity = "error") => {
+    const detail = error instanceof Error ? error.message : String(error ?? "Unexpected taskbar failure");
+    const fault = { source: "taskbar", severity, title, detail, persistent: true };
+    if (!publishShellFeedback(fault)) {
+      void platform.feed.reportFault(fault).catch(() => {
+        // Both renderer channels are unavailable; the originating taskbar remains interactive.
+      });
+    }
+  }, []);
 
   const hideTaskbarFlyout = useCallback(async () => {
     try {
@@ -31,19 +44,19 @@ export function TaskbarSurface() {
   const showTaskbarFlyout = useCallback(async (options) => {
     try {
       await platform.taskbar.showFlyout(options);
-    } catch {
-      // Window switching remains available through single-window task items.
+    } catch (error) {
+      reportTaskbarFault("Unable to show window preview", error);
     }
-  }, []);
+  }, [reportTaskbarFault]);
 
   const showDesktopPanel = useCallback(async (panel = null) => {
     await hideTaskbarFlyout();
     try {
       await platform.lifecycle.showDesktop({ panel });
-    } catch {
-      // The taskbar remains usable for window switching if the desktop is unavailable.
+    } catch (error) {
+      reportTaskbarFault("Unable to open the JARVIS desktop", error);
     }
-  }, [hideTaskbarFlyout]);
+  }, [hideTaskbarFlyout, reportTaskbarFault]);
 
   const closeTaskbarWindow = useCallback(async (windowId) => {
     if (windowId.startsWith("jarvis:")) {
@@ -54,10 +67,10 @@ export function TaskbarSurface() {
     }
     try {
       await platform.taskbar.closeWindow(windowId);
-    } catch {
-      // A window may close on its own before the native request arrives.
+    } catch (error) {
+      reportTaskbarFault("Unable to close window", error);
     }
-  }, [showDesktopPanel]);
+  }, [reportTaskbarFault, showDesktopPanel]);
 
   const toggleShowDesktop = useCallback(async () => {
     await hideTaskbarFlyout();
@@ -75,10 +88,10 @@ export function TaskbarSurface() {
         sendWorkspaceCommand(id, action);
       });
       showDesktopRestoreIdsRef.current = plan.nextRestoreIds;
-    } catch {
-      // Show Desktop is a convenience action; task switching remains available.
+    } catch (error) {
+      reportTaskbarFault("Unable to toggle desktop", error);
     }
-  }, [hideTaskbarFlyout, internalWindows]);
+  }, [hideTaskbarFlyout, internalWindows, reportTaskbarFault]);
 
   const handleAppClick = useCallback(async (item, runningWindow = null, options = {}) => {
     const builtinId = item.pinnedApplication?.id;
@@ -113,10 +126,10 @@ export function TaskbarSurface() {
       }
       if (!item.pinnedApplication) return;
       await platform.shell.open(item.pinnedApplication.target);
-    } catch {
-      // A failed launch must not take down the persistent taskbar surface.
+    } catch (error) {
+      reportTaskbarFault(`Unable to open ${item.label ?? "application"}`, error);
     }
-  }, [hideTaskbarFlyout, showDesktopPanel]);
+  }, [hideTaskbarFlyout, reportTaskbarFault, showDesktopPanel]);
 
   const toggleAgent = useCallback(async () => {
     await showDesktopPanel();
@@ -138,6 +151,7 @@ export function TaskbarSurface() {
         onAppClick={handleAppClick}
         onOpenCommand={() => showDesktopPanel("command")}
         onToggleAgent={toggleAgent}
+        agentState={agentSession.state}
         onOpenStart={() => showDesktopPanel("start")}
         onOpenQuickSettings={() => showDesktopPanel("quick-settings")}
         onOpenDateTime={() => showDesktopPanel("date-time")}

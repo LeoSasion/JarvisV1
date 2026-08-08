@@ -172,6 +172,13 @@ export function createWindowsPlatform(webview) {
       getSnapshot: () => request("feed.getSnapshot"),
       markAllRead: () => request("feed.markAllRead"),
       clear: () => request("feed.clear"),
+      reportFault: (fault = {}) => request("feed.reportFault", {
+        source: fault?.source,
+        severity: fault?.severity,
+        title: fault?.title,
+        detail: fault?.detail ?? null,
+        actionId: fault?.actionId ?? null,
+      }),
     },
     session: {
       getState: () => request("session.getState"),

@@ -12,7 +12,8 @@ import {
   Wifi4Regular,
   WindowAppsRegular,
 } from "@fluentui/react-icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { getAgentLauncherStatus, getAgentProviderLabel } from "../agent-provider-model.js";
 import {
   usePlatformClock,
   usePlatformKind,
@@ -40,6 +41,8 @@ import {
 } from "../taskbar-accessibility-model.js";
 import {
   filterTaskbarFlyoutEntries,
+  getNativeInternalWindowItems,
+  getNativeTaskbarOverflowPayload,
   getTaskbarFlyoutKeyboardTarget,
   getTaskbarOverflowSummary,
 } from "../taskbar-flyout-model.js";
@@ -56,7 +59,7 @@ import {
   TASKBAR_HOVER_DISMISS_DELAY_MS,
   TASKBAR_HOVER_PREVIEW_DELAY_MS,
 } from "../taskbar-hover-preview.js";
-import { getTaskbarCapacity } from "../taskbar-layout-model.js";
+import { getTaskbarLayoutPlan, TASKBAR_ICON_SLOT_WIDTH } from "../taskbar-layout-model.js";
 import { AgentGlyph } from "./VectorMarks.jsx";
 
 const processDisplayNames = {
@@ -168,33 +171,52 @@ function buildTaskbarItems(windows, pinnedApps, runningOrder, internalWindows = 
   return [...pinnedItems, ...runningItems];
 }
 
-function useTaskbarCapacity(containerRef) {
-  const [capacity, setCapacity] = useState(8);
+function resolveTaskbarIconDataUrl(item) {
+  return item.selectedWindow?.iconDataUrl
+    ?? item.windows.find((window) => window.iconDataUrl)?.iconDataUrl
+    ?? item.iconDataUrl
+    ?? null;
+}
 
-  useEffect(() => {
+function hasRecognizableTaskbarIcon(item) {
+  return Boolean(resolveTaskbarIconDataUrl(item) || (item.Icon && item.Icon !== WindowAppsRegular));
+}
+
+function useTaskbarLayoutPlan(containerRef, measurementRefs, items) {
+  const [layout, setLayout] = useState(null);
+  const itemKey = items.map((item) => item.id).join("\u001f");
+
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
-
+    let cancelled = false;
     const update = () => {
-      const configuredSlotWidth = Number.parseFloat(
-        window.getComputedStyle(container).getPropertyValue("--taskbar-slot-width"),
-      );
-      const nextCapacity = getTaskbarCapacity(container.clientWidth, configuredSlotWidth);
-      setCapacity((current) => current === nextCapacity ? current : nextCapacity);
+      if (cancelled) return;
+      const plan = getTaskbarLayoutPlan(items.map((item) => ({
+        id: item.id,
+        fullWidth: measurementRefs.current.get(item.id)?.getBoundingClientRect().width,
+        canUseIconOnly: hasRecognizableTaskbarIcon(item),
+      })), container.clientWidth);
+      const signature = JSON.stringify(plan);
+      setLayout((current) => current?.itemKey === itemKey && current.signature === signature
+        ? current
+        : { itemKey, plan, signature });
     };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(container);
-    return () => observer.disconnect();
-  }, [containerRef]);
+    void document.fonts?.ready?.then(update);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [containerRef, itemKey, items, measurementRefs]);
 
-  return capacity;
+  return layout?.itemKey === itemKey ? layout.plan : null;
 }
 
 function TaskbarAppIcon({ item }) {
-  const iconDataUrl = item.selectedWindow?.iconDataUrl
-    ?? item.windows.find((window) => window.iconDataUrl)?.iconDataUrl
-    ?? item.iconDataUrl;
+  const iconDataUrl = resolveTaskbarIconDataUrl(item);
   if (iconDataUrl) {
     return <img className="taskbar-native-icon" src={iconDataUrl} alt="" />;
   }
@@ -425,11 +447,13 @@ export function Taskbar({
     reference.kind === "installed");
   const applicationCatalog = useApplicationCatalog(needsApplicationCatalog);
   const appsRef = useRef(null);
+  const taskbarMeasurementRefs = useRef(new Map());
   const taskbarItemsRef = useRef([]);
   const taskbarButtonRefs = useRef(new Map());
   const hoverPreviewTimerRef = useRef(null);
   const hoverDismissTimerRef = useRef(null);
   const mockFlyoutRef = useRef(null);
+  const taskbarHadFocusRef = useRef(false);
   const [runningOrder, setRunningOrder] = useState([]);
   const [draggedPinnedId, setDraggedPinnedId] = useState(null);
   const [mockFlyout, setMockFlyout] = useState(null);
@@ -450,6 +474,7 @@ export function Taskbar({
     () => buildTaskbarItems(taskbar.windows, orderedPinnedApps, runningOrder, taskbarInternalWindows),
     [orderedPinnedApps, runningOrder, taskbar.windows, taskbarInternalWindows],
   );
+  const layoutPlan = useTaskbarLayoutPlan(appsRef, taskbarMeasurementRefs, taskbarItems);
   useEffect(() => {
     taskbarItemsRef.current = taskbarItems;
   }, [taskbarItems]);
@@ -462,25 +487,50 @@ export function Taskbar({
       .map((item) => item.id);
     setRunningOrder((current) => reconcileRunningTaskbarOrder(current, currentIds));
   }, [taskbarItems]);
-  const capacity = useTaskbarCapacity(appsRef);
-  const hasOverflow = taskbarItems.length > capacity;
-  const visibleItems = hasOverflow ? taskbarItems.slice(0, capacity - 1) : taskbarItems;
-  const overflowItems = hasOverflow ? taskbarItems.slice(capacity - 1) : [];
+  const taskbarItemsById = useMemo(
+    () => new Map(taskbarItems.map((item) => [item.id, item])),
+    [taskbarItems],
+  );
+  const visibleLayout = useMemo(
+    () => layoutPlan?.visible
+      ?? taskbarItems.map((item) => ({ id: item.id, density: "icon", width: TASKBAR_ICON_SLOT_WIDTH })),
+    [layoutPlan, taskbarItems],
+  );
+  const visibleItems = useMemo(
+    () => visibleLayout.map((entry) => taskbarItemsById.get(entry.id)).filter(Boolean),
+    [taskbarItemsById, visibleLayout],
+  );
+  const overflowItems = useMemo(
+    () => (layoutPlan?.overflowIds ?? []).map((id) => taskbarItemsById.get(id)).filter(Boolean),
+    [layoutPlan?.overflowIds, taskbarItemsById],
+  );
+  const hasOverflow = overflowItems.length > 0;
+  const layoutById = useMemo(
+    () => new Map(visibleLayout.map((entry) => [entry.id, entry])),
+    [visibleLayout],
+  );
   const focusableTaskbarIds = useMemo(
     () => [
-      ...(hasOverflow ? taskbarItems.slice(0, capacity - 1) : taskbarItems)
-        .map((item) => item.id),
+      ...visibleItems.map((item) => item.id),
       ...(hasOverflow ? ["taskbar:overflow"] : []),
     ],
-    [capacity, hasOverflow, taskbarItems],
+    [hasOverflow, visibleItems],
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     setFocusedTaskbarItemId((current) => (
       focusableTaskbarIds.includes(current)
         ? current
-        : focusableTaskbarIds[0] ?? null
+        : (() => {
+          const next = current && hasOverflow
+            ? "taskbar:overflow"
+            : focusableTaskbarIds[0] ?? null;
+          if (taskbarHadFocusRef.current && next) {
+            window.requestAnimationFrame(() => taskbarButtonRefs.current.get(next)?.focus());
+          }
+          return next;
+        })()
     ));
-  }, [focusableTaskbarIds]);
+  }, [focusableTaskbarIds, hasOverflow]);
   const focusTaskbarItemAt = useCallback((index) => {
     const id = focusableTaskbarIds[index];
     if (!id) return;
@@ -493,6 +543,11 @@ export function Taskbar({
     || taskbarInternalWindows.some((window) => window.active);
   const agentWorking = ["starting", "running"].includes(agentState?.status);
   const agentDegraded = Boolean(agentState?.error);
+  const agentProviderLabel = getAgentProviderLabel(agentState);
+  const agentLauncherStatus = getAgentLauncherStatus(agentState, {
+    open: agentRunning,
+    active: agentActive,
+  });
   const networkAvailable = tray.network.available;
   const power = tray.power;
   const alertCount = feed.unreadCount;
@@ -599,8 +654,17 @@ export function Taskbar({
       windowIds: item.windows.map((window) => window.windowId),
       ...getFlyoutAnchor(event.currentTarget),
     };
-    if (platformKind === "mock" || item.windows.some((window) => window.internalWindowId)) {
+    if (platformKind === "mock") {
       setMockFlyout({ mode: "windows", item, source: "manual" });
+      return;
+    }
+    if (item.windows.some((window) => window.internalWindowId)) {
+      onShowFlyout({
+        mode: "overflow",
+        windowIds: [],
+        items: getNativeInternalWindowItems(item),
+        ...getFlyoutAnchor(event.currentTarget),
+      });
       return;
     }
     onShowFlyout(request);
@@ -617,14 +681,13 @@ export function Taskbar({
     cancelHoverPreview();
     cancelHoverDismiss();
     onHideFlyout();
-    if (platformKind !== "mock" && !overflowItems.some((item) =>
-      item.windows.some((window) => window.internalWindowId))) {
-      const windowIds = overflowItems.flatMap((item) =>
-        item.windows.map((window) => window.windowId));
-      if (windowIds.length > 0) {
+    if (platformKind !== "mock") {
+      const { windowIds, items } = getNativeTaskbarOverflowPayload(overflowItems);
+      if (windowIds.length > 0 || items.length > 0) {
         onShowFlyout({
           mode: "overflow",
           windowIds,
+          items,
           ...getFlyoutAnchor(event.currentTarget),
         });
       }
@@ -684,12 +747,21 @@ export function Taskbar({
       const action = event.detail?.action;
       if (typeof itemId !== "string" || typeof action !== "string") return;
       const item = taskbarItemsRef.current.find((candidate) => candidate.id === itemId);
-      if (!item || !getTaskbarContextActionIds(item).includes(action)) return;
+      if (!item) return;
+      if (action === "activate") {
+        const requestedWindowId = event.detail?.windowId;
+        const targetWindow = typeof requestedWindowId === "string"
+          ? item.windows.find((window) => window.windowId === requestedWindowId)
+          : item.selectedWindow;
+        void onAppClick(item, targetWindow ?? null);
+        return;
+      }
+      if (!getTaskbarContextActionIds(item).includes(action)) return;
       void executeContextAction(item, action);
     };
     window.addEventListener("jarvis:taskbar-action", handleNativeContextAction);
     return () => window.removeEventListener("jarvis:taskbar-action", handleNativeContextAction);
-  }, [executeContextAction, platformKind]);
+  }, [executeContextAction, onAppClick, platformKind]);
 
   const handleItemClick = useCallback((event, item) => {
     cancelHoverPreview();
@@ -739,7 +811,7 @@ export function Taskbar({
       actions,
       ...getFlyoutAnchor(event.currentTarget),
     };
-    if (platformKind === "mock" || item.windows.some((window) => window.internalWindowId)) {
+    if (platformKind === "mock") {
       setMockFlyout({ mode: "context", item, actions, source: "manual" });
       return;
     }
@@ -785,9 +857,9 @@ export function Taskbar({
           agentDegraded ? "is-degraded" : "",
         ].filter(Boolean).join(" ")}
         onClick={onToggleAgent ?? onOpenCommand}
-        aria-label={agentActive ? "Minimize JARVIS Pi Agent" : "Open JARVIS Pi Agent"}
+        aria-label={agentActive ? "Minimize JARVIS Agent" : "Open JARVIS Agent"}
         title={agentState?.error?.message
-          ?? (agentState?.available === false ? "Pi Agent · runtime configuration required" : "Open Pi Agent")}
+          ?? (agentState?.available === false ? "Agent Provider configuration required" : `Open Agent · ${agentProviderLabel}`)}
       >
         <AgentGlyph
           state={agentWorking
@@ -797,18 +869,39 @@ export function Taskbar({
               : agentState?.available === false ? "offline" : "ready"}
         />
         <span className="jarvis-agent-launcher__copy">
-          <strong>PI AGENT</strong>
-          <small>{agentWorking
-            ? "PROCESSING"
-            : agentState?.available === false
-              ? "OFFLINE"
-              : agentDegraded
-                ? "ATTENTION"
-                : agentRunning ? "ACTIVE" : "OPEN"}</small>
+          <strong>AGENT</strong>
+          <small><span>{agentProviderLabel}</span> · {agentLauncherStatus}</small>
         </span>
         <i aria-hidden="true" />
       </button>
-      <nav ref={appsRef} className="taskbar-apps" aria-label="Taskbar applications">
+      <nav
+        ref={appsRef}
+        className={`taskbar-apps is-density-${layoutPlan?.mode ?? "measuring"}`}
+        aria-label="Taskbar applications"
+        aria-busy={!layoutPlan}
+        onFocusCapture={() => { taskbarHadFocusRef.current = true; }}
+        onBlurCapture={() => {
+          window.requestAnimationFrame(() => {
+            taskbarHadFocusRef.current = Boolean(appsRef.current?.contains(document.activeElement));
+          });
+        }}
+      >
+        <span className="taskbar-measure-layer" aria-hidden="true">
+          {taskbarItems.map((item) => (
+            <span
+              key={item.id}
+              ref={(element) => {
+                if (element) taskbarMeasurementRefs.current.set(item.id, element);
+                else taskbarMeasurementRefs.current.delete(item.id);
+              }}
+              className="taskbar-app-measure"
+            >
+              <span className="taskbar-app-measure__icon"><TaskbarAppIcon item={item} /></span>
+              <span>{item.label}</span>
+              {item.windows.length > 1 ? <small>{item.windows.length}</small> : null}
+            </span>
+          ))}
+        </span>
         {visibleItems.map((item) => {
           const { id, label, windows, selectedWindow: runningWindow } = item;
           const isInternalItem = windows.some((window) => window.internalWindowId);
@@ -834,6 +927,7 @@ export function Taskbar({
             .filter(Boolean)
             .join(" ");
           const windowTitle = runningWindow?.title?.trim();
+          const itemLayout = layoutById.get(id);
           const title = runningWindow
             ? `${label}${windowTitle ? ` — ${windowTitle}` : ""}${windows.length > 1 ? ` (${windows.length} windows)` : ""}${runningWindow.minimized ? " (minimized)" : ""}`
             : label;
@@ -847,6 +941,8 @@ export function Taskbar({
               }}
               type="button"
               className={className}
+              data-density={itemLayout?.density ?? "icon"}
+              style={{ "--taskbar-item-width": `${itemLayout?.width ?? TASKBAR_ICON_SLOT_WIDTH}px` }}
               aria-label={getTaskbarAccessibleLabel(item, isActive)}
               aria-current={isActive ? "true" : undefined}
               title={`${title}${item.isPinned ? " · drag to reorder" : ""}`}

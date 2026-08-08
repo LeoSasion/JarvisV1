@@ -27,12 +27,25 @@ export function getTaskbarTransitionToast(previous, current) {
   }
 
   if (current.transitionStatus === "settled") {
-    return `任务栏模式已切换至 ${current.effectiveMode.toUpperCase()}`;
+    return {
+      source: "taskbar",
+      severity: "ok",
+      title: `Taskbar mode switched to ${current.effectiveMode.toUpperCase()}`,
+    };
   }
 
   if (current.transitionStatus === "cooldown") {
-    return "任务栏已恢复至 Windows，自动接管进入冷却";
+    return {
+      source: "taskbar",
+      severity: "warning",
+      title: "The Windows taskbar has been restored",
+      detail: "Automatic takeover is cooling down.",
+    };
   }
 
-  return `任务栏已安全回退至 ${current.effectiveMode.toUpperCase()}`;
+  return {
+    source: "taskbar",
+    severity: "warning",
+    title: `Taskbar safely fell back to ${current.effectiveMode.toUpperCase()}`,
+  };
 }

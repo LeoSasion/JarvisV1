@@ -1622,7 +1622,7 @@ function RuntimeSettingsPanel({ onClose, onToast }) {
           <CoreNodeGlyph />
           <span>
             <small>RUNTIME CHANNEL</small>
-            <strong>{runtime?.productName ?? "JARVIS Night Shell"}</strong>
+            <strong>{runtime?.productName ?? "JARVIS"}</strong>
             <code>VERSION {runtime?.version ?? "—"} · {runtime?.buildConfiguration ?? "LOADING"}</code>
             <small className="runtime-environment">
               {runtime?.installationMode ?? "DETECTING"} · WEBVIEW2 {runtime?.webView2Version ?? "—"}
@@ -1744,10 +1744,10 @@ function NativeIntegrationSettings({ onToast }) {
     try {
       const state = await requestNotificationHistoryAccess();
       onToast?.(state.historyAvailable
-        ? "Windows 通知历史已连接"
-        : state.reason ?? "Windows 通知历史仍不可用");
+        ? "Windows notification history connected"
+        : state.reason ?? "Windows notification history remains unavailable");
     } catch (nextError) {
-      onToast?.(`通知权限检查失败 · ${nextError.message}`);
+      onToast?.(`Notification access check failed · ${nextError.message}`);
     } finally {
       setRequesting(false);
     }
@@ -2148,8 +2148,8 @@ function WindowAppearanceSettings({ onToast }) {
       const nextState = await setWindowAppearanceMode(mode);
       const nextLabel = windowAppearanceLabels[nextState.effectiveMode] ?? nextState.effectiveMode;
       onToast?.(nextState.effectiveMode === mode
-        ? `窗口外观已切换至 ${nextLabel}`
-        : `系统已自动回退至 ${nextLabel}`);
+        ? `Window appearance switched to ${nextLabel}`
+        : `Windows automatically fell back to ${nextLabel}`);
     } catch {
       // The shared appearance store exposes the bridge error inline.
     } finally {
@@ -2161,7 +2161,7 @@ function WindowAppearanceSettings({ onToast }) {
     if (busy) return;
     const processName = normalizeWindowAppearanceProcessName(processNameValue);
     if (!processName) {
-      setRuleInputError("请输入进程文件名，例如 notepad.exe；不能包含路径或通配符。");
+      setRuleInputError("Enter a process filename such as notepad.exe; paths and wildcards are not allowed.");
       return;
     }
 
@@ -2170,7 +2170,7 @@ function WindowAppearanceSettings({ onToast }) {
     try {
       await setWindowAppearanceRule(processName, action);
       if (clearInput) setProcessInput("");
-      onToast?.(`${processName} 已设为${action === "allow" ? "允许接管" : "禁止接管"}`);
+      onToast?.(`${processName} is now ${action === "allow" ? "allowed" : "blocked"} for takeover`);
     } catch {
       // The shared appearance store exposes native validation errors inline.
     } finally {
@@ -2184,7 +2184,7 @@ function WindowAppearanceSettings({ onToast }) {
     setPendingRule(true);
     try {
       await removeWindowAppearanceRule(processName);
-      onToast?.(`${processName} 已恢复自动判定`);
+      onToast?.(`${processName} restored to automatic compatibility`);
     } catch {
       // The shared appearance store exposes bridge errors inline.
     } finally {

@@ -5,7 +5,30 @@ namespace Jarvis.Host.Services;
 internal sealed class SystemFeedService : IDisposable
 {
     private const int MaximumItems = 50;
+    private const int MaximumRendererFaultTitleLength = 160;
+    private const int MaximumRendererFaultDetailLength = 320;
     private static readonly TimeSpan DuplicateWindow = TimeSpan.FromSeconds(30);
+    private static readonly HashSet<string> RendererFaultSeverities =
+        new(StringComparer.Ordinal)
+        {
+            "warning",
+            "error"
+        };
+    private static readonly HashSet<string> RendererFaultSources =
+        new(StringComparer.Ordinal)
+        {
+            "agent",
+            "desktop",
+            "explorer",
+            "notifications",
+            "runtime",
+            "settings",
+            "shell",
+            "system",
+            "taskbar",
+            "terminal",
+            "window-appearance"
+        };
 
     private readonly object _gate = new();
     private readonly TrayStatusService _trayStatusService;
@@ -87,6 +110,35 @@ internal sealed class SystemFeedService : IDisposable
 
         Publish(snapshot);
         return snapshot;
+    }
+
+    public SystemFeedSnapshot ReportRendererFault(RendererFaultReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        var source = NormalizeRendererFaultSource(report.Source);
+        var severity = NormalizeRendererFaultSeverity(report.Severity);
+        var title = NormalizeRendererFaultText(
+            report.Title,
+            nameof(report.Title),
+            MaximumRendererFaultTitleLength,
+            required: true);
+        var detail = NormalizeRendererFaultText(
+            report.Detail,
+            nameof(report.Detail),
+            MaximumRendererFaultDetailLength,
+            required: false);
+        var actionId = NormalizeRendererFaultActionId(report.ActionId);
+        var type = $"renderer.{source}.fault";
+        var deduplicationKey =
+            $"renderer:{source}:{severity}:{title.Length}:{title}:{detail.Length}:{detail}:{actionId ?? string.Empty}";
+
+        return Add(
+            type,
+            severity,
+            title,
+            detail,
+            actionId,
+            deduplicationKey);
     }
 
     public SystemFeedSnapshot MarkAllRead()
@@ -214,6 +266,92 @@ internal sealed class SystemFeedService : IDisposable
             _ => null
         };
 
+    private static string NormalizeRendererFaultSource(string source)
+    {
+        var normalized = NormalizeRendererFaultText(
+            source,
+            nameof(RendererFaultReport.Source),
+            maximumLength: 32,
+            required: true).ToLowerInvariant();
+        if (!RendererFaultSources.Contains(normalized))
+        {
+            throw new ArgumentException(
+                $"Renderer fault source '{normalized}' is not supported.",
+                nameof(source));
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeRendererFaultSeverity(string severity)
+    {
+        var normalized = NormalizeRendererFaultText(
+            severity,
+            nameof(RendererFaultReport.Severity),
+            maximumLength: 16,
+            required: true).ToLowerInvariant();
+        if (!RendererFaultSeverities.Contains(normalized))
+        {
+            throw new ArgumentException(
+                "Renderer faults must use warning or error severity.",
+                nameof(severity));
+        }
+
+        return normalized;
+    }
+
+    private static string? NormalizeRendererFaultActionId(string? actionId)
+    {
+        if (string.IsNullOrWhiteSpace(actionId))
+        {
+            return null;
+        }
+
+        var normalized = NormalizeRendererFaultText(
+            actionId,
+            nameof(RendererFaultReport.ActionId),
+            maximumLength: 32,
+            required: true).ToLowerInvariant();
+        var safeActionId = NormalizeActionId(normalized);
+        if (safeActionId is null)
+        {
+            throw new ArgumentException(
+                $"Renderer fault action '{normalized}' is not supported.",
+                nameof(actionId));
+        }
+
+        return safeActionId;
+    }
+
+    private static string NormalizeRendererFaultText(
+        string? value,
+        string fieldName,
+        int maximumLength,
+        bool required)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        if (required && normalized.Length == 0)
+        {
+            throw new ArgumentException(
+                $"Renderer fault {fieldName} must not be empty.",
+                fieldName);
+        }
+        if (normalized.Length > maximumLength)
+        {
+            throw new ArgumentException(
+                $"Renderer fault {fieldName} must not exceed {maximumLength} characters.",
+                fieldName);
+        }
+        if (normalized.Any(char.IsControl))
+        {
+            throw new ArgumentException(
+                $"Renderer fault {fieldName} must not contain control characters.",
+                fieldName);
+        }
+
+        return normalized;
+    }
+
     private void Publish(SystemFeedSnapshot snapshot)
     {
         var subscribers = SnapshotChanged;
@@ -255,6 +393,13 @@ internal sealed class SystemFeedService : IDisposable
         }
     }
 }
+
+internal sealed record RendererFaultReport(
+    string Source,
+    string Severity,
+    string Title,
+    string? Detail = null,
+    string? ActionId = null);
 
 internal sealed record SystemFeedItem(
     string Id,

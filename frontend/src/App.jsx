@@ -9,12 +9,19 @@ import { LinkedWorkspaceRoutes } from "./components/LinkedWorkspaceRoutes.jsx";
 import { Taskbar } from "./components/Taskbar.jsx";
 import { TelemetryRail } from "./components/TelemetryRail.jsx";
 import { TopStatusBar } from "./components/TopStatusBar.jsx";
-import { AgentGlyph, JarvisMark } from "./components/VectorMarks.jsx";
+import { JarvisMark } from "./components/VectorMarks.jsx";
+import { SystemNotice } from "./components/SystemNotice.jsx";
+import {
+  appendFeedbackEvent,
+  createShellFeedback,
+  selectFeedbackNotice,
+} from "./feedback-model.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
 import { useWorkspaceManager } from "./hooks/useWorkspaceManager.js";
 import { platform } from "./platform/index.js";
 import { isQuickSearchToggleShortcut } from "./quick-search.js";
 import { recordRecentApplication } from "./recent-applications.js";
+import { subscribeShellFeedback } from "./shell-feedback-channel.js";
 import {
   getVisibleInternalWindowIds,
   planInternalShowDesktopToggle,
@@ -63,7 +70,8 @@ export function App() {
   const [explorerSelection, setExplorerSelection] = useState([]);
   const [inspectorTarget, setInspectorTarget] = useState(null);
   const [bootActive, setBootActive] = useState(true);
-  const [toast, setToast] = useState("");
+  const [notice, setNotice] = useState(null);
+  const [localFeedEvents, setLocalFeedEvents] = useState([]);
   const showDesktopRestoreIdsRef = useRef([]);
   const workspaceLayoutMode = getWorkspaceLayoutMode(workspaceState.windows);
   const linkedWorkspaceVariant = workspaceLayoutMode === "explorer-agent-linked"
@@ -78,7 +86,37 @@ export function App() {
     toggleMaximizeWorkspaceWindow(id);
   }, [toggleMaximizeWorkspaceWindow, workspaceLayoutMode]);
 
-  const showToast = useCallback((message) => setToast(message), []);
+  const showToast = useCallback((input) => {
+    const feedback = createShellFeedback(input);
+    setNotice((current) => selectFeedbackNotice(current, feedback));
+    if (feedback.severity === "warning" || feedback.severity === "error") {
+      void platform.feed.reportFault({
+        source: feedback.source,
+        severity: feedback.severity,
+        title: feedback.title,
+        detail: feedback.detail,
+        actionId: null,
+      }).catch(() => {
+        setLocalFeedEvents((current) => appendFeedbackEvent(current, feedback));
+      });
+    }
+    return feedback;
+  }, []);
+  const showDesktopFeedback = useCallback((input) => showToast(
+    typeof input === "string" ? { title: input, source: "desktop" } : { ...input, source: input?.source ?? "desktop" },
+  ), [showToast]);
+  const showExplorerFeedback = useCallback((input) => showToast(
+    typeof input === "string" ? { title: input, source: "explorer" } : { ...input, source: input?.source ?? "explorer" },
+  ), [showToast]);
+  const showTerminalFeedback = useCallback((input) => showToast(
+    typeof input === "string" ? { title: input, source: "terminal" } : { ...input, source: input?.source ?? "terminal" },
+  ), [showToast]);
+  const showSystemFeedback = useCallback((input) => showToast(
+    typeof input === "string" ? { title: input, source: "system" } : { ...input, source: input?.source ?? "system" },
+  ), [showToast]);
+  const showSettingsFeedback = useCallback((input) => showToast(
+    typeof input === "string" ? { title: input, source: "settings" } : { ...input, source: input?.source ?? "settings" },
+  ), [showToast]);
   const finishBoot = useCallback(() => setBootActive(false), []);
 
   const openExplorer = useCallback((path = null) => {
@@ -113,7 +151,13 @@ export function App() {
     try {
       await platform.taskbar.showFlyout(options);
     } catch (error) {
-      showToast(`Unable to show window preview: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "taskbar",
+        title: "Unable to show window preview",
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => showTaskbarFlyout(options) }],
+      });
     }
   }, [showToast]);
 
@@ -130,7 +174,13 @@ export function App() {
       await platform.taskbar.closeWindow(windowId);
       showToast("Window close requested");
     } catch (error) {
-      showToast(`Unable to close window: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "taskbar",
+        title: "Unable to close window",
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => closeTaskbarWindow(windowId) }],
+      });
     }
   }, [closeWorkspaceWindow, showToast, workspaceState.windows]);
 
@@ -159,15 +209,15 @@ export function App() {
   const linkExplorerSelectionToAgent = useCallback(async (entries) => {
     const stagedItems = agentSession.addContextItems(entries);
     if (!stagedItems.length) {
-      showToast("Select an Explorer item before linking Pi Agent");
+      showToast("Select an Explorer item before linking the Agent");
       return;
     }
     await openAgent();
-    showToast(`${stagedItems.length} Explorer reference${stagedItems.length === 1 ? "" : "s"} linked to Pi Agent`);
+    showToast(`${stagedItems.length} Explorer reference${stagedItems.length === 1 ? "" : "s"} linked to the Agent`);
   }, [agentSession.addContextItems, openAgent, showToast]);
 
   const clearLinkedAgentContext = useCallback(() => {
-    if (agentSession.clearContext()) showToast("Explorer reference unlinked from Pi Agent");
+    if (agentSession.clearContext()) showToast("Explorer reference unlinked from the Agent");
   }, [agentSession.clearContext, showToast]);
 
   const reuseLinkedAgentResult = useCallback(() => {
@@ -177,10 +227,25 @@ export function App() {
   }, [agentSession.setDraft]);
 
   useEffect(() => {
-    if (!toast) return undefined;
-    const timer = window.setTimeout(() => setToast(""), 2600);
+    if (!notice || notice.persistent || !notice.timeoutMs) return undefined;
+    const noticeId = notice.id;
+    const timer = window.setTimeout(() => {
+      setNotice((current) => current?.id === noticeId ? null : current);
+    }, notice.timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [notice]);
+
+  useEffect(() => subscribeShellFeedback((feedback) => {
+    showToast(feedback);
+  }), [showToast]);
+
+  const dismissNotice = useCallback(() => {
+    const noticeId = notice?.id;
+    setNotice(null);
+    if (noticeId) {
+      setLocalFeedEvents((current) => current.filter((event) => event.id !== `local:${noticeId}`));
+    }
+  }, [notice?.id]);
 
   useEffect(() => {
     const handleShortcut = (event) => {
@@ -289,7 +354,13 @@ export function App() {
       await platform.shell.open(shortcut.target ?? shortcut.path ?? label);
       showToast(`Opening ${label} with Windows`);
     } catch (error) {
-      showToast(`Unable to open ${label}: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "desktop",
+        title: `Unable to open ${label}`,
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => openShortcut(shortcut) }],
+      });
     }
   }, [openExplorer, openTerminal, showToast]);
 
@@ -297,9 +368,15 @@ export function App() {
     if (!shortcut.path) return;
     try {
       await platform.explorer.openInWindows(shortcut.path);
-      showToast(`已在 Windows 资源管理器中定位 ${shortcut.label}`);
+      showToast(`Located ${shortcut.label} in Windows File Explorer`);
     } catch (error) {
-      showToast(`无法定位 ${shortcut.label}: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "desktop",
+        title: `Unable to locate ${shortcut.label}`,
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => openShortcutLocation(shortcut) }],
+      });
     }
   }, [showToast]);
 
@@ -307,9 +384,15 @@ export function App() {
     if (!shortcut.path) return;
     try {
       await navigator.clipboard.writeText(shortcut.path);
-      showToast("路径已复制");
+      showToast("Path copied");
     } catch (error) {
-      showToast(`无法复制路径: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "desktop",
+        title: "Unable to copy path",
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => copyShortcutPath(shortcut) }],
+      });
     }
   }, [showToast]);
 
@@ -326,8 +409,21 @@ export function App() {
   }, [openWorkspaceWindow]);
 
   const handleNotification = useCallback((notification) => {
-    showToast(`${notification.title}: ${notification.detail}`);
-  }, [showToast]);
+    if (notification?.local) {
+      setNotice(createShellFeedback({
+        id: String(notification.id).replace(/^local:/u, ""),
+        severity: notification.severity,
+        source: notification.source,
+        title: notification.title,
+        detail: notification.detail,
+        timestamp: notification.timestamp,
+        persistent: true,
+      }));
+      return;
+    }
+    setCommandOpen(false);
+    setShellPanel("notifications");
+  }, []);
 
   const launchInstalledApplication = useCallback(async (application) => {
     setShellPanel(null);
@@ -338,7 +434,13 @@ export function App() {
         ? `Opening ${application.label}`
         : `${application.label} launch requested`);
     } catch (error) {
-      showToast(`Unable to open ${application.label}: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "shell",
+        title: `Unable to open ${application.label}`,
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => launchInstalledApplication(application) }],
+      });
     }
   }, [showToast]);
 
@@ -389,7 +491,13 @@ export function App() {
         : `${item.label} selected`);
     } catch (error) {
       const appLabel = item.label ?? runningWindow?.processName ?? item.id;
-      showToast(`Unable to open ${appLabel}: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "taskbar",
+        title: `Unable to open ${appLabel}`,
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => handleAppClick(item, runningWindow, options) }],
+      });
     }
   }, [
     hideTaskbarFlyout,
@@ -427,10 +535,22 @@ export function App() {
       } else if (result.action === "restored") {
         showToast("Previous windows restored");
       } else {
-        showToast("Some windows could not be restored");
+        showToast({
+          severity: "warning",
+          source: "taskbar",
+          title: "Some windows could not be restored",
+          detail: "Open Session Control to review the active shell state.",
+          actions: [{ label: "SESSION CONTROL", onInvoke: () => setShellPanel("session") }],
+        });
       }
     } catch (error) {
-      showToast(`Unable to toggle desktop: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "taskbar",
+        title: "Unable to toggle desktop",
+        detail: error.message,
+        actions: [{ label: "SESSION CONTROL", onInvoke: () => setShellPanel("session") }],
+      });
     }
   }, [
     hideTaskbarFlyout,
@@ -474,7 +594,13 @@ export function App() {
       await platform.shell.open(target);
       showToast(platform.isNative ? `Opening ${label} with Windows` : `${label} launch requested`);
     } catch (error) {
-      showToast(`Unable to open ${label}: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "shell",
+        title: `Unable to open ${label}`,
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => launchShellApp({ label, target }) }],
+      });
     }
   }, [openExplorer, openTerminal, showToast]);
 
@@ -484,7 +610,13 @@ export function App() {
       await platform.taskbar.toggleWindow(window.windowId);
       showToast(`Switching to ${window.title || window.processName}`);
     } catch (error) {
-      showToast(`Unable to switch window: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "taskbar",
+        title: "Unable to switch window",
+        detail: error.message,
+        actions: [{ label: "RETRY", onInvoke: () => activateShellWindow(window) }],
+      });
     }
   }, [showToast]);
 
@@ -496,7 +628,13 @@ export function App() {
     try {
       await platform.lifecycle.exitToWindows();
     } catch (error) {
-      showToast(`Unable to exit JARVIS: ${error.message}`);
+      showToast({
+        severity: "error",
+        source: "runtime",
+        title: "Unable to exit JARVIS",
+        detail: error.message,
+        actions: [{ label: "SESSION CONTROL", onInvoke: () => setShellPanel("session") }],
+      });
     }
   }, [showToast]);
 
@@ -557,7 +695,6 @@ export function App() {
       <div className="ambient-field" aria-hidden="true" />
       <TopStatusBar
         onOpenCommand={openCommand}
-        onOpenAgent={openAgent}
         onAbortAgent={agentSession.abort}
         agentState={agentSession.state}
         onPower={openSessionPanel}
@@ -571,14 +708,11 @@ export function App() {
           onOpenLocation={openShortcutLocation}
           onCopyPath={copyShortcutPath}
           onOpenSettings={openDesktopSettings}
-          onNotify={showToast}
+          onNotify={showDesktopFeedback}
         />
-        <CoreStage
-          listening={agentSession.state.status === "running"}
-          onActivate={openAgent}
-        />
+        <CoreStage />
         <TelemetryRail
-          agentState={agentSession.state}
+          localEvents={localFeedEvents}
           onInspect={inspect}
           onNotification={handleNotification}
         />
@@ -656,7 +790,7 @@ export function App() {
               onMinimize={() => minimizeWorkspaceWindow("explorer")}
               onToggleMaximize={() => handleToggleWorkspaceMaximize("explorer")}
               onClose={() => closeWorkspaceWindow("explorer")}
-              onToast={showToast}
+              onToast={showExplorerFeedback}
             />
           </Suspense>
         </ManagedWorkspaceWindow>
@@ -682,7 +816,7 @@ export function App() {
               onMinimize={() => minimizeWorkspaceWindow("terminal")}
               onToggleMaximize={() => toggleMaximizeWorkspaceWindow("terminal")}
               onClose={() => closeWorkspaceWindow("terminal")}
-              onToast={showToast}
+              onToast={showTerminalFeedback}
             />
           </Suspense>
         </ManagedWorkspaceWindow>
@@ -708,7 +842,7 @@ export function App() {
               onMinimize={() => minimizeWorkspaceWindow("inspector")}
               onToggleMaximize={() => toggleMaximizeWorkspaceWindow("inspector")}
               onClose={() => closeWorkspaceWindow("inspector")}
-              onToast={showToast}
+              onToast={showSystemFeedback}
             />
           </Suspense>
         </ManagedWorkspaceWindow>
@@ -760,7 +894,7 @@ export function App() {
             onActivateWindow={activateShellWindow}
             onOpenPanel={navigateShellPanel}
             onExit={exitToWindows}
-            onToast={showToast}
+            onToast={showSettingsFeedback}
           />
         </Suspense>
       ) : null}
@@ -773,14 +907,11 @@ export function App() {
         />
       ) : null}
 
-      <div className={`system-toast ${toast ? "is-visible" : ""}`} role="status" aria-live="polite">
-        <AgentGlyph state="ready" />
-        <span>{toast}</span>
-      </div>
+      <SystemNotice notice={notice} onDismiss={dismissNotice} />
 
       <div className="desktop-only-notice" role="status">
         <JarvisMark />
-        <strong>JARVIS NIGHT SHELL</strong>
+        <strong>JARVIS LOCAL VISUAL FRAME</strong>
         <span>Desktop viewport required</span>
       </div>
     </main>

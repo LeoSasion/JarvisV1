@@ -8,7 +8,8 @@ namespace Jarvis.Host.Services;
 internal sealed class StartupRegistrationService
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string StartupValueName = "JARVIS Night Shell";
+    private const string StartupValueName = "JARVIS";
+    private const string LegacyStartupValueName = "JARVIS Night Shell";
 
     public RuntimeSettingsSnapshot Capture()
     {
@@ -18,7 +19,7 @@ internal sealed class StartupRegistrationService
         var enabled = !string.IsNullOrWhiteSpace(configuredCommand);
 
         return new RuntimeSettingsSnapshot(
-            ProductName: "JARVIS Night Shell",
+            ProductName: "JARVIS",
             Version: GetProductVersion(),
             BuildConfiguration: GetBuildConfiguration(),
             ExecutablePath: executablePath,
@@ -42,11 +43,13 @@ internal sealed class StartupRegistrationService
                 StartupValueName,
                 BuildStartupCommand(executablePath),
                 RegistryValueKind.String);
+            runKey.DeleteValue(LegacyStartupValueName, throwOnMissingValue: false);
             HostLog.Info($"Current-user startup registration enabled for {executablePath}.");
         }
         else
         {
             runKey.DeleteValue(StartupValueName, throwOnMissingValue: false);
+            runKey.DeleteValue(LegacyStartupValueName, throwOnMissingValue: false);
             HostLog.Info("Current-user startup registration disabled.");
         }
 
@@ -71,7 +74,9 @@ internal sealed class StartupRegistrationService
     {
         using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
         return runKey?.GetValue(StartupValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames)
-            as string;
+            as string
+            ?? runKey?.GetValue(LegacyStartupValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames)
+                as string;
     }
 
     private static string GetProductVersion()

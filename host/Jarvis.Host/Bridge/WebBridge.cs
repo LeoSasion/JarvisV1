@@ -11,6 +11,15 @@ namespace Jarvis.Host.Bridge;
 internal sealed class WebBridge : IDisposable
 {
     private const string TrustedOrigin = "https://jarvis.local/";
+    private static readonly HashSet<string> RendererFaultParameterNames =
+        new(StringComparer.Ordinal)
+        {
+            "source",
+            "severity",
+            "title",
+            "detail",
+            "actionId"
+        };
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -352,6 +361,7 @@ internal sealed class WebBridge : IDisposable
             "feed.getSnapshot" => _systemFeedService.GetSnapshot(),
             "feed.markAllRead" => _systemFeedService.MarkAllRead(),
             "feed.clear" => _systemFeedService.Clear(),
+            "feed.reportFault" => ReportRendererFault(parameters),
             "notifications.getState" => _notificationHistoryService.GetState(),
             "notifications.requestAccess" => _notificationHistoryService.RequestAccess(),
             "session.getState" => GetSystemSessionActionService().GetState(),
@@ -1016,6 +1026,78 @@ internal sealed class WebBridge : IDisposable
         return valueElement.GetString()!;
     }
 
+    private object ReportRendererFault(JsonElement parameters)
+    {
+        var report = GetRendererFaultReport(parameters);
+        try
+        {
+            return _systemFeedService.ReportRendererFault(report);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new BridgeFaultException("INVALID_PARAMS", exception.Message);
+        }
+    }
+
+    internal static RendererFaultReport GetRendererFaultReport(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "feed.reportFault requires a params object.");
+        }
+
+        foreach (var property in parameters.EnumerateObject())
+        {
+            if (!RendererFaultParameterNames.Contains(property.Name))
+            {
+                throw new BridgeFaultException(
+                    "INVALID_PARAMS",
+                    $"feed.reportFault does not accept params.{property.Name}.");
+            }
+        }
+
+        return new RendererFaultReport(
+            GetRequiredRendererFaultString(parameters, "source"),
+            GetRequiredRendererFaultString(parameters, "severity"),
+            GetRequiredRendererFaultString(parameters, "title"),
+            GetOptionalRendererFaultString(parameters, "detail"),
+            GetOptionalRendererFaultString(parameters, "actionId"));
+    }
+
+    private static string GetRequiredRendererFaultString(JsonElement parameters, string name)
+    {
+        if (!parameters.TryGetProperty(name, out var valueElement) ||
+            valueElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(valueElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"feed.reportFault requires a non-empty params.{name} string.");
+        }
+
+        return valueElement.GetString()!;
+    }
+
+    private static string? GetOptionalRendererFaultString(JsonElement parameters, string name)
+    {
+        if (!parameters.TryGetProperty(name, out var valueElement) ||
+            valueElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (valueElement.ValueKind != JsonValueKind.String)
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"feed.reportFault params.{name} must be a string or null.");
+        }
+
+        return valueElement.GetString();
+    }
+
     private static string GetRequiredAgentMessage(JsonElement parameters)
     {
         if (parameters.ValueKind != JsonValueKind.Object ||
@@ -1203,7 +1285,7 @@ internal sealed class WebBridge : IDisposable
         return windowIdElement.GetString()!;
     }
 
-    private static TaskbarFlyoutRequest GetFlyoutRequest(JsonElement parameters)
+    internal static TaskbarFlyoutRequest GetFlyoutRequest(JsonElement parameters)
     {
         if (parameters.ValueKind != JsonValueKind.Object ||
             !parameters.TryGetProperty("mode", out var modeElement) ||
@@ -1239,11 +1321,42 @@ internal sealed class WebBridge : IDisposable
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(24)
             .ToArray();
-        if (windowIds.Length == 0 && mode != "context")
+
+        IReadOnlyList<TaskbarOverflowItem> overflowItems = Array.Empty<TaskbarOverflowItem>();
+        if (mode == "overflow" && parameters.TryGetProperty("items", out var itemsElement))
+        {
+            if (itemsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new BridgeFaultException(
+                    "INVALID_PARAMS",
+                    "taskbar.showFlyout params.items must be an array.");
+            }
+
+            var requestedItems = itemsElement.EnumerateArray().ToArray();
+            if (requestedItems.Length > 24)
+            {
+                throw new BridgeFaultException(
+                    "INVALID_PARAMS",
+                    "taskbar.showFlyout accepts at most 24 overflow items.");
+            }
+
+            var parsedItems = requestedItems
+                .Select(ParseTaskbarOverflowItem)
+                .GroupBy(
+                    item => $"{item.ItemId}\u001f{item.WindowId ?? string.Empty}",
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+            overflowItems = parsedItems;
+        }
+
+        if (windowIds.Length == 0 &&
+            mode != "context" &&
+            (mode != "overflow" || overflowItems.Count == 0))
         {
             throw new BridgeFaultException(
                 "INVALID_PARAMS",
-                "taskbar.showFlyout requires at least one valid window id.");
+                "taskbar.showFlyout requires at least one valid window or overflow item.");
         }
 
         var anchorX = GetRequiredFiniteNumber(parameters, "anchorX");
@@ -1290,11 +1403,61 @@ internal sealed class WebBridge : IDisposable
         return new TaskbarFlyoutRequest(
             mode,
             windowIds,
+            overflowItems,
             anchorX,
             viewportWidth,
             itemId,
             label,
             actions);
+    }
+
+    private static TaskbarOverflowItem ParseTaskbarOverflowItem(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object ||
+            item.EnumerateObject().Any(property =>
+                property.Name is not ("itemId" or "label" or "meta" or "windowId")))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                "Taskbar overflow items must contain only itemId, label, meta, and windowId.");
+        }
+
+        var itemId = GetRequiredTaskbarOverflowText(item, "itemId", 256);
+        var label = GetRequiredTaskbarOverflowText(item, "label", 128);
+        var meta = GetRequiredTaskbarOverflowText(item, "meta", 96);
+        string? windowId = null;
+        if (item.TryGetProperty("windowId", out var windowIdElement) &&
+            windowIdElement.ValueKind != JsonValueKind.Null)
+        {
+            windowId = GetRequiredTaskbarOverflowText(item, "windowId", 256);
+        }
+
+        return new TaskbarOverflowItem(itemId, label, meta, windowId);
+    }
+
+    private static string GetRequiredTaskbarOverflowText(
+        JsonElement item,
+        string name,
+        int maximumLength)
+    {
+        if (!item.TryGetProperty(name, out var valueElement) ||
+            valueElement.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(valueElement.GetString()))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"Taskbar overflow items require a non-empty {name} string.");
+        }
+
+        var value = valueElement.GetString()!.Trim();
+        if (value.Length > maximumLength || value.Any(char.IsControl))
+        {
+            throw new BridgeFaultException(
+                "INVALID_PARAMS",
+                $"Taskbar overflow item {name} is malformed.");
+        }
+
+        return value;
     }
 
     private static string GetRequiredTaskbarContextText(
@@ -1610,8 +1773,15 @@ internal sealed class PendingTerminalOutput
 internal sealed record TaskbarFlyoutRequest(
     string Mode,
     IReadOnlyList<string> WindowIds,
+    IReadOnlyList<TaskbarOverflowItem> OverflowItems,
     double AnchorX,
     double ViewportWidth,
     string? ItemId,
     string? Label,
     IReadOnlyList<string> Actions);
+
+internal sealed record TaskbarOverflowItem(
+    string ItemId,
+    string Label,
+    string Meta,
+    string? WindowId);

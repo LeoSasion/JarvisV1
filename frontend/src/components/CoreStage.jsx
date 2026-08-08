@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
-import { NeuralVectorField } from "./VectorMarks.jsx";
+import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
+import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
-export function CoreStage({ listening, onActivate }) {
+export function CoreStage({ graphState = null }) {
   const stageRef = useRef(null);
   const rectRef = useRef(null);
   const pointerRef = useRef(null);
   const frameRef = useRef(0);
+  const presentation = getKnowledgeGraphPresentation(graphState);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -55,35 +57,24 @@ export function CoreStage({ listening, onActivate }) {
   return (
     <section
       ref={stageRef}
-      className={`core-stage ${listening ? "is-listening" : ""}`}
+      className={`core-stage is-${presentation.status}`}
       onPointerEnter={() => {
         rectRef.current = stageRef.current?.getBoundingClientRect() ?? null;
       }}
       onPointerMove={handlePointerMove}
       onPointerLeave={resetPointer}
-      aria-label="JARVIS ambient core"
+      aria-label="JARVIS knowledge graph workspace"
     >
+      <p className="sr-only">{presentation.announcement}</p>
       <div className="core-stage__media" aria-hidden="true">
-        <NeuralVectorField active={listening} />
+        <KnowledgeGraphField connected={presentation.connected} />
         <div className="core-stage__readout">
-          <span>LOCAL VISUAL FRAME</span>
-          <strong>{listening ? "AGENT PROCESS ACTIVE" : "SYSTEM NOMINAL"}</strong>
-          <small>VECTOR FIELD // OWN PROCESS</small>
+          <span>LOCAL KNOWLEDGE GRAPH</span>
+          <strong>{presentation.title}</strong>
+          <small>{presentation.detail}</small>
+          <small>{presentation.meta}</small>
         </div>
       </div>
-      <button
-        type="button"
-        className="core-hotspot"
-        onClick={onActivate}
-        aria-label="Open JARVIS Pi Agent"
-        title="Open Pi Agent"
-      >
-        <span className="core-hotspot__mark" aria-hidden="true"><i /><i /><i /><i /><b /></span>
-        <span className="core-hotspot__copy" aria-hidden="true">
-          <strong>PI AGENT</strong>
-          <small>{listening ? "PROCESS ACTIVE" : "OPEN CHANNEL"}</small>
-        </span>
-      </button>
     </section>
   );
 }
