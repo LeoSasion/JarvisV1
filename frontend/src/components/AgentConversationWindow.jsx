@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getLatestAgentRelationMessage } from "../agent-context-model.js";
 import { getAgentProviderLabel } from "../agent-provider-model.js";
 import { getAgentTranscriptAnnouncement } from "../agent-session-model.js";
+import { SystemNotice } from "./SystemNotice.jsx";
 
 const STATUS_COPY = Object.freeze({
   unavailable: "RUNTIME OFFLINE",
@@ -150,6 +151,8 @@ export function AgentConversationWindow({
   linkedContext = null,
   linkedFlowPhase = "empty",
   explorerSelection = [],
+  notice = null,
+  onDismissNotice,
   onDraftChange,
   onSend,
   onAbort,
@@ -316,6 +319,7 @@ export function AgentConversationWindow({
           data-linked-scroll-viewport="agent"
           aria-label="Agent transcript"
         >
+          <SystemNotice notice={notice} onDismiss={onDismissNotice} placement="inline" />
           <LinkedContextEvent
             context={linkedContext}
             phase={linkedFlowPhase}

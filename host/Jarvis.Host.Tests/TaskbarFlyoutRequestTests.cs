@@ -33,6 +33,32 @@ public sealed class TaskbarFlyoutRequestTests
     }
 
     [Fact]
+    public void OverflowPreservesMixedTaskbarItemOrder()
+    {
+        using var document = JsonDocument.Parse("""
+            {
+              "mode": "overflow",
+              "windowIds": ["native:1"],
+              "items": [
+                { "itemId": "native", "label": "External", "meta": "READY", "windowId": "native:1" },
+                { "itemId": "pinned", "label": "Pinned", "meta": "PINNED APPLICATION", "windowId": null },
+                { "itemId": "internal", "label": "Agent", "meta": "INTERNAL WINDOW · ACTIVE", "windowId": "internal:agent" }
+              ],
+              "anchorX": 320,
+              "viewportWidth": 1280
+            }
+            """);
+
+        var request = WebBridge.GetFlyoutRequest(document.RootElement);
+
+        Assert.Equal(new[] { "native", "pinned", "internal" }, request.OverflowItems.Select(item => item.ItemId));
+        Assert.Equal("native:1", request.OverflowItems[0].WindowId);
+        Assert.Null(request.OverflowItems[1].WindowId);
+        Assert.Equal("internal:agent", request.OverflowItems[2].WindowId);
+        Assert.Equal(3, WebBridge.GetTaskbarFlyoutItemCount(request));
+    }
+
+    [Fact]
     public void OverflowRejectsUnexpectedRendererOwnedFields()
     {
         using var document = JsonDocument.Parse("""

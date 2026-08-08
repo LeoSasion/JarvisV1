@@ -3,15 +3,15 @@ using System.Text.RegularExpressions;
 
 namespace Jarvis.Host.Infrastructure;
 
-internal sealed record LifecycleProbeOptions(
+internal sealed record RendererSmokeOptions(
     string DataRoot,
     string ReceiptPath,
     string Nonce)
 {
-    private const string ProbeArgument = "--lifecycle-probe";
-    private const string DataRootArgument = "--lifecycle-data-root=";
-    private const string ReceiptArgument = "--lifecycle-receipt=";
-    private const string NonceArgument = "--lifecycle-nonce=";
+    private const string SmokeArgument = "--renderer-smoke";
+    private const string DataRootArgument = "--renderer-smoke-data-root=";
+    private const string ReceiptArgument = "--renderer-smoke-receipt=";
+    private const string NonceArgument = "--renderer-smoke-nonce=";
 
     private static readonly Regex NoncePattern = new(
         "^[0-9a-fA-F]{32}$",
@@ -19,12 +19,12 @@ internal sealed record LifecycleProbeOptions(
 
     public static bool IsRequested(IReadOnlyList<string> arguments) =>
         arguments.Any(argument =>
-            argument.Equals(ProbeArgument, StringComparison.OrdinalIgnoreCase) ||
-            argument.StartsWith("--lifecycle-", StringComparison.OrdinalIgnoreCase));
+            argument.Equals(SmokeArgument, StringComparison.OrdinalIgnoreCase) ||
+            argument.StartsWith("--renderer-smoke-", StringComparison.OrdinalIgnoreCase));
 
     public static bool TryParse(
         IReadOnlyList<string> arguments,
-        out LifecycleProbeOptions? options,
+        out RendererSmokeOptions? options,
         out string? error)
     {
         options = null;
@@ -37,9 +37,9 @@ internal sealed record LifecycleProbeOptions(
 
         if (arguments.Count != 4 ||
             arguments.Count(argument =>
-                argument.Equals(ProbeArgument, StringComparison.OrdinalIgnoreCase)) != 1)
+                argument.Equals(SmokeArgument, StringComparison.OrdinalIgnoreCase)) != 1)
         {
-            error = "Lifecycle probe requires exactly one marker and three value arguments.";
+            error = "Renderer smoke requires exactly one marker and three value arguments.";
             return false;
         }
 
@@ -47,14 +47,14 @@ internal sealed record LifecycleProbeOptions(
             !TryGetSingleValue(arguments, ReceiptArgument, out var receiptValue) ||
             !TryGetSingleValue(arguments, NonceArgument, out var nonceValue))
         {
-            error = "Lifecycle probe arguments are missing, duplicated, or unsupported.";
+            error = "Renderer smoke arguments are missing, duplicated, or unsupported.";
             return false;
         }
 
         if (!Path.IsPathFullyQualified(dataRootValue) ||
             !Path.IsPathFullyQualified(receiptValue))
         {
-            error = "Lifecycle probe paths must be absolute.";
+            error = "Renderer smoke paths must be absolute.";
             return false;
         }
 
@@ -72,37 +72,36 @@ internal sealed record LifecycleProbeOptions(
         catch (Exception exception) when (
             exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            error = "Lifecycle probe paths are invalid.";
+            error = "Renderer smoke paths are invalid.";
             return false;
         }
 
         if (IsVolumeRoot(dataRoot))
         {
-            error = "Lifecycle probe data root cannot be a volume root.";
+            error = "Renderer smoke data root cannot be a volume root.";
             return false;
         }
 
         dataRoot = dataRoot.TrimEnd(Path.DirectorySeparatorChar);
-        if (string.IsNullOrWhiteSpace(dataRoot) ||
-            PathsOverlap(dataRoot, productionRoot))
+        if (string.IsNullOrWhiteSpace(dataRoot) || PathsOverlap(dataRoot, productionRoot))
         {
-            error = "Lifecycle probe data must be isolated from the production JARVIS data root.";
+            error = "Renderer smoke data must be isolated from the production JARVIS data root.";
             return false;
         }
 
         if (!IsStrictChild(receiptPath, dataRoot))
         {
-            error = "Lifecycle probe receipt must remain beneath the isolated data root.";
+            error = "Renderer smoke receipt must remain beneath the isolated data root.";
             return false;
         }
 
         if (!NoncePattern.IsMatch(nonceValue))
         {
-            error = "Lifecycle probe nonce must contain exactly 32 hexadecimal characters.";
+            error = "Renderer smoke nonce must contain exactly 32 hexadecimal characters.";
             return false;
         }
 
-        options = new LifecycleProbeOptions(
+        options = new RendererSmokeOptions(
             dataRoot,
             receiptPath,
             nonceValue.ToLowerInvariant());
@@ -128,9 +127,7 @@ internal sealed record LifecycleProbeOptions(
     }
 
     private static bool PathsOverlap(string left, string right) =>
-        PathsEqual(left, right) ||
-        IsStrictChild(left, right) ||
-        IsStrictChild(right, left);
+        PathsEqual(left, right) || IsStrictChild(left, right) || IsStrictChild(right, left);
 
     private static bool IsStrictChild(string candidate, string parent)
     {

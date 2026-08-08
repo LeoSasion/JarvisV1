@@ -197,7 +197,7 @@ const taskbarModeOptions = [
     mode: "hybrid",
     title: "HYBRID",
     label: "混合任务栏",
-    description: "由 Explorer 保留通知区，JARVIS 接管其余主任务栏区域。",
+    description: "推荐默认；由 Explorer 保留通知区，JARVIS 接管其余主任务栏区域。",
   },
   {
     mode: "full",

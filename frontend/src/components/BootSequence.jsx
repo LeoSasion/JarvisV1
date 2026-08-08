@@ -121,7 +121,9 @@ export function BootSequence({ onComplete }) {
       </div>
 
       <footer>
-        <span><i style={{ width: `${(completed / checkDefinitions.length) * 100}%` }} /></span>
+        <span>
+          <i style={{ "--boot-progress": completed / checkDefinitions.length }} />
+        </span>
         <strong>{completed < checkDefinitions.length ? "ESTABLISHING LOCAL CHANNELS" : degraded ? `${degraded} CHANNELS DEGRADED · SAFE FALLBACK ACTIVE` : "ALL LOCAL CHANNELS READY"}</strong>
         <button type="button" onClick={onComplete} disabled={!canSkip}><DismissRegular />SKIP</button>
       </footer>

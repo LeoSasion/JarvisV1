@@ -56,19 +56,27 @@ public sealed class TaskbarLifecycleTests
     }
 
     [Fact]
-    public void InitialTaskbarModeDefaultsToFullAndFailsClosedForInvalidSettings()
+    public void InitialTaskbarModeDefaultsToHybridAndFailsClosedForInvalidSettings()
     {
         Assert.Equal(
-            TaskbarMode.Full,
+            TaskbarMode.Hybrid,
             TaskbarModeService.ResolveInitialMode(null, settingsFileExists: false));
         Assert.Equal(
             TaskbarMode.Native,
             TaskbarModeService.ResolveInitialMode(null, settingsFileExists: true));
-        Assert.Equal(
-            TaskbarMode.Full,
-            TaskbarModeService.ResolveInitialMode(
-                TaskbarMode.Full,
-                settingsFileExists: true));
+    }
+
+    [Fact]
+    public void InitialTaskbarModePreservesEveryValidPersistedSelection()
+    {
+        foreach (var persistedMode in Enum.GetValues<TaskbarMode>())
+        {
+            Assert.Equal(
+                persistedMode,
+                TaskbarModeService.ResolveInitialMode(
+                    persistedMode,
+                    settingsFileExists: true));
+        }
     }
 
     [Theory]

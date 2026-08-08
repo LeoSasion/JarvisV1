@@ -1,5 +1,5 @@
 export function getTelemetryPriorityPresentation({ events = [], feedError = null, feedLoading = false } = {}) {
-  const connecting = feedLoading && events.length === 0;
+  const connecting = Boolean(feedLoading);
   const priorityEvent = events.find((item) => item.severity === "error" || item.severity === "warning")
     ?? events[0]
     ?? null;
@@ -10,7 +10,7 @@ export function getTelemetryPriorityPresentation({ events = [], feedError = null
     return {
       kind: "warning",
       className: "has-warning",
-      title: "TELEMETRY DEGRADED",
+      title: "TELEMETRY DISCONNECTED",
       detail: "System feed unavailable",
       meta: feedError?.message ?? String(feedError),
     };
@@ -21,7 +21,9 @@ export function getTelemetryPriorityPresentation({ events = [], feedError = null
       className: "is-connecting",
       title: "STATUS SYNCHRONIZING",
       detail: "System feed connecting",
-      meta: "Waiting for the first host snapshot",
+      meta: events.length > 0
+        ? `${events.length} cached session events retained`
+        : "Waiting for the first host snapshot",
     };
   }
   return {

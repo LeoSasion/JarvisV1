@@ -8,12 +8,27 @@ internal static class HostLog
     private const long MaxLogBytes = 4 * 1024 * 1024;
 
     private static readonly object Gate = new();
-    private static readonly string LogPath = Path.Combine(
+    private static string _logPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "JARVIS",
         "Logs",
         "jarvis-host.log");
-    private static readonly string BackupLogPath = LogPath + ".1";
+    private static bool _hasWritten;
+
+    public static void UseIsolatedLogDirectory(string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        lock (Gate)
+        {
+            if (_hasWritten)
+            {
+                throw new InvalidOperationException(
+                    "Host log location cannot change after the first write.");
+            }
+
+            _logPath = Path.Combine(Path.GetFullPath(directory), "jarvis-host.log");
+        }
+    }
 
     public static void Info(string message) => Write("INFO", message, null);
 
@@ -39,10 +54,11 @@ internal static class HostLog
 
             lock (Gate)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
                 var payload = builder.AppendLine().ToString();
                 RotateIfNeeded(Encoding.UTF8.GetByteCount(payload));
-                File.AppendAllText(LogPath, payload, Encoding.UTF8);
+                File.AppendAllText(_logPath, payload, Encoding.UTF8);
+                _hasWritten = true;
             }
         }
         catch
@@ -53,11 +69,11 @@ internal static class HostLog
 
     private static void RotateIfNeeded(int incomingBytes)
     {
-        if (!File.Exists(LogPath) || new FileInfo(LogPath).Length + incomingBytes <= MaxLogBytes)
+        if (!File.Exists(_logPath) || new FileInfo(_logPath).Length + incomingBytes <= MaxLogBytes)
         {
             return;
         }
 
-        File.Move(LogPath, BackupLogPath, overwrite: true);
+        File.Move(_logPath, _logPath + ".1", overwrite: true);
     }
 }

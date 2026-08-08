@@ -1,15 +1,15 @@
 import { memo, useEffect, useRef } from "react";
+import { useReducedMotion } from "../hooks/useReducedMotion.js";
 
 export const WaveformCanvas = memo(function WaveformCanvas({ active = true, compact = false }) {
   const canvasRef = useRef(null);
+  const motionReduced = useReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
 
     const context = canvas.getContext("2d");
-    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let reduceMotion = motionQuery.matches;
     let documentVisible = !document.hidden;
     let elementVisible = true;
     let lastDrawTime = Number.NEGATIVE_INFINITY;
@@ -29,7 +29,7 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
     const render = (timestamp = performance.now()) => {
       raf = 0;
       if (!documentVisible || !elementVisible) return;
-      if (active && !reduceMotion && timestamp - lastDrawTime < 1000 / 24) {
+      if (active && !motionReduced && timestamp - lastDrawTime < 1000 / 24) {
         schedule();
         return;
       }
@@ -44,7 +44,7 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
       const mid = cssHeight / 2;
       const bars = compact ? 28 : 46;
       const gap = cssWidth / bars;
-      const phase = reduceMotion ? 0 : timestamp * 0.0027;
+      const phase = motionReduced ? 0 : timestamp * 0.0027;
       context.strokeStyle = active ? signalColor : structureColor;
       context.lineWidth = 1;
       context.shadowColor = active ? signalColor : "transparent";
@@ -63,7 +63,7 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
       context.restore();
       lastDrawTime = timestamp;
 
-      if (active && !reduceMotion) {
+      if (active && !motionReduced) {
         schedule();
       }
     };
@@ -102,25 +102,18 @@ export const WaveformCanvas = memo(function WaveformCanvas({ active = true, comp
         raf = 0;
       }
     };
-    const handleMotionPreference = (event) => {
-      reduceMotion = event.matches;
-      schedule();
-    };
-
     resizeObserver.observe(canvas);
     intersectionObserver.observe(canvas);
     document.addEventListener("visibilitychange", handleVisibility);
-    motionQuery.addEventListener("change", handleMotionPreference);
     updateSize();
 
     return () => {
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
       document.removeEventListener("visibilitychange", handleVisibility);
-      motionQuery.removeEventListener("change", handleMotionPreference);
       cancelAnimationFrame(raf);
     };
-  }, [active, compact]);
+  }, [active, compact, motionReduced]);
 
   return <canvas ref={canvasRef} className="waveform" aria-hidden="true" />;
 });

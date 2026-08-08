@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -58,7 +59,18 @@ internal static class NativeWindowAppearanceRecovery
         }
     }
 
-    public static void SaveSnapshot(
+    public static NativeWindowSnapshotPersistenceResult SaveSnapshot(
+        int ownerProcessId,
+        long ownerStartTimeUtcTicks,
+        IReadOnlyCollection<NativeWindowRecoveryEntry> entries)
+        => SaveSnapshotAtPath(
+            RecoveryPath,
+            ownerProcessId,
+            ownerStartTimeUtcTicks,
+            entries);
+
+    internal static NativeWindowSnapshotPersistenceResult SaveSnapshotAtPath(
+        string recoveryPath,
         int ownerProcessId,
         long ownerStartTimeUtcTicks,
         IReadOnlyCollection<NativeWindowRecoveryEntry> entries)
@@ -67,8 +79,7 @@ internal static class NativeWindowAppearanceRecovery
         {
             if (entries.Count == 0)
             {
-                DeleteSnapshotCore();
-                return;
+                return DeleteSnapshotCore(recoveryPath);
             }
 
             var snapshot = new NativeWindowRecoverySnapshot(
@@ -77,38 +88,43 @@ internal static class NativeWindowAppearanceRecovery
                 ownerStartTimeUtcTicks,
                 DateTimeOffset.UtcNow,
                 entries.ToArray());
-            WriteSnapshotCore(snapshot);
+            return WriteSnapshotCore(recoveryPath, snapshot);
         }
     }
 
     public static NativeWindowRecoveryResult RestoreStaleSnapshot(bool force = false)
+        => RestoreStaleSnapshotAtPath(RecoveryPath, force);
+
+    internal static NativeWindowRecoveryResult RestoreStaleSnapshotAtPath(
+        string recoveryPath,
+        bool force = false)
     {
         lock (FileGate)
         {
-            if (!File.Exists(RecoveryPath))
+            if (!File.Exists(recoveryPath))
             {
-                return new NativeWindowRecoveryResult(false, 0, 0, null);
+                return new NativeWindowRecoveryResult(false, 0, 0, null, false);
             }
 
             NativeWindowRecoverySnapshot? snapshot;
             try
             {
                 snapshot = JsonSerializer.Deserialize<NativeWindowRecoverySnapshot>(
-                    File.ReadAllText(RecoveryPath, Encoding.UTF8),
+                    File.ReadAllText(recoveryPath, Encoding.UTF8),
                     JsonOptions);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
             {
                 HostLog.Warning($"Native window recovery snapshot could not be read: {exception.Message}");
-                return new NativeWindowRecoveryResult(true, 0, 0, exception.Message);
+                return new NativeWindowRecoveryResult(true, 0, 0, exception.Message, true);
             }
 
-            if (snapshot is null || snapshot.SchemaVersion != CurrentSchemaVersion ||
-                snapshot.OwnerProcessId <= 0 || snapshot.OwnerStartTimeUtcTicks <= 0)
+            if (!IsValidSnapshot(snapshot))
             {
-                HostLog.Warning("Discarding an invalid native window recovery snapshot.");
-                DeleteSnapshotCore();
-                return new NativeWindowRecoveryResult(true, 0, 0, "The snapshot was invalid and was discarded.");
+                const string reason =
+                    "The snapshot was invalid and was preserved for diagnosis; native appearance is disabled.";
+                HostLog.Warning(reason);
+                return new NativeWindowRecoveryResult(true, 0, 0, reason, true);
             }
 
             if (!force && IsSameProcessRunning(snapshot.OwnerProcessId, snapshot.OwnerStartTimeUtcTicks))
@@ -117,7 +133,8 @@ internal static class NativeWindowAppearanceRecovery
                     true,
                     0,
                     snapshot.Entries.Count,
-                    "The snapshot owner is still running.");
+                    "The snapshot owner is still running.",
+                    true);
             }
 
             var restored = 0;
@@ -137,13 +154,14 @@ internal static class NativeWindowAppearanceRecovery
                 restored++;
             }
 
+            NativeWindowSnapshotPersistenceResult persistence;
             if (unresolved.Count == 0)
             {
-                DeleteSnapshotCore();
+                persistence = DeleteSnapshotCore(recoveryPath);
             }
             else
             {
-                WriteSnapshotCore(snapshot with
+                persistence = WriteSnapshotCore(recoveryPath, snapshot with
                 {
                     CreatedAtUtc = DateTimeOffset.UtcNow,
                     Entries = unresolved
@@ -161,15 +179,20 @@ internal static class NativeWindowAppearanceRecovery
                 true,
                 restored,
                 unresolved.Count,
-                unresolved.Count == 0 ? null : "Some DWM attributes could not be restored yet.");
+                persistence.Succeeded
+                    ? unresolved.Count == 0
+                        ? null
+                        : "Some DWM attributes could not be restored yet."
+                    : persistence.FailureReason,
+                unresolved.Count > 0 || !persistence.Succeeded);
         }
     }
 
-    public static void ClearSnapshot()
+    public static NativeWindowSnapshotPersistenceResult ClearSnapshot()
     {
         lock (FileGate)
         {
-            DeleteSnapshotCore();
+            return DeleteSnapshotCore(RecoveryPath);
         }
     }
 
@@ -218,22 +241,52 @@ internal static class NativeWindowAppearanceRecovery
         }
     }
 
-    private static void WriteSnapshotCore(NativeWindowRecoverySnapshot snapshot)
+    private static NativeWindowSnapshotPersistenceResult WriteSnapshotCore(
+        string recoveryPath,
+        NativeWindowRecoverySnapshot snapshot)
     {
-        var temporaryPath = RecoveryPath + ".tmp";
+        var temporaryPath = recoveryPath + ".tmp";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(RecoveryPath)!);
-            var payload = JsonSerializer.Serialize(snapshot, JsonOptions);
-            File.WriteAllText(
-                temporaryPath,
-                payload,
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            File.Move(temporaryPath, RecoveryPath, overwrite: true);
+            Directory.CreateDirectory(Path.GetDirectoryName(recoveryPath)!);
+            var payload = JsonSerializer.SerializeToUtf8Bytes(snapshot, JsonOptions);
+            using (var stream = new FileStream(
+                       temporaryPath,
+                       FileMode.Create,
+                       FileAccess.Write,
+                       FileShare.None,
+                       bufferSize: 4096,
+                       FileOptions.WriteThrough))
+            {
+                stream.Write(payload);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporaryPath, recoveryPath, overwrite: true);
+            var readback = File.ReadAllBytes(recoveryPath);
+            if (!payload.AsSpan().SequenceEqual(readback))
+            {
+                const string reason = "Native window recovery snapshot readback did not match the committed payload.";
+                HostLog.Warning(reason);
+                return new NativeWindowSnapshotPersistenceResult(false, reason);
+            }
+
+            var verifiedSnapshot = JsonSerializer.Deserialize<NativeWindowRecoverySnapshot>(
+                readback,
+                JsonOptions);
+            if (!IsValidSnapshot(verifiedSnapshot))
+            {
+                const string reason = "Native window recovery snapshot failed validation after readback.";
+                HostLog.Warning(reason);
+                return new NativeWindowSnapshotPersistenceResult(false, reason);
+            }
+
+            return new NativeWindowSnapshotPersistenceResult(true, null);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
             HostLog.Warning($"Native window recovery snapshot could not be saved: {exception.Message}");
+            return new NativeWindowSnapshotPersistenceResult(false, exception.Message);
         }
         finally
         {
@@ -248,18 +301,44 @@ internal static class NativeWindowAppearanceRecovery
         }
     }
 
-    private static void DeleteSnapshotCore()
+    private static NativeWindowSnapshotPersistenceResult DeleteSnapshotCore(string recoveryPath)
     {
         try
         {
-            File.Delete(RecoveryPath);
-            File.Delete(RecoveryPath + ".tmp");
+            File.Delete(recoveryPath);
+            File.Delete(recoveryPath + ".tmp");
+            if (File.Exists(recoveryPath) || File.Exists(recoveryPath + ".tmp"))
+            {
+                const string reason = "Native window recovery snapshot deletion could not be verified.";
+                HostLog.Warning(reason);
+                return new NativeWindowSnapshotPersistenceResult(false, reason);
+            }
+
+            return new NativeWindowSnapshotPersistenceResult(true, null);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             HostLog.Warning($"Native window recovery snapshot could not be removed: {exception.Message}");
+            return new NativeWindowSnapshotPersistenceResult(false, exception.Message);
         }
     }
+
+    private static bool IsValidSnapshot(
+        [NotNullWhen(true)] NativeWindowRecoverySnapshot? snapshot) =>
+        snapshot is
+        {
+            SchemaVersion: CurrentSchemaVersion,
+            OwnerProcessId: > 0,
+            OwnerStartTimeUtcTicks: > 0,
+            Entries: not null
+        } &&
+        snapshot.Entries.All(entry => entry is
+        {
+            WindowHandle: not 0,
+            ProcessId: > 0,
+            ProcessStartTimeUtcTicks: > 0,
+            OriginalValues.Count: > 0
+        });
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -295,4 +374,9 @@ internal sealed record NativeWindowRecoveryResult(
     bool SnapshotFound,
     int RestoredWindows,
     int PendingWindows,
+    string? FailureReason,
+    bool RequiresSafeMode);
+
+internal sealed record NativeWindowSnapshotPersistenceResult(
+    bool Succeeded,
     string? FailureReason);

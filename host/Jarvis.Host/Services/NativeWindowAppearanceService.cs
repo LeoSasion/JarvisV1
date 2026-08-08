@@ -56,9 +56,9 @@ internal sealed class NativeWindowAppearanceService : IDisposable
     [
         (DwmwaUseImmersiveDarkMode, 1),
         (DwmwaWindowCornerPreference, DwmWindowCornerPreferenceRound),
-        (DwmwaBorderColor, ToColorRef(45, 174, 255)),
-        (DwmwaCaptionColor, ToColorRef(5, 10, 18)),
-        (DwmwaTextColor, ToColorRef(214, 237, 255))
+        (DwmwaBorderColor, ToColorRef(255, 106, 0)),
+        (DwmwaCaptionColor, ToColorRef(0, 0, 0)),
+        (DwmwaTextColor, ToColorRef(245, 241, 233))
     ];
 
     private static readonly HashSet<string> ExcludedWindowClasses = new(StringComparer.OrdinalIgnoreCase)
@@ -108,6 +108,8 @@ internal sealed class NativeWindowAppearanceService : IDisposable
     private bool _eventDispatchScheduled;
     private bool _processingEvents;
     private bool _started;
+    private volatile bool _recoveryPersistenceFaulted;
+    private string? _recoveryPersistenceFailureReason;
     private volatile bool _emergencyRestoreRequested;
     private volatile bool _disposed;
     private NativeWindowAppearanceState? _lastPublishedState;
@@ -141,9 +143,12 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         var effectiveMode = GetEffectiveMode(out var fallbackReason);
         var safetyHotkeyStatus = GlobalSafetyHotkey.CaptureStatus();
         int styledWindowCount;
+        bool recoveryArmed;
         lock (_styleGate)
         {
             styledWindowCount = _styledWindows.Count;
+            recoveryArmed = !_recoveryPersistenceFaulted &&
+                            (styledWindowCount == 0 || NativeWindowAppearanceRecovery.HasPendingSnapshot);
         }
 
         return new NativeWindowAppearanceState(
@@ -156,7 +161,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             _hooksReady,
             _ownIntegrityKnown,
             safetyHotkeyStatus.Registered,
-            styledWindowCount == 0 || NativeWindowAppearanceRecovery.HasPendingSnapshot,
+            recoveryArmed,
             _ruleSnapshot,
             GetCompatibilitySnapshot());
     }
@@ -413,7 +418,10 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         _disposed = true;
         _eventTimer.Change(Timeout.Infinite, Timeout.Infinite);
         ReleaseHooks();
-        RestoreAllStyledWindows();
+        if (_started)
+        {
+            RestoreAllStyledWindows();
+        }
         HideGlow();
         NativeWindowGlowWindow? glowWindow;
         lock (_styleGate)
@@ -691,6 +699,12 @@ internal sealed class NativeWindowAppearanceService : IDisposable
             TryStyleWindow(foreground);
         }
 
+        if (GetEffectiveMode(out _) == NativeWindowAppearanceMode.Off)
+        {
+            HideGlow();
+            return;
+        }
+
         if (TryGetExtendedFrameBounds(foreground, out var bounds))
         {
             lock (_styleGate)
@@ -713,7 +727,7 @@ internal sealed class NativeWindowAppearanceService : IDisposable
 
     private bool TryStyleWindow(IntPtr window)
     {
-        if (_disposed || _emergencyRestoreRequested || !_windows11 ||
+        if (_disposed || _emergencyRestoreRequested || _recoveryPersistenceFaulted || !_windows11 ||
             !IsEligibleWindow(window, requireStandardCaption: true))
         {
             return false;
@@ -744,7 +758,11 @@ internal sealed class NativeWindowAppearanceService : IDisposable
                 }
 
                 _styledWindows.Remove(window);
-                PersistRecoverySnapshotCore();
+                if (!PersistRecoverySnapshotCore().Succeeded)
+                {
+                    InvalidateCompatibilitySnapshot();
+                    return false;
+                }
             }
 
             var originalValues = new Dictionary<uint, int>();
@@ -767,22 +785,23 @@ internal sealed class NativeWindowAppearanceService : IDisposable
                 processId,
                 processStartTimeUtcTicks,
                 originalValues);
-            PersistRecoverySnapshotCore();
-
-            var appliedAttributes = 0;
-            foreach (var (attribute, desiredValue) in DwmAppearanceAttributes)
+            var recoveryPersistence = PersistRecoverySnapshotCore();
+            if (!recoveryPersistence.Succeeded)
             {
-                if (!originalValues.ContainsKey(attribute))
-                {
-                    continue;
-                }
-
-                var value = desiredValue;
-                if (DwmSetWindowAttribute(window, attribute, ref value, sizeof(int)) == 0)
-                {
-                    appliedAttributes++;
-                }
+                _styledWindows.Remove(window);
+                InvalidateCompatibilitySnapshot();
+                return false;
             }
+
+            var appliedAttributes = ApplyRecoveryGuardedAttributes(
+                recoveryPersistence,
+                originalValues,
+                DwmAppearanceAttributes,
+                (attribute, desiredValue) =>
+                {
+                    var value = desiredValue;
+                    return DwmSetWindowAttribute(window, attribute, ref value, sizeof(int)) == 0;
+                });
 
             if (appliedAttributes == 0)
             {
@@ -868,7 +887,30 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         return restored;
     }
 
-    private void PersistRecoverySnapshotCore()
+    internal static int ApplyRecoveryGuardedAttributes(
+        NativeWindowSnapshotPersistenceResult persistence,
+        IReadOnlyDictionary<uint, int> originalValues,
+        IReadOnlyList<(uint Attribute, int DesiredValue)> desiredAttributes,
+        Func<uint, int, bool> tryApply)
+    {
+        if (!persistence.Succeeded)
+        {
+            return 0;
+        }
+
+        var appliedAttributes = 0;
+        foreach (var (attribute, desiredValue) in desiredAttributes)
+        {
+            if (originalValues.ContainsKey(attribute) && tryApply(attribute, desiredValue))
+            {
+                appliedAttributes++;
+            }
+        }
+
+        return appliedAttributes;
+    }
+
+    private NativeWindowSnapshotPersistenceResult PersistRecoverySnapshotCore()
     {
         var entries = _styledWindows.Select(item => new NativeWindowRecoveryEntry(
                 item.Key.ToInt64(),
@@ -878,10 +920,69 @@ internal sealed class NativeWindowAppearanceService : IDisposable
                     .Select(attribute => new NativeDwmAttributeValue(attribute.Key, attribute.Value))
                     .ToArray()))
             .ToArray();
-        NativeWindowAppearanceRecovery.SaveSnapshot(
+        var result = NativeWindowAppearanceRecovery.SaveSnapshot(
             Environment.ProcessId,
             _ownProcessStartTimeUtcTicks,
             entries);
+        if (!result.Succeeded)
+        {
+            _recoveryPersistenceFailureReason = result.FailureReason;
+            var firstPersistenceFailure = !_recoveryPersistenceFaulted;
+            _recoveryPersistenceFaulted = true;
+            if (firstPersistenceFailure)
+            {
+                HostLog.Warning(
+                    "Native window appearance was disabled for this session because its recovery snapshot " +
+                    $"could not be verified: {result.FailureReason ?? "unknown persistence failure"}");
+                try
+                {
+                    _ = _dispatcher.BeginInvoke(
+                        DispatcherPriority.Send,
+                        new Action(ContainRecoveryPersistenceFailure));
+                }
+                catch (InvalidOperationException) when (_disposed)
+                {
+                    // Dispatcher shutdown is already fail-closed for external appearance writes.
+                }
+            }
+
+        }
+
+        return result;
+    }
+
+    private void ContainRecoveryPersistenceFailure()
+    {
+        if (_disposed || !_recoveryPersistenceFaulted)
+        {
+            return;
+        }
+
+        ReleaseHooks();
+        var restored = 0;
+        var remaining = 0;
+        lock (_styleGate)
+        {
+            foreach (var (window, styledWindow) in _styledWindows.ToArray())
+            {
+                if (!RestoreStyledWindowCore(window, styledWindow))
+                {
+                    continue;
+                }
+
+                _styledWindows.Remove(window);
+                restored++;
+            }
+
+            remaining = _styledWindows.Count;
+        }
+
+        HideGlow();
+        InvalidateCompatibilitySnapshot();
+        HostLog.Warning(
+            $"Native window appearance recovery containment restored {restored} window(s); " +
+            $"{remaining} target(s) remain covered by the last verified recovery snapshot.");
+        PublishStateIfChanged(force: true);
     }
 
     private IReadOnlyList<NativeWindowCompatibilityEntry> GetCompatibilitySnapshot()
@@ -1297,6 +1398,16 @@ internal sealed class NativeWindowAppearanceService : IDisposable
         {
             fallbackReason =
                 "Native window appearance is disabled because JARVIS_KEEP_NATIVE_TASKBAR=1.";
+            return NativeWindowAppearanceMode.Off;
+        }
+
+        if (_recoveryPersistenceFaulted)
+        {
+            fallbackReason =
+                "Native window appearance is disabled because recovery persistence failed verification." +
+                (string.IsNullOrWhiteSpace(_recoveryPersistenceFailureReason)
+                    ? string.Empty
+                    : $" {_recoveryPersistenceFailureReason}");
             return NativeWindowAppearanceMode.Off;
         }
 

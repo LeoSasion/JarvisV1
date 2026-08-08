@@ -42,6 +42,7 @@ import {
 import { platform } from "../platform/index.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
 import { ExplorerContextMenu } from "./ExplorerContextMenu.jsx";
+import { SystemNotice } from "./SystemNotice.jsx";
 import { CoreNodeGlyph } from "./VectorMarks.jsx";
 import {
   canReplaceAllConflicts,
@@ -399,7 +400,7 @@ function ExplorerTransferPanel({ transfer, onCancel, onDismiss }) {
         aria-valuemax="100"
         aria-valuenow={Math.round(transfer.percent)}
       >
-        <i style={{ "--transfer-progress": `${transfer.percent}%` }} />
+        <i style={{ "--transfer-progress": transfer.percent / 100 }} />
       </div>
       <footer>
         <small>
@@ -427,6 +428,8 @@ export function FileExplorerWindow({
   canMaximize = true,
   linkedContext = null,
   linkedFlowPhase = "empty",
+  notice = null,
+  onDismissNotice,
   onSelectionChange,
   onAddToAgentContext,
   onClose,
@@ -1704,6 +1707,7 @@ export function FileExplorerWindow({
                 }
               }}
             >
+              <SystemNotice notice={notice} onDismiss={onDismissNotice} placement="inline" />
               {error ? <div className="explorer-empty"><strong>ACCESS INTERRUPTED</strong><span>{error.message}</span></div> : null}
               {!error && !loading && visibleEntries.length === 0 ? (
                 <div className="explorer-empty">

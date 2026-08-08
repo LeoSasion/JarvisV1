@@ -59,7 +59,7 @@ test("taskbar overflow summary separates visible, running, and pinned counts", (
   });
 });
 
-test("native overflow separates host windows from renderer-owned applications", () => {
+test("native overflow preserves grouped taskbar order across host and renderer items", () => {
   const payload = getNativeTaskbarOverflowPayload([
     {
       id: "external",
@@ -81,10 +81,12 @@ test("native overflow separates host windows from renderer-owned applications", 
   ]);
 
   assert.deepEqual(payload.windowIds, ["native:1"]);
-  assert.deepEqual(payload.items.map((item) => item.itemId), ["pinned", "internal"]);
-  assert.equal(payload.items[0].label, "Pinned Tool");
-  assert.equal(payload.items[0].meta, "PINNED APPLICATION");
-  assert.equal(payload.items[1].windowId, "internal:agent");
+  assert.deepEqual(payload.items.map((item) => item.itemId), ["external", "pinned", "internal"]);
+  assert.equal(payload.items[0].windowId, "native:1");
+  assert.equal(payload.items[0].label, "External");
+  assert.equal(payload.items[1].label, "Pinned Tool");
+  assert.equal(payload.items[1].meta, "PINNED APPLICATION");
+  assert.equal(payload.items[2].windowId, "internal:agent");
 });
 
 test("native internal groups preserve the selected renderer window identifier", () => {

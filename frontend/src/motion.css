@@ -1,0 +1,135 @@
+/*
+ * Sole reduced-motion owner for the renderer. The raw preference remains on
+ * `data-motion`; SYSTEM follows Windows, REDUCED always reduces, and FULL is
+ * the explicit override. State remains visible while motion becomes immediate.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) {
+    scroll-behavior: auto;
+  }
+
+  :root:not([data-motion="full"]) :where(
+    .window-switcher-card,
+    .core-stage__media,
+    .core-stage,
+    .desktop-shortcuts,
+    .telemetry-rail,
+    .workspace-window,
+    .workspace-window .jarvis-explorer,
+    .workspace-window .terminal-workbench,
+    .workspace-window .system-inspector,
+    .workspace-window .agent-workbench,
+    .desktop-shortcut,
+    .taskbar button,
+    .taskbar-native-icon,
+    .taskbar-apps svg,
+    .taskbar-flyout-grid article,
+    .jarvis-agent-launcher,
+    .linked-system-rail button,
+    .linked-workspace-handle,
+    .core-stage__launchpad,
+    .core-stage__restore,
+    .telemetry-rail .hud-panel__toggle > svg,
+    .explorer-transfer-progress i,
+    .boot-sequence > footer > span i,
+    .window-appearance-choice,
+    .runtime-switch > span::after,
+    .command-result-arrow,
+    .system-toast
+  ) {
+    transition: none !important;
+  }
+
+  :root:not([data-motion="full"]) :where(
+    .taskbar-flyout-mock,
+    .jarvis-agent-launcher.is-working > i,
+    .jarvis-agent-launcher .agent-glyph.is-working .vector-mark__signal,
+    .knowledge-graph-field__signal path:first-child,
+    .explorer-dialog-layer,
+    .explorer-scan-line,
+    .boot-sequence,
+    .boot-core,
+    .boot-core-ring,
+    .boot-check-list > div.is-pending > i::after,
+    .terminal-workbench,
+    .system-inspector-loading i,
+    .shell-panel-layer,
+    .shell-panel,
+    .overlay-layer,
+    .terminal-tab i.is-connecting,
+    .agent-linked-context,
+    .agent-linked-result,
+    .linked-route-active
+  ) {
+    animation: none !important;
+  }
+
+  :root:not([data-motion="full"]) .core-stage__media {
+    transform: none !important;
+  }
+}
+
+:root[data-motion="reduced"] {
+  scroll-behavior: auto;
+}
+
+:root[data-motion="reduced"] :where(
+  .window-switcher-card,
+  .core-stage__media,
+  .core-stage,
+  .desktop-shortcuts,
+  .telemetry-rail,
+  .workspace-window,
+  .workspace-window .jarvis-explorer,
+  .workspace-window .terminal-workbench,
+  .workspace-window .system-inspector,
+  .workspace-window .agent-workbench,
+  .desktop-shortcut,
+  .taskbar button,
+  .taskbar-native-icon,
+  .taskbar-apps svg,
+  .taskbar-flyout-grid article,
+  .jarvis-agent-launcher,
+  .linked-system-rail button,
+  .linked-workspace-handle,
+  .core-stage__launchpad,
+  .core-stage__restore,
+  .telemetry-rail .hud-panel__toggle > svg,
+  .explorer-transfer-progress i,
+  .boot-sequence > footer > span i,
+  .window-appearance-choice,
+  .runtime-switch > span::after,
+  .command-result-arrow,
+  .system-toast
+) {
+  transition: none !important;
+}
+
+:root[data-motion="reduced"] :where(
+  .taskbar-flyout-mock,
+  .jarvis-agent-launcher.is-working > i,
+  .jarvis-agent-launcher .agent-glyph.is-working .vector-mark__signal,
+  .knowledge-graph-field__signal path:first-child,
+  .explorer-dialog-layer,
+  .explorer-scan-line,
+  .boot-sequence,
+  .boot-core,
+  .boot-core-ring,
+  .boot-check-list > div.is-pending > i::after,
+  .terminal-workbench,
+  .system-inspector-loading i,
+  .shell-panel-layer,
+  .shell-panel,
+  .overlay-layer,
+  .terminal-tab i.is-connecting,
+  .agent-linked-context,
+  .agent-linked-result,
+  .linked-route-active
+) {
+  animation: none !important;
+}
+
+:root[data-motion="reduced"] .core-stage__media {
+  transform: none !important;
+}

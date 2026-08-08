@@ -11,12 +11,15 @@ small authenticated-by-origin JSON bridge to Windows services.
 - Microsoft Edge WebView2 Runtime for running (Evergreen Runtime is recommended)
 - A built `frontend/dist/index.html`
 
-The host now runs in **primary-taskbar replacement mode** by default. Explorer
-remains running: JARVIS creates a separate always-on-top taskbar surface over the
-existing primary taskbar rectangle, arms an out-of-process recovery watchdog,
-waits for the watchdog's ready signal, and lets that watchdog hide and confirm
-`Shell_TrayWnd` before revealing the custom surface. It does not modify the registry, terminate
-Explorer, change the logon UI, or require administrator privileges.
+A fresh profile starts in **hybrid primary-taskbar mode**. Explorer remains
+running and owns the notification area while JARVIS places a separate always-on-top
+surface over the rest of the primary taskbar. If the shell probe, exclusion region,
+or renderer is unavailable, JARVIS closes that surface and keeps the complete native
+taskbar active. Full replacement is an explicit experimental opt-in: it arms an
+out-of-process recovery watchdog, waits for the watchdog's ready signal, and lets
+that watchdog hide and confirm `Shell_TrayWnd` before revealing the custom surface.
+Neither mode modifies the registry, terminates Explorer, changes the logon UI, or
+requires administrator privileges.
 
 The desktop host is excluded from the Windows taskbar and task switcher. If a
 Win+D or shell transition tries to minimize it, JARVIS restores the desktop
@@ -80,6 +83,19 @@ During development it can also find the repository copy by walking parent folder
 Set `JARVIS_FRONTEND_DIST` to an absolute distribution directory to override that
 lookup. Set `JARVIS_WEBVIEW2_DEVTOOLS=1` to enable developer tools outside a
 debugger.
+
+For a real WebView2 integration check that does not take over the desktop or
+taskbar, first build the frontend and Host, then run from the repository root:
+
+```powershell
+.\scripts\verify-renderer-smoke.ps1
+```
+
+The smoke process uses a one-time isolated WebView2 data directory, renders at
+1040x720 off-screen, exercises F1 Help, Explorer + Agent linked layout, notice
+placement, and Reduced Motion styling, writes a bounded receipt, and exits. It
+fails closed if another JARVIS instance is running and confirms that Explorer's
+native taskbar stayed visible.
 
 Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to run the full-screen desktop
 host without hiding or overlaying the native taskbar. Native-window hooks and

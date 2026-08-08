@@ -8,6 +8,7 @@ import {
   StopRegular,
   Wifi4Regular,
 } from "@fluentui/react-icons";
+import { getCommandBusPresentation } from "../agent-provider-model.js";
 import { usePlatformClock, useTrayStatus } from "../hooks/usePlatformData.js";
 import { JarvisMark } from "./VectorMarks.jsx";
 
@@ -38,12 +39,7 @@ export function TopStatusBar({
     : tray.power.acConnected ? "AC" : "POWER";
   const agentStatus = agentState?.status ?? "unavailable";
   const agentRunning = agentStatus === "running" || agentStatus === "starting";
-  const commandBusLabel = "LOCAL COMMANDS READY";
-  const agentProviderStatus = agentRunning
-    ? "AGENT ACTIVE"
-    : agentState?.available
-      ? "AGENT READY"
-      : "AGENT OFFLINE";
+  const { localCommandLabel, agentProviderStatus } = getCommandBusPresentation(agentState);
 
   return (
     <header className="topbar hud-chassis" aria-label="JARVIS global status">
@@ -69,9 +65,9 @@ export function TopStatusBar({
       </div>
 
       <div className={`topbar__zone topbar__command-bus is-${agentStatus}`}>
-        <TopCluster className={`secure-cluster is-${agentStatus}`} title={`${commandBusLabel} · ${agentProviderStatus}`} role="status">
+        <TopCluster className={`secure-cluster is-${agentStatus}`} title={`${localCommandLabel} · ${agentProviderStatus}`} role="status">
           <span>COMMAND BUS · {agentProviderStatus}</span>
-          <strong>{commandBusLabel}</strong>
+          <strong>{localCommandLabel}</strong>
         </TopCluster>
         {agentRunning ? (
           <TopCluster

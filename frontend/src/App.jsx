@@ -95,6 +95,23 @@ export function App() {
     shellPanel,
     commandOpen,
   });
+  const agentInlineNotice = notice
+    && workspaceLayoutMode === "explorer-agent-linked"
+    && noticePlacement === "workspace-top-end"
+    && workspaceState.windows.agent.open
+    && !workspaceState.windows.agent.minimized
+    ? notice
+    : null;
+  const explorerInlineNotice = notice
+    && workspaceState.windows.explorer.open
+    && !workspaceState.windows.explorer.minimized
+    && (
+      (workspaceLayoutMode === "explorer-agent-linked" && noticePlacement === "workspace-top-start")
+      || (workspaceLayoutMode === "explorer-focus" && noticePlacement === "workspace-top-end")
+    )
+    ? notice
+    : null;
+  const hasInlineNotice = Boolean(agentInlineNotice || explorerInlineNotice);
   const linkedWorkspaceAnnouncement = workspaceLayoutMode === "explorer-agent-linked"
     ? workspaceState.activeId === "agent"
       ? "Linked workspace. Agent pane active."
@@ -831,6 +848,8 @@ export function App() {
               linkedContext={agentSession.context}
               linkedFlowPhase={agentSession.context.phase}
               explorerSelection={explorerSelection}
+              notice={agentInlineNotice}
+              onDismissNotice={dismissNotice}
               onDraftChange={agentSession.setDraft}
               onSend={agentSession.send}
               onAbort={agentSession.abort}
@@ -867,6 +886,8 @@ export function App() {
               canMaximize={!isDockedWindow("explorer", workspaceLayoutMode)}
               linkedContext={agentSession.context}
               linkedFlowPhase={agentSession.context.phase}
+              notice={explorerInlineNotice}
+              onDismissNotice={dismissNotice}
               onSelectionChange={setExplorerSelection}
               onAddToAgentContext={linkExplorerSelectionToAgent}
               onMinimize={() => minimizeWorkspaceWindow("explorer")}
@@ -992,7 +1013,11 @@ export function App() {
         />
       ) : null}
 
-      <SystemNotice notice={notice} onDismiss={dismissNotice} placement={noticePlacement} />
+      <SystemNotice
+        notice={hasInlineNotice ? null : notice}
+        onDismiss={dismissNotice}
+        placement={noticePlacement}
+      />
 
       <div className="desktop-only-notice" role="status">
         <JarvisMark />

@@ -93,6 +93,17 @@ public sealed class LifecycleProbeOptionsTests
     }
 
     [Fact]
+    public void VolumeRootIsRejected()
+    {
+        var volumeRoot = Path.GetPathRoot(Path.GetTempPath())!;
+
+        Assert.False(LifecycleProbeOptions.TryParse(
+            CreateArguments(volumeRoot, Path.Combine(volumeRoot, "probe.json")),
+            out _,
+            out _));
+    }
+
+    [Fact]
     public void DuplicateOrUnknownProbeArgumentsFailClosed()
     {
         var root = CreateIsolatedRoot();

@@ -21,6 +21,25 @@ test("compact telemetry is reserved for a truthful nominal state", () => {
   }
 });
 
+test("loading and disconnected feeds stay non-nominal even with cached events", () => {
+  const cachedEvents = [{ severity: "ok", title: "Previous snapshot" }];
+  const connecting = getTelemetryPriorityPresentation({
+    events: cachedEvents,
+    feedLoading: true,
+  });
+  assert.equal(connecting.kind, "connecting");
+  assert.equal(connecting.title, "STATUS SYNCHRONIZING");
+  assert.match(connecting.meta, /1 cached session event/u);
+
+  const disconnected = getTelemetryPriorityPresentation({
+    events: cachedEvents,
+    feedError: "bridge offline",
+  });
+  assert.equal(disconnected.kind, "warning");
+  assert.equal(disconnected.title, "TELEMETRY DISCONNECTED");
+  assert.equal(disconnected.meta, "bridge offline");
+});
+
 test("compact telemetry exposes CPU and memory in its accessible summary", () => {
   const summary = getCompactTelemetrySummary([
     { id: "cpu", value: "18%" },

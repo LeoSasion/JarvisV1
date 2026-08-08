@@ -9,48 +9,56 @@ function normalizeNativeFlyoutText(value, fallback, maximumLength) {
   return (normalized || fallback).slice(0, maximumLength);
 }
 
-function createRendererOwnedOverflowItem(
-  item,
-  window = item?.selectedWindow?.internalWindowId ? item.selectedWindow : null,
-) {
+function getWindowStateLabel(window) {
+  return window?.active ? "ACTIVE" : window?.minimized ? "MINIMIZED" : "READY";
+}
+
+function createTaskbarOverflowItem(item) {
+  const windows = Array.isArray(item?.windows) ? item.windows : [];
+  const window = item?.selectedWindow ?? windows[0] ?? null;
   return {
     itemId: normalizeNativeFlyoutText(item?.id, "application", 256),
     windowId: typeof window?.windowId === "string" ? window.windowId.slice(0, 256) : null,
-    label: normalizeNativeFlyoutText(window?.title ?? item?.label, "Application", 128),
-    meta: window
-      ? `INTERNAL WINDOW · ${window.active ? "ACTIVE" : window.minimized ? "MINIMIZED" : "READY"}`
+    label: normalizeNativeFlyoutText(item?.label, "Application", 128),
+    meta: window?.internalWindowId
+      ? `INTERNAL WINDOW · ${getWindowStateLabel(window)}`
+      : window
+        ? `${windows.length > 1 ? `${windows.length} WINDOWS · ` : ""}${getWindowStateLabel(window)}`
       : item?.isPinned ? "PINNED APPLICATION" : "APPLICATION",
   };
 }
 
+function createInternalWindowItem(item, window) {
+  return {
+    itemId: normalizeNativeFlyoutText(item?.id, "application", 256),
+    windowId: typeof window?.windowId === "string" ? window.windowId.slice(0, 256) : null,
+    label: normalizeNativeFlyoutText(window?.title ?? item?.label, "Application", 128),
+    meta: `INTERNAL WINDOW · ${getWindowStateLabel(window)}`,
+  };
+}
+
 export function getNativeTaskbarOverflowPayload(items = []) {
-  const source = Array.isArray(items) ? items : [];
-  const rendererItems = source.filter((item) =>
-    !Array.isArray(item?.windows) || item.windows.length === 0 || item.windows.some((window) => window?.internalWindowId));
-  const rendererItemIds = new Set(rendererItems.map((item) => item.id));
+  const source = (Array.isArray(items) ? items : []).slice(0, MAX_NATIVE_FLYOUT_ITEMS);
   const seenWindowIds = new Set();
   const windowIds = [];
   for (const item of source) {
-    if (rendererItemIds.has(item?.id)) continue;
-    for (const window of item?.windows ?? []) {
-      if (typeof window?.windowId !== "string" || !window.windowId || seenWindowIds.has(window.windowId)) continue;
-      seenWindowIds.add(window.windowId);
-      windowIds.push(window.windowId);
-      if (windowIds.length === MAX_NATIVE_FLYOUT_ITEMS) break;
-    }
-    if (windowIds.length === MAX_NATIVE_FLYOUT_ITEMS) break;
+    const windows = Array.isArray(item?.windows) ? item.windows : [];
+    const selectedWindow = item?.selectedWindow ?? windows[0] ?? null;
+    if (selectedWindow?.internalWindowId || typeof selectedWindow?.windowId !== "string" || !selectedWindow.windowId) continue;
+    if (seenWindowIds.has(selectedWindow.windowId)) continue;
+    seenWindowIds.add(selectedWindow.windowId);
+    windowIds.push(selectedWindow.windowId);
   }
   return {
     windowIds,
-    items: rendererItems.slice(0, MAX_NATIVE_FLYOUT_ITEMS).map((item) =>
-      createRendererOwnedOverflowItem(item)),
+    items: source.map(createTaskbarOverflowItem),
   };
 }
 
 export function getNativeInternalWindowItems(item) {
   return (Array.isArray(item?.windows) ? item.windows : [])
     .slice(0, MAX_NATIVE_FLYOUT_ITEMS)
-    .map((window) => createRendererOwnedOverflowItem(item, window));
+    .map((window) => createInternalWindowItem(item, window));
 }
 
 export function normalizeTaskbarFlyoutQuery(value) {

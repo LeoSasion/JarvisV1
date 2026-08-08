@@ -1648,18 +1648,6 @@ textarea:focus-visible {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .jarvis-agent-launcher .agent-glyph.is-working .vector-mark__signal,
-  .knowledge-graph-field__signal path:first-child {
-    animation: none;
-  }
-
-  .core-stage__media {
-    transform: none !important;
-    transition: none;
-  }
-}
-
 /* V4 product states — selected black / white / orange references */
 
 :root {
@@ -3463,15 +3451,6 @@ body,
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .workspace-window,
-  .desktop-shortcut,
-  .taskbar button,
-  .linked-system-rail button {
-    transition: none;
-  }
-}
-
 /* Final surface convergence. The legacy stylesheet still owns geometry and
    interaction, while every visible paint surface resolves here. */
 .shell-panel-layer,
@@ -4935,24 +4914,6 @@ body,
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked,
-  .agent-linked-context,
-  .agent-linked-result,
-  .linked-route-active {
-    transition: none !important;
-    animation: none !important;
-  }
-}
-
-:root[data-motion="reduced"] .jarvis-shell.is-layout-explorer-agent-linked .workspace-window.is-docked,
-:root[data-motion="reduced"] .agent-linked-context,
-:root[data-motion="reduced"] .agent-linked-result,
-:root[data-motion="reduced"] .linked-route-active {
-  transition: none !important;
-  animation: none !important;
-}
-
 @media (forced-colors: active) {
   .linked-route-field {
     display: none;
@@ -5584,14 +5545,6 @@ body,
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .linked-workspace-handle,
-  .core-stage__launchpad,
-  .core-stage__restore {
-    transition: none;
-  }
-}
-
 @media (forced-colors: active) {
   .linked-workspace-handle,
   .core-stage__launchpad,
@@ -5972,6 +5925,20 @@ body,
   box-shadow: 0 12px 36px rgb(0 0 0 / 48%);
 }
 
+.system-notice.is-placement-inline {
+  position: sticky;
+  inset: auto;
+  top: 0;
+  z-index: 2;
+  width: min(420px, calc(100% - 16px));
+  margin: 8px 8px 10px auto;
+  box-shadow: none;
+}
+
+.explorer-files.is-grid .system-notice.is-placement-inline {
+  grid-column: 1 / -1;
+}
+
 .system-notice.is-warning,
 .system-notice.is-error {
   border-left-color: var(--signal-hot);
@@ -6052,12 +6019,6 @@ body,
 
   .system-notice__actions {
     grid-column: 2 / -1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .telemetry-rail .hud-panel__toggle > svg {
-    transition: none;
   }
 }
 

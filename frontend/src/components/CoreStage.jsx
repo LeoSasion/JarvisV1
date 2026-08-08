@@ -6,6 +6,7 @@ import {
 } from "@fluentui/react-icons";
 import { useEffect, useMemo, useRef } from "react";
 import { getKnowledgeGraphPresentation } from "../knowledge-graph-model.js";
+import { useReducedMotion } from "../hooks/useReducedMotion.js";
 import { KnowledgeGraphField } from "./VectorMarks.jsx";
 
 const actionIcons = Object.freeze({
@@ -26,6 +27,7 @@ export function CoreStage({
   const rectRef = useRef(null);
   const pointerRef = useRef(null);
   const frameRef = useRef(0);
+  const motionReduced = useReducedMotion();
   const presentation = getKnowledgeGraphPresentation(graphState);
   const actionHandlers = useMemo(() => ({
     "search-local": onOpenSearch,
@@ -36,6 +38,16 @@ export function CoreStage({
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return undefined;
+
+    if (motionReduced) {
+      rectRef.current = null;
+      pointerRef.current = null;
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = 0;
+      stage.style.setProperty("--parallax-x", "0px");
+      stage.style.setProperty("--parallax-y", "0px");
+      return undefined;
+    }
 
     const updateRect = () => {
       rectRef.current = stage.getBoundingClientRect();
@@ -48,7 +60,7 @@ export function CoreStage({
       observer.disconnect();
       cancelAnimationFrame(frameRef.current);
     };
-  }, []);
+  }, [motionReduced]);
 
   const applyPointer = () => {
     frameRef.current = 0;
@@ -82,11 +94,11 @@ export function CoreStage({
     <section
       ref={stageRef}
       className={`core-stage is-${presentation.status} ${desktopOnly ? "is-desktop-only" : ""}`}
-      onPointerEnter={() => {
+      onPointerEnter={motionReduced ? undefined : () => {
         rectRef.current = stageRef.current?.getBoundingClientRect() ?? null;
       }}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={resetPointer}
+      onPointerMove={motionReduced ? undefined : handlePointerMove}
+      onPointerLeave={motionReduced ? undefined : resetPointer}
       aria-label="JARVIS knowledge graph workspace"
     >
       <p className="sr-only">{presentation.announcement}</p>

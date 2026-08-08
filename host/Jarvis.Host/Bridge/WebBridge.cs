@@ -509,8 +509,13 @@ internal sealed class WebBridge : IDisposable
         }
 
         _showTaskbarFlyout(request);
-        return new { shown = true, request.Mode, count = request.WindowIds.Count };
+        return new { shown = true, request.Mode, count = GetTaskbarFlyoutItemCount(request) };
     }
+
+    internal static int GetTaskbarFlyoutItemCount(TaskbarFlyoutRequest request) =>
+        request.Mode == "overflow" && request.OverflowItems.Count > 0
+            ? request.OverflowItems.Count
+            : request.WindowIds.Count;
 
     private object HideTaskbarFlyout()
     {

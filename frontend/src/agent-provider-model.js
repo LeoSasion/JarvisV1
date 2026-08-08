@@ -23,3 +23,15 @@ export function getAgentLauncherStatus(state = {}, windowState = {}) {
   if (windowState.open) return "READY";
   return "OPEN";
 }
+
+export function getCommandBusPresentation(state = {}) {
+  const agentRunning = state.status === "running" || state.status === "starting";
+  return {
+    localCommandLabel: "LOCAL COMMANDS READY",
+    agentProviderStatus: agentRunning
+      ? "AGENT ACTIVE"
+      : state.available
+        ? "AGENT READY"
+        : "AGENT OFFLINE",
+  };
+}

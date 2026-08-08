@@ -318,7 +318,7 @@ internal sealed class TaskbarModeService
         TaskbarMode? persistedMode,
         bool settingsFileExists) =>
         persistedMode ??
-        (settingsFileExists ? TaskbarMode.Native : TaskbarMode.Full);
+        (settingsFileExists ? TaskbarMode.Native : TaskbarMode.Hybrid);
 
     private TaskbarModeState CreateState()
     {

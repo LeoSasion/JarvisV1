@@ -4,6 +4,7 @@ import {
   isRouteAnchorVisible,
   roundRouteCoordinate,
 } from "../linked-workspace-route-model.js";
+import { useReducedMotion } from "../hooks/useReducedMotion.js";
 
 const LAYOUT_TRACKING_MS = 340;
 const VIEWPORT_INSET = 1;
@@ -90,23 +91,13 @@ export function LinkedWorkspaceRoutes({
   const activePathRef = useRef(null);
   const startRef = useRef(null);
   const endRef = useRef(null);
-  const [motionReduced, setMotionReduced] = useState(false);
+  const motionReduced = useReducedMotion();
   const [pageVisible, setPageVisible] = useState(() => document.visibilityState !== "hidden");
   const processing = ["submitting", "running"].includes(phase);
   const routeClassName = useMemo(
     () => `linked-route-field is-${phase}${pageVisible ? "" : " is-paused"}`,
     [pageVisible, phase],
   );
-
-  useLayoutEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const syncMotion = () => setMotionReduced(
-      media.matches || document.documentElement.dataset.motion === "reduced",
-    );
-    syncMotion();
-    media.addEventListener?.("change", syncMotion);
-    return () => media.removeEventListener?.("change", syncMotion);
-  }, []);
 
   useLayoutEffect(() => {
     const handleVisibility = () => setPageVisible(document.visibilityState !== "hidden");

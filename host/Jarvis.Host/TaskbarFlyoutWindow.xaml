@@ -13,6 +13,7 @@
         Background="{StaticResource NativeShellBackgroundBrush}"
         SourceInitialized="OnSourceInitialized"
         Loaded="OnLoaded"
+        PreviewKeyDown="OnPreviewKeyDown"
         Closed="OnClosed">
   <Border BorderBrush="{StaticResource NativeShellStructureBrush}"
           BorderThickness="1"
@@ -77,6 +78,8 @@
       <WrapPanel x:Name="CardsPanel"
                  Grid.Row="1"
                  Margin="8,7,8,9"
+                 KeyboardNavigation.DirectionalNavigation="Cycle"
+                 KeyboardNavigation.TabNavigation="Cycle"
                  HorizontalAlignment="Center"
                  VerticalAlignment="Top" />
     </Grid>

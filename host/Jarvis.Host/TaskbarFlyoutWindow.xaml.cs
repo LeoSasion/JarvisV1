@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Windows.Automation;
 using Jarvis.Host.Bridge;
 using Jarvis.Host.Infrastructure;
 using Jarvis.Host.Services;
@@ -38,6 +39,7 @@ public partial class TaskbarFlyoutWindow : Window
     private readonly string _mode;
     private readonly TaskbarFlyoutRequest _request;
     private readonly bool _autoDismiss;
+    private readonly bool _keyboardInteractive;
     private readonly Action<string, string, string?> _contextAction;
     private readonly Action _closed;
     private readonly DispatcherTimer _cursorTimer;
@@ -66,12 +68,18 @@ public partial class TaskbarFlyoutWindow : Window
         _request = request;
         _mode = request.Mode;
         _autoDismiss = autoDismiss;
+        _keyboardInteractive = IsKeyboardInteractiveMode(_mode);
         _contextAction = contextAction;
         _closed = closed;
         _cursorTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(180), DispatcherPriority.Background, OnCursorTick, Dispatcher);
 
         InitializeComponent();
-        if (!_autoDismiss)
+        if (_keyboardInteractive)
+        {
+            ShowActivated = true;
+            Deactivated += (_, _) => CloseSafely();
+        }
+        else if (!_autoDismiss)
         {
             // Diagnostic sessions expose the otherwise tool-style flyout so native QA can capture it.
             ShowInTaskbar = true;
@@ -80,6 +88,9 @@ public partial class TaskbarFlyoutWindow : Window
         }
         BuildContent();
     }
+
+    internal static bool IsKeyboardInteractiveMode(string mode) =>
+        mode is "overflow" or "context";
 
     private void BuildContent(int? limit = null)
     {
@@ -91,15 +102,15 @@ public partial class TaskbarFlyoutWindow : Window
 
         var maximum = _mode == "overflow" ? 10 : 6;
         var requestedLimit = Math.Clamp(limit ?? maximum, 1, maximum);
-        var visibleWindows = _windows.Take(requestedLimit).ToArray();
-        var remainingOverflowSlots = Math.Max(0, requestedLimit - visibleWindows.Length);
-        var visibleOverflowItems = _mode == "overflow"
-            ? _request.OverflowItems.Take(remainingOverflowSlots).ToArray()
+        var orderedOverflow = _mode == "overflow" && _request.OverflowItems.Count > 0;
+        var visibleWindows = orderedOverflow
+            ? Array.Empty<TaskbarWindowSnapshot>()
+            : _windows.Take(requestedLimit).ToArray();
+        var visibleOverflowItems = orderedOverflow
+            ? _request.OverflowItems.Take(requestedLimit).ToArray()
             : Array.Empty<TaskbarOverflowItem>();
-        var totalItemCount = _mode == "overflow"
-            ? _windows.Count + _request.OverflowItems.Count
-            : _windows.Count;
-        var visibleItemCount = visibleWindows.Length + visibleOverflowItems.Length;
+        var totalItemCount = orderedOverflow ? _request.OverflowItems.Count : _windows.Count;
+        var visibleItemCount = orderedOverflow ? visibleOverflowItems.Length : visibleWindows.Length;
         TitleText.Text = _mode == "overflow" ? "TASK OVERFLOW" : "WINDOW GROUP";
         var meta = _mode == "overflow"
             ? $"{totalItemCount} APPLICATIONS"
@@ -116,7 +127,15 @@ public partial class TaskbarFlyoutWindow : Window
         }
         foreach (var item in visibleOverflowItems)
         {
-            CardsPanel.Children.Add(CreateRendererOverflowCard(item));
+            var nativeWindow = item.WindowId is null
+                ? null
+                : _windows.FirstOrDefault(window => string.Equals(
+                    window.WindowId,
+                    item.WindowId,
+                    StringComparison.OrdinalIgnoreCase));
+            CardsPanel.Children.Add(nativeWindow is null
+                ? CreateRendererOverflowCard(item)
+                : CreateOverflowCard(nativeWindow, item));
         }
     }
 
@@ -222,9 +241,24 @@ public partial class TaskbarFlyoutWindow : Window
         return card;
     }
 
-    private FrameworkElement CreateOverflowCard(TaskbarWindowSnapshot window)
+    private FrameworkElement CreateOverflowCard(
+        TaskbarWindowSnapshot window,
+        TaskbarOverflowItem? item = null)
     {
         var card = CreateCardShell(260, 66, window);
+        card.Focusable = true;
+        AutomationProperties.SetName(card, $"Switch to {window.Title}");
+        card.KeyDown += (_, e) =>
+        {
+            if (!ReferenceEquals(e.OriginalSource, card) ||
+                e.Key is not (Key.Enter or Key.Space))
+            {
+                return;
+            }
+
+            e.Handled = true;
+            ToggleAndClose(window.WindowId);
+        };
         var grid = new Grid
         {
             Margin = new Thickness(10, 7, 8, 7),
@@ -241,7 +275,7 @@ public partial class TaskbarFlyoutWindow : Window
         icon.VerticalAlignment = VerticalAlignment.Center;
         grid.Children.Add(icon);
 
-        var copy = CreateFooter(window, compact: true);
+        var copy = CreateFooter(window, compact: true, item?.Label, item?.Meta);
         Grid.SetColumn(copy, 1);
         grid.Children.Add(copy);
 
@@ -345,13 +379,39 @@ public partial class TaskbarFlyoutWindow : Window
         };
         card.MouseLeave += (_, _) =>
         {
+            card.BorderBrush = window.Active || card.IsKeyboardFocusWithin
+                ? CardBorderHoverBrush
+                : CardBorderBrush;
+            card.Background = card.IsKeyboardFocusWithin ? PanelHoverBrush : PanelBrush;
+        };
+        card.GotKeyboardFocus += (_, e) =>
+        {
+            if (!ReferenceEquals(e.NewFocus, card))
+            {
+                return;
+            }
+
+            card.BorderBrush = CardBorderHoverBrush;
+            card.Background = PanelHoverBrush;
+        };
+        card.LostKeyboardFocus += (_, e) =>
+        {
+            if (card.IsKeyboardFocusWithin || ReferenceEquals(e.NewFocus, card))
+            {
+                return;
+            }
+
             card.BorderBrush = window.Active ? CardBorderHoverBrush : CardBorderBrush;
             card.Background = PanelBrush;
         };
         return card;
     }
 
-    private Grid CreateFooter(TaskbarWindowSnapshot window, bool compact)
+    private Grid CreateFooter(
+        TaskbarWindowSnapshot window,
+        bool compact,
+        string? titleOverride = null,
+        string? metaOverride = null)
     {
         var footer = new Grid
         {
@@ -363,7 +423,7 @@ public partial class TaskbarFlyoutWindow : Window
 
         var title = new TextBlock
         {
-            Text = window.Title,
+            Text = titleOverride ?? window.Title,
             Foreground = TextBrush,
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = compact ? 11 : 10.5,
@@ -373,7 +433,7 @@ public partial class TaskbarFlyoutWindow : Window
 
         var meta = new TextBlock
         {
-            Text = $"{window.ProcessName.ToUpperInvariant()} · {(window.Minimized ? "MINIMIZED" : window.Active ? "ACTIVE" : "READY")}",
+            Text = metaOverride ?? $"{window.ProcessName.ToUpperInvariant()} · {(window.Minimized ? "MINIMIZED" : window.Active ? "ACTIVE" : "READY")}",
             Margin = new Thickness(0, 3, 0, 0),
             Foreground = MutedTextBrush,
             FontFamily = new FontFamily("Consolas"),
@@ -445,6 +505,7 @@ public partial class TaskbarFlyoutWindow : Window
 
     private void ToggleAndClose(string windowId)
     {
+        CloseSafely();
         try
         {
             _taskbarService.Toggle(windowId);
@@ -457,11 +518,11 @@ public partial class TaskbarFlyoutWindow : Window
         {
             HostLog.Error("Taskbar preview window switch failed unexpectedly.", ex);
         }
-        CloseSafely();
     }
 
     private void CloseWindowAndFlyout(string windowId)
     {
+        CloseSafely();
         try
         {
             _taskbarService.Close(windowId);
@@ -470,8 +531,6 @@ public partial class TaskbarFlyoutWindow : Window
         {
             HostLog.Warning($"Taskbar preview could not close window: {ex.Message}");
         }
-
-        CloseSafely();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -482,7 +541,7 @@ public partial class TaskbarFlyoutWindow : Window
             return;
         }
 
-        if (_autoDismiss)
+        if (!_keyboardInteractive && _autoDismiss)
         {
             var extendedStyle = GetWindowLongPtr(handle, GwlExStyle).ToInt64();
             _ = SetWindowLongPtr(handle, GwlExStyle, new IntPtr(extendedStyle | WsExNoActivate));
@@ -501,8 +560,8 @@ public partial class TaskbarFlyoutWindow : Window
             return;
         }
 
-        var itemCount = _mode == "overflow"
-            ? _windows.Count + _request.OverflowItems.Count
+        var itemCount = _mode == "overflow" && _request.OverflowItems.Count > 0
+            ? _request.OverflowItems.Count
             : _windows.Count;
         var maximumCount = Math.Max(1, Math.Min(itemCount, _mode == "overflow" ? 10 : 6));
         var cardWidth = _mode == "overflow" ? 270 : 242;
@@ -585,6 +644,56 @@ public partial class TaskbarFlyoutWindow : Window
         {
             _cursorTimer.Start();
         }
+
+        if (_keyboardInteractive)
+        {
+            _ = Activate();
+            _ = CardsPanel.Children
+                .OfType<UIElement>()
+                .FirstOrDefault(element => element.Focusable)
+                ?.Focus();
+        }
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_keyboardInteractive)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            CloseSafely();
+            return;
+        }
+
+        var offset = e.Key switch
+        {
+            Key.Left or Key.Up => -1,
+            Key.Right or Key.Down => 1,
+            _ => 0
+        };
+        if (offset == 0)
+        {
+            return;
+        }
+
+        var cards = CardsPanel.Children
+            .OfType<UIElement>()
+            .Where(element => element.Focusable)
+            .ToArray();
+        if (cards.Length == 0)
+        {
+            return;
+        }
+
+        var currentIndex = Array.FindIndex(cards, card => card.IsKeyboardFocusWithin);
+        var nextIndex = currentIndex < 0
+            ? 0
+            : (currentIndex + offset + cards.Length) % cards.Length;
+        e.Handled = cards[nextIndex].Focus();
     }
 
     private void RegisterThumbnail(TaskbarWindowSnapshot window, FrameworkElement destination)
@@ -684,14 +793,14 @@ public partial class TaskbarFlyoutWindow : Window
         }
     }
 
-    private static IntPtr WindowProcedure(
+    private IntPtr WindowProcedure(
         IntPtr window,
         int message,
         IntPtr wordParameter,
         IntPtr longParameter,
         ref bool handled)
     {
-        if (message == WmMouseActivate)
+        if (!_keyboardInteractive && message == WmMouseActivate)
         {
             handled = true;
             return new IntPtr(MaNoActivate);

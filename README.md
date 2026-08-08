@@ -7,7 +7,7 @@ JarvisV1 is an experimental HUD-style desktop shell for Windows 10 and Windows 1
 ## Current scope
 
 - Windows 10 and Windows 11 Home/Pro desktop environments
-- Full primary-taskbar replacement by default, with optional native and hybrid modes, fullscreen-aware reversible suppression, running-window synchronization, delayed DWM hover previews, session-scoped Show Desktop restore, and a recovery watchdog
+- Hybrid primary-taskbar composition by default, preserving Explorer's notification area, with optional native fallback and experimental full replacement, fullscreen-aware reversible suppression, running-window synchronization, delayed DWM hover previews, session-scoped Show Desktop restore, and a recovery watchdog
 - Current-virtual-desktop window scoping for the replacement taskbar and bounded HUD Alt+Tab switcher, with fail-open public-API fallback and native Windows fallback in hybrid, safe, secure-desktop, and renderer-failure paths
 - Local Quick Search from the desktop and replacement taskbar, with keyboard scope switching and bounded history
 - A centered Pi Agent taskbar entry and embedded streaming chat window; V1 keeps Pi tools disabled and lazily starts a repository-pinned, privately bundled runtime only when a prompt is sent
@@ -70,6 +70,17 @@ dotnet build .\host\Jarvis.Host.sln -c Debug
 dotnet run --project .\host\Jarvis.Host\Jarvis.Host.csproj
 ```
 
+After both builds complete, run the isolated Host/WebView2 smoke gate:
+
+```powershell
+.\scripts\verify-renderer-smoke.ps1
+```
+
+It opens an off-screen 1040x720 renderer against an isolated WebView2 profile,
+checks Help, Explorer, Agent linking, notice bounds, and Reduced Motion, then
+exits automatically. The gate refuses to start while JARVIS is already running
+and verifies that the native Windows taskbar remains visible.
+
 Set `JARVIS_KEEP_NATIVE_TASKBAR=1` before launch to keep the Windows taskbar visible while developing or recovering. More native-host and release details are documented in [`host/README.md`](host/README.md).
 
 If both JARVIS and its watchdog have already exited but Explorer's primary
@@ -82,7 +93,8 @@ Taskbar modes are stored per user. `native` preserves the complete Windows
 taskbar, `hybrid` yields the notification area to Explorer, and `full` hides the
 primary taskbar behind the watchdog-backed experimental replacement. Any failed
 probe or activation returns to the native taskbar. A fresh profile starts in
-`full`; an existing valid user selection is preserved.
+`hybrid`; `full` remains an explicit experimental opt-in, and every existing
+valid user selection is preserved.
 
 Run the non-mutating compatibility readiness probe on each target machine:
 

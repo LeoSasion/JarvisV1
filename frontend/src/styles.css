@@ -229,11 +229,7 @@ input:focus-visible {
   inset: 0;
   z-index: -1;
   opacity: 0.62;
-  background-image:
-    linear-gradient(rgba(32, 127, 183, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(32, 127, 183, 0.045) 1px, transparent 1px);
-  background-size: 42px 42px;
-  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  background: transparent;
 }
 
 .window-switcher-field::before,
@@ -691,12 +687,6 @@ input:focus-visible {
 
   .window-switcher-footer {
     grid-template-columns: 1fr auto;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root:not([data-motion="full"]) .window-switcher-card {
-    transition: none;
   }
 }
 
@@ -2333,11 +2323,7 @@ button.process-grid:hover {
   display: grid;
   place-items: center;
   border-bottom: 1px solid rgba(25, 71, 102, 0.7);
-  background:
-    linear-gradient(rgba(20, 78, 116, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 78, 116, 0.12) 1px, transparent 1px),
-    #01060c;
-  background-size: 18px 18px;
+  background: #01060c;
 }
 
 .mock-window-thumbnail svg {
@@ -4003,11 +3989,13 @@ button.process-grid:hover {
 
 .explorer-transfer-progress i {
   display: block;
-  width: var(--transfer-progress);
+  width: 100%;
   height: 100%;
   background: linear-gradient(90deg, #0966b8, #27c8ff);
   box-shadow: 0 0 9px rgba(39, 200, 255, 0.8);
-  transition: width 120ms linear;
+  transform: scaleX(var(--transfer-progress, 0));
+  transform-origin: left center;
+  transition: transform 120ms linear;
 }
 
 .explorer-transfer-panel > footer {
@@ -4235,11 +4223,7 @@ button.process-grid:hover {
   width: 40vw;
   pointer-events: none;
   opacity: 0.32;
-  background-image:
-    linear-gradient(rgba(30, 128, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 128, 184, 0.08) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(circle, #000 0 44%, transparent 72%);
+  background: transparent;
 }
 
 .boot-check-list {
@@ -4342,11 +4326,14 @@ button.process-grid:hover {
 }
 
 .boot-sequence > footer > span i {
+  width: 100%;
   height: 100%;
   display: block;
   background: linear-gradient(90deg, var(--energy-blue), var(--glow-core));
   box-shadow: 0 0 9px var(--glow-halo);
-  transition: width 180ms ease-out;
+  transform: scaleX(var(--boot-progress, 0));
+  transform-origin: left center;
+  transition: transform 180ms ease-out;
 }
 
 .boot-sequence > footer strong {
@@ -4511,11 +4498,7 @@ button.process-grid:hover {
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background:
-    linear-gradient(rgba(30, 121, 175, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 121, 175, 0.025) 1px, transparent 1px),
-    rgba(1, 6, 12, 0.985);
-  background-size: 28px 28px;
+  background: rgba(1, 6, 12, 0.985);
 }
 
 .inspector-overview {
@@ -8539,26 +8522,6 @@ button.process-grid:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :root:not([data-motion="full"]) *,
-  :root:not([data-motion="full"]) *::before,
-  :root:not([data-motion="full"]) *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-:root[data-motion="reduced"] *,
-:root[data-motion="reduced"] *::before,
-:root[data-motion="reduced"] *::after {
-  scroll-behavior: auto !important;
-  animation-duration: 0.01ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
-}
-
 /* Terminal workbench: renderer-only xterm surface backed by the native ConPTY service. */
 .terminal-layer {
   position: fixed;
@@ -8857,11 +8820,7 @@ button.process-grid:hover {
   inset: 0;
   pointer-events: none;
   opacity: 0.18;
-  background-image:
-    linear-gradient(rgba(36, 125, 178, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(36, 125, 178, 0.05) 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: linear-gradient(90deg, #000, transparent 42%);
+  background: transparent;
 }
 
 .terminal-viewport {
@@ -10105,17 +10064,5 @@ button.process-grid:hover {
 
   .workspace-window .agent-footer {
     grid-template-columns: 1fr;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root:not([data-motion="full"]) .workspace-window,
-  :root:not([data-motion="full"]) .workspace-window .jarvis-explorer,
-  :root:not([data-motion="full"]) .workspace-window .terminal-workbench,
-  :root:not([data-motion="full"]) .workspace-window .system-inspector,
-  :root:not([data-motion="full"]) .workspace-window .agent-workbench,
-  :root:not([data-motion="full"]) .jarvis-agent-launcher.is-working > i {
-    transition: none;
-    animation: none;
   }
 }

@@ -460,7 +460,9 @@ public partial class TaskbarWindow : Window
     }
 
     private void ShowTaskbarFlyout(TaskbarFlyoutRequest request) =>
-        ShowTaskbarFlyout(request, autoDismiss: true);
+        ShowTaskbarFlyout(
+            request,
+            autoDismiss: !TaskbarFlyoutWindow.IsKeyboardInteractiveMode(request.Mode));
 
     private void ShowTaskbarFlyout(TaskbarFlyoutRequest request, bool autoDismiss)
     {
